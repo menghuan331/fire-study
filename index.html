@@ -201,6 +201,12 @@ button.sync-status {
   text-decoration: underline;
 }
 
+.app-version {
+  margin: 12px 0 0;
+  color: var(--ink-2);
+  font-size: 13px;
+}
+
 #gh-form {
   margin: 0;
 }
@@ -643,6 +649,48 @@ button.sync-status {
 .map-row .tag {
   flex: none;
   line-height: 1.4;
+}
+
+.map-row .lecture-tag {
+  border-color: var(--lamp-read);
+  color: var(--lamp-read);
+  font-size: 12px;
+}
+
+.lecture-block {
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+
+.lecture-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.lecture-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.lecture-link {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.lecture-list li:last-child .lecture-link {
+  border-bottom: 0;
 }
 
 .lamp-0 {
@@ -1528,6 +1576,8 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
+const APP_VERSION = "2026-10-20.3";
+let swControllerReload = false;
 const INTERVALS = [1, 3, 7, 14, 30, 60];
 
 function shanghaiToday(date = new Date()) {
@@ -1683,6 +1733,7 @@ function stemPreview(stem) {
 
 const app = {
   data: null,
+  lectures: [],
   error: "",
   state: createDefaultState(),
   listeners: new Set(),
@@ -2456,6 +2507,7 @@ function renderSettings() {
     <section class="panel">
       <p class="settings-note">令牌只存在这台设备上。生成方法见 <a href="./令牌设置.html">令牌设置说明</a>。</p>
     </section>
+    <p class="app-version mono">版本 ${escapeHtml(APP_VERSION)}</p>
   `;
   wireSettings();
 }
@@ -2612,7 +2664,28 @@ function wireSettings() {
 
 function registerServiceWorker() {
   if (!navigator.serviceWorker) return;
-  navigator.serviceWorker.register("./sw.js").catch(() => {});
+  const hadController = !!navigator.serviceWorker.controller;
+  let pageReady = document.readyState === "complete";
+  if (!pageReady) {
+    window.addEventListener("load", () => { pageReady = true; }, { once: true });
+  }
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!hadController || !pageReady || swControllerReload) return;
+    swControllerReload = true;
+    location.reload();
+  });
+  navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" }).then((registration) => {
+    const check = () => registration.update().catch(() => {});
+    check();
+    let lastCheck = Date.now();
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastCheck < 60000) return;
+      lastCheck = now;
+      check();
+    });
+  }).catch(() => {});
 }
 function sanitizeTab(hash) {
   const key = (hash || "").replace(/^#/, "");
@@ -2877,6 +2950,50 @@ function navigateTo(tab) {
   }
 }
 
+async function loadLectureIndex() {
+  try {
+    const res = await fetch("精讲/index.json");
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.items) ? data.items : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function lecturesForUnits(unitIds) {
+  const wanted = new Set(unitIds || []);
+  return (app.lectures || []).filter((item) => item && wanted.has(item.unit) && item.url);
+}
+
+function lectureForRow(rowId) {
+  return (app.lectures || []).find((item) => item && item.url && Array.isArray(item.rows) && item.rows.includes(rowId)) || null;
+}
+
+function openLecture(url) {
+  if (url) location.href = url;
+}
+
+function renderUnitLectureBlock(unitIds) {
+  const items = lecturesForUnits(unitIds);
+  if (!items.length) return "";
+  return `
+    <div class="lecture-block">
+      <p class="lecture-title">本单元精讲</p>
+      <ul class="lecture-list">
+        ${items.map((item) => `
+          <li>
+            <button type="button" class="lecture-link tap-target" data-lecture-url="${escapeHtml(item.url)}">
+              <span>${escapeHtml(item.title)}</span>
+              <span class="small">${escapeHtml(String(item.minutes))} 分钟 · 可听 ${escapeHtml(String(item.audioMinutes))} 分钟</span>
+            </button>
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+  `;
+}
+
 function renderStatusBar(today, weekCtx) {
   document.getElementById("status-center").textContent = weekCtx.weekLabel;
   const days = Math.max(0, diffDaysYmd(today, EXAM_DATE));
@@ -2909,6 +3026,7 @@ function renderToday(today, weekCtx) {
   const doneRows = weekRows.filter((r) => getSectionStatus(r.id) >= 1).length;
   const rowTotal = weekRows.length || 1;
   const progressPct = Math.round((doneRows / rowTotal) * 100);
+  const nextLecture = nextRow ? lectureForRow(nextRow.id) : null;
   const weekDoc = currentWeek ? app.state.weeks[currentWeek.start] || {} : {};
   const baselineBlock = weekCtx.phase === "pre" ? `
     <section class="panel">
@@ -2945,9 +3063,14 @@ function renderToday(today, weekCtx) {
           ${nextRow ? `
             <p>${bookName(nextRow.book)} · ${nextRow.chapter_title || nextRow.part_title} · ${nextRow.title}</p>
             <p class="small mono">印刷页 ${nextRow.printed_start}</p>
-            <div class="button-row"><button id="today-mark-read" class="btn btn-secondary tap-target">读完了（标记学过）</button></div>
+            <div class="button-row">
+              <button id="today-mark-read" class="btn btn-secondary tap-target" type="button">读完了（标记学过）</button>
+              ${nextLecture ? `<button id="today-open-lecture" class="btn btn-secondary tap-target" type="button" data-lecture-url="${escapeHtml(nextLecture.url)}">看精讲（${escapeHtml(String(nextLecture.minutes))} 分钟 · 可听）</button>` : ""}
+            </div>
           ` : `<p class="small">本周单元已没有“未学”节。</p>`}
         </div>
+
+        ${renderUnitLectureBlock(weekUnits)}
 
         <div class="task-item">
           <div class="task-head">
@@ -2997,6 +3120,13 @@ function renderToday(today, weekCtx) {
       ensureSkeletonActivation(today);
     });
   }
+  const lectureBtn = document.getElementById("today-open-lecture");
+  if (lectureBtn) {
+    lectureBtn.addEventListener("click", () => openLecture(lectureBtn.getAttribute("data-lecture-url")));
+  }
+  root.querySelectorAll(".lecture-link").forEach((btn) => {
+    btn.addEventListener("click", () => openLecture(btn.getAttribute("data-lecture-url")));
+  });
   const caseBtn = document.getElementById("today-case-done");
   if (caseBtn && weekCase) {
     caseBtn.addEventListener("click", () => setSectionStatus(weekCase.id, Math.max(1, getSectionStatus(weekCase.id))));
@@ -3521,8 +3651,16 @@ function renderMap() {
       render();
     });
   });
+  groups.querySelectorAll("[data-lecture-url]").forEach((tag) => {
+    tag.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openLecture(tag.getAttribute("data-lecture-url"));
+    });
+  });
   groups.querySelectorAll("[data-row-lamp]").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (event) => {
+      if (event.target.closest("[data-lecture-url]")) return;
       const rowId = btn.dataset.rowLamp;
       const next = (getSectionStatus(rowId) + 1) % 4;
       setSectionStatus(rowId, next);
@@ -3545,12 +3683,17 @@ function renderMapRow(row) {
   const status = getSectionStatus(row.id);
   const sectionName = row.section ? `§${row.section}` : "导言";
   const chapter = row.chapter_title || row.part_title || "";
+  const lecture = lectureForRow(row.id);
+  const lectureTag = lecture
+    ? `<span class="tag lecture-tag" data-lecture-url="${escapeHtml(lecture.url)}">精讲</span>`
+    : "";
   return `
     <li>
       <button type="button" class="map-row" data-row-lamp="${row.id}">
         <span class="lamp lamp-${status}" aria-hidden="true"></span>
         <span class="tag">${row.subject}</span>
         <span class="map-row-main">${chapter} · ${sectionName} · ${row.title}</span>
+        ${lectureTag}
         <span class="map-row-page mono">印刷页 ${row.printed_start}</span>
       </button>
     </li>
@@ -3781,13 +3924,15 @@ async function boot() {
   render();
 
   try {
-    const [map, schedule, cards, questions] = await Promise.all([
+    const [map, schedule, cards, questions, lectures] = await Promise.all([
       fetchJson("data/map.json", "data/map.json"),
       fetchJson("data/schedule.json", "data/schedule.json"),
       fetchJson("data/cards.json", "data/cards.json"),
-      fetchJson("data/questions.json", "data/questions.json")
+      fetchJson("data/questions.json", "data/questions.json"),
+      loadLectureIndex()
     ]);
     app.data = { map, schedule, cards, questions };
+    app.lectures = lectures;
     buildIndexes();
     ensureSkeletonActivation(shanghaiToday());
     render();

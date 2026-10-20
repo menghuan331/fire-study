@@ -1,4 +1,5 @@
-const CACHE_VERSION = "study-v2";
+const CACHE_VERSION = "study-v3";
+const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [
   "./",
@@ -15,19 +16,92 @@ const PRECACHE = [
 
 function relativePath(url) {
   const scopePath = new URL(self.registration.scope).pathname;
-  const path = url.pathname;
-  if (!path.startsWith(scopePath)) return path.replace(/^\//, "");
-  return path.slice(scopePath.length);
+  let path = url.pathname;
+  if (path.startsWith(scopePath)) path = path.slice(scopePath.length);
+  else path = path.replace(/^\//, "");
+  try {
+    path = decodeURIComponent(path);
+  } catch (_) {}
+  return path;
 }
 
-function isTracked(url) {
-  if (url.origin !== self.location.origin) return false;
-  const rel = relativePath(url);
+function isIconOrManifest(rel) {
+  return rel === "manifest.webmanifest" || rel.startsWith("icons/");
+}
+
+function isLectureFile(rel) {
+  if (!rel.startsWith("精讲/")) return false;
+  return rel.endsWith(".html") || rel.endsWith(".json") || rel.endsWith(".mp3");
+}
+
+function isNetworkFirstPath(rel) {
   return rel === ""
     || rel === "index.html"
-    || rel.startsWith("data/")
-    || rel === "manifest.webmanifest"
-    || rel.startsWith("icons/");
+    || (rel.startsWith("data/") && rel.endsWith(".json"))
+    || rel === "精讲/index.json"
+    || isLectureFile(rel);
+}
+
+function shouldHandle(request, url) {
+  if (url.origin !== self.location.origin) return false;
+  if (request.mode === "navigate") return true;
+  const rel = relativePath(url);
+  return isNetworkFirstPath(rel) || isIconOrManifest(rel);
+}
+
+function offlineResponse() {
+  return new Response("离线且没有缓存", {
+    status: 503,
+    headers: { "Content-Type": "text/plain; charset=utf-8" }
+  });
+}
+
+function fetchNetwork(request) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NETWORK_TIMEOUT_MS);
+  const input = request.mode === "navigate" ? request.url : request;
+  return fetch(input, { cache: "no-store", signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
+async function readCache(request) {
+  const cache = await caches.open(CACHE_VERSION);
+  return (await cache.match(request)) || (await cache.match(request.url));
+}
+
+async function writeCache(request, response) {
+  if (!response || response.status !== 200) return;
+  try {
+    const cache = await caches.open(CACHE_VERSION);
+    await cache.put(request.url, response.clone());
+  } catch (_) {}
+}
+
+async function networkFirst(request) {
+  try {
+    const response = await fetchNetwork(request);
+    if (response && response.status === 200) {
+      await writeCache(request, response);
+      return response;
+    }
+  } catch (_) {}
+  const cached = await readCache(request);
+  if (cached) return cached;
+  return offlineResponse();
+}
+
+function cacheFirst(event, request) {
+  const update = fetch(request).then(async (response) => {
+    if (response && response.status === 200) await writeCache(request, response);
+    return response;
+  }).catch(() => null);
+  event.waitUntil(update.then(() => {}));
+  return readCache(request).then(async (cached) => {
+    if (cached) return cached;
+    const fresh = await update;
+    if (fresh) return fresh;
+    return offlineResponse();
+  });
 }
 
 self.addEventListener("install", (event) => {
@@ -39,11 +113,21 @@ self.addEventListener("install", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    caches.keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_VERSION).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    const oldKeys = keys.filter((key) => key !== CACHE_VERSION);
+    await Promise.all(oldKeys.map((key) => caches.delete(key)));
+    await self.clients.claim();
+    // v2 页面没有 controllerchange 监听。不能 await navigate：activate 未结束时
+    // 导航请求会排队，和 waitUntil 互相等待。
+    if (!oldKeys.includes("study-v2")) return;
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    for (const client of windows) {
+      if (!client.url || typeof client.navigate !== "function") continue;
+      client.navigate(client.url).catch(() => {});
+    }
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
@@ -56,27 +140,20 @@ self.addEventListener("fetch", (event) => {
     return;
   }
   if (url.hostname === "api.github.com") return;
-  if (!isTracked(url)) return;
+  if (!shouldHandle(request, url)) return;
 
-  const cachePromise = caches.open(CACHE_VERSION);
-  const networkPromise = fetch(request).then(async (response) => {
-    if (response && response.ok) {
-      const cache = await cachePromise;
-      await cache.put(request, response.clone());
-    }
-    return response;
-  }).catch(() => null);
+  const rel = relativePath(url);
+  if (request.headers.get("range") && isLectureFile(rel)) {
+    event.respondWith(fetch(request));
+    return;
+  }
 
-  event.waitUntil(networkPromise.then(() => {}));
-  event.respondWith((async () => {
-    const cache = await cachePromise;
-    const cached = await cache.match(request);
-    if (cached) return cached;
-    const fresh = await networkPromise;
-    if (fresh) return fresh;
-    return new Response("离线且没有缓存", {
-      status: 503,
-      headers: { "Content-Type": "text/plain; charset=utf-8" }
-    });
-  })());
+  if (request.mode === "navigate" || isNetworkFirstPath(rel)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  if (isIconOrManifest(rel)) {
+    event.respondWith(cacheFirst(event, request));
+  }
 });
