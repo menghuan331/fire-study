@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#1d2329"/>
+  <rect x="0" y="0" width="512" height="92" fill="#c4271d"/>
+  <circle cx="176" cy="46" r="13" fill="#3d7fb8"/>
+  <circle cx="226" cy="46" r="13" fill="#d39a12"/>
+  <circle cx="276" cy="46" r="13" fill="#2f9a5d"/>
+  <circle cx="336" cy="46" r="13" fill="#ffffff" opacity="0.35"/>
+  <text x="256" y="372" font-family="Hiragino Sans GB, STHeiti, sans-serif" font-size="250" font-weight="600" fill="#eef0f2" text-anchor="middle">消</text>
+</svg>

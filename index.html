@@ -1,0 +1,3477 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>消考学习台</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#c4271d">
+<style>
+@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600&display=swap");
+
+:root {
+  --bg: #eef0f2;
+  --panel: #f8f9fa;
+  --ink: #1d2329;
+  --ink-2: #56606b;
+  --line: #d3d8dd;
+  --accent: #c4271d;
+  --accent-ink: #ffffff;
+  --lamp-off: #b9c0c7;
+  --lamp-read: #3d7fb8;
+  --lamp-done: #d39a12;
+  --lamp-pass: #2f9a5d;
+  --ok: #2f9a5d;
+  --warn: #b7791f;
+  --bad: #c4271d;
+  --font-display: "Noto Serif SC", "Songti SC", serif;
+  --font-body: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --r: 6px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15191d;
+    --panel: #1c2126;
+    --ink: #e4e8ec;
+    --ink-2: #98a2ad;
+    --line: #2c333a;
+    --accent: #e5483c;
+    --accent-ink: #ffffff;
+    --lamp-off: #3a424a;
+    --lamp-read: #5b9bd5;
+    --lamp-done: #e3ad2e;
+    --lamp-pass: #45b878;
+    --ok: #45b878;
+    --warn: #e3ad2e;
+    --bad: #e5483c;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #15191d;
+  --panel: #1c2126;
+  --ink: #e4e8ec;
+  --ink-2: #98a2ad;
+  --line: #2c333a;
+  --accent: #e5483c;
+  --accent-ink: #ffffff;
+  --lamp-off: #3a424a;
+  --lamp-read: #5b9bd5;
+  --lamp-done: #e3ad2e;
+  --lamp-pass: #45b878;
+  --ok: #45b878;
+  --warn: #e3ad2e;
+  --bad: #e5483c;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+button,
+.tap-target {
+  min-height: 44px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  min-height: 100dvh;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-top: 12px;
+  padding-bottom: calc(56px + 12px + env(safe-area-inset-bottom, 0px));
+}
+
+.main-layout {
+  display: block;
+  min-width: 0;
+}
+
+.main-column {
+  min-width: 0;
+  width: 100%;
+}
+
+.status-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "left right" "center center";
+  gap: 2px 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 8px 12px;
+  font-size: 14px;
+  align-items: center;
+}
+
+.status-left {
+  grid-area: left;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.status-center {
+  grid-area: center;
+  min-width: 0;
+  text-align: left;
+}
+
+.status-right {
+  grid-area: right;
+  justify-self: end;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  max-width: 100%;
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+button.sync-status {
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
+  padding: 0 2px;
+  min-height: 44px;
+  max-width: min(220px, 42vw);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: right;
+  cursor: pointer;
+}
+
+.text-input {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.settings-note a {
+  color: var(--lamp-read);
+  text-decoration: underline;
+}
+
+#gh-form {
+  margin: 0;
+}
+
+.content-wrap {
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.page {
+  padding: 14px;
+}
+
+.page + .page {
+  border-top: 1px solid var(--line);
+}
+
+.panel {
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.panel:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+.h2 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.label {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+
+.small {
+  font-size: 14px;
+  color: var(--ink-2);
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.btn {
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn-secondary {
+  background: transparent;
+  border-color: var(--line);
+}
+
+.btn-ok {
+  background: var(--ok);
+  border-color: var(--ok);
+  color: var(--accent-ink);
+}
+
+.btn-bad {
+  background: transparent;
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.task-list {
+  display: grid;
+  gap: 8px;
+}
+
+.task-item {
+  border: 1px solid var(--line);
+  padding: 10px;
+}
+
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  cursor: pointer;
+}
+
+.check-row input {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--accent);
+}
+
+.task-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.status-pill {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.status-ok {
+  border-color: var(--ok);
+  color: var(--ok);
+}
+
+.status-bad {
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+.status-warn {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.progress {
+  height: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress > span {
+  display: block;
+  height: 100%;
+  background: var(--lamp-read);
+}
+
+.split {
+  display: grid;
+  gap: 8px;
+}
+
+.q-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--line);
+}
+
+.q-item {
+  border-top: 1px solid var(--line);
+}
+
+.q-item:first-child {
+  border-top: 0;
+}
+
+.doubt-fold {
+  margin-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.doubt-summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  cursor: pointer;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+
+.doubt-fold .q-list {
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+
+.q-btn {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  padding: 10px;
+  text-align: left;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.q-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.q-stem {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.q-meta {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+
+.q-btn.active {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.option-list {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+
+.option-btn {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  margin-top: 6px;
+  padding: 8px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.option-btn.on {
+  border-color: var(--lamp-read);
+  background: color-mix(in srgb, var(--lamp-read) 12%, transparent);
+}
+
+.option-btn.opt-ok {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+.option-btn.opt-bad {
+  border-color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 12%, transparent);
+}
+
+.verify-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 8px;
+  resize: vertical;
+}
+
+.review-card {
+  border: 1px solid var(--line);
+  padding: 12px;
+}
+
+.map-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.group {
+  border: 0;
+  border-radius: 0;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.group-head {
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.row-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.map-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  border: 0;
+  border-radius: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  padding: 0 2px;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.map-row-main {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-row-page {
+  flex: none;
+  color: var(--ink-2);
+}
+
+.segbar {
+  display: flex;
+  width: 100%;
+  height: 4px;
+  background: var(--lamp-off);
+}
+
+.segbar > span {
+  display: block;
+  height: 4px;
+  flex: 0 0 auto;
+}
+
+.seg-0 { background: var(--lamp-off); }
+.seg-1 { background: var(--lamp-read); }
+.seg-2 { background: var(--lamp-done); }
+.seg-3 { background: var(--lamp-pass); }
+
+.lamp {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: inline-block;
+  flex: none;
+}
+
+.map-row .tag {
+  flex: none;
+  line-height: 1.4;
+}
+
+.lamp-0 {
+  background: var(--lamp-off);
+}
+
+.lamp-1 {
+  background: var(--lamp-read);
+}
+
+.lamp-2 {
+  background: var(--lamp-done);
+}
+
+.lamp-3 {
+  background: var(--lamp-pass);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--lamp-pass) 35%, transparent);
+}
+
+.tag {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.danger {
+  color: var(--bad);
+}
+
+.timeline {
+  border-top: 1px solid var(--line);
+}
+
+.week-row {
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-left: 3px solid transparent;
+  border-radius: 0;
+  padding: 6px 8px;
+  min-height: 44px;
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+  grid-template-areas: "dates dates" "unit case";
+  gap: 2px 12px;
+  align-items: center;
+}
+
+.week-dates { grid-area: dates; }
+.week-unit { grid-area: unit; min-width: 0; }
+.week-case { grid-area: case; min-width: 0; }
+
+.week-row.current {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.week-row.buffer {
+  color: var(--ink-2);
+}
+
+.nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-rows: 56px;
+  height: auto;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: var(--panel);
+  padding-top: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.nav a {
+  height: 56px;
+  min-height: 56px;
+  max-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  font-size: 14px;
+  white-space: nowrap;
+  padding: 0 2px;
+}
+
+.nav a:first-child {
+  border-left: 0;
+}
+
+.nav a.active {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.empty {
+  border: 1px dashed var(--line);
+  padding: 10px;
+}
+
+.app-error {
+  border: 1px solid var(--bad);
+  padding: 10px;
+  color: var(--bad);
+  margin-top: 10px;
+}
+
+@media (min-width: 720px) {
+  .status-bar {
+    grid-template-columns: 1fr auto 1fr;
+    grid-template-areas: "left center right";
+  }
+
+  .status-center {
+    text-align: center;
+  }
+
+  .week-row {
+    grid-template-columns: 300px minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-areas: "dates unit case";
+    gap: 8px 12px;
+  }
+
+  .week-dates {
+    white-space: nowrap;
+  }
+}
+
+@media (min-width: 960px) {
+  .app-shell {
+    padding-bottom: 16px;
+  }
+
+  .main-layout {
+    display: grid;
+    grid-template-columns: 190px minmax(0, 1fr);
+    gap: 24px;
+    width: 100%;
+    align-items: start;
+  }
+
+  .main-column {
+    max-width: 880px;
+    margin-inline: auto;
+  }
+
+  .nav {
+    position: sticky;
+    top: 12px;
+    bottom: auto;
+    left: auto;
+    right: auto;
+    height: auto;
+    grid-template-columns: 1fr;
+    grid-template-rows: none;
+    padding: 0;
+    border: 1px solid var(--line);
+  }
+
+  .nav a {
+    height: auto;
+    min-height: 44px;
+    max-height: none;
+    justify-content: flex-start;
+    padding-inline: 12px;
+    border-left: 0;
+    border-top: 1px solid var(--line);
+    white-space: normal;
+  }
+
+  .nav a:first-child {
+    border-top: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+</style>
+</head>
+<body>
+<div class="app-shell">
+  <div class="main-layout">
+    <nav id="tab-nav" class="nav" aria-label="主导航">
+      <a href="#today" data-tab-link="today">今日</a>
+      <a href="#practice" data-tab-link="practice">做题</a>
+      <a href="#review" data-tab-link="review">复习</a>
+      <a href="#map" data-tab-link="map">地图</a>
+      <a href="#week" data-tab-link="week">本周</a>
+      <a href="#plan" data-tab-link="plan">排程</a>
+    </nav>
+
+    <div class="main-column">
+      <header class="status-bar">
+        <div id="status-left" class="status-left">消考学习台</div>
+        <div id="status-center" class="status-center">加载中</div>
+        <div id="status-right" class="status-right">
+          <button id="sync-status" class="sync-status" type="button">未连接 GitHub</button>
+          <span id="exam-countdown">距考试 <span class="mono">--</span> 天</span>
+        </div>
+      </header>
+
+      <main class="content-wrap">
+        <section id="page-today" class="page"></section>
+        <section id="page-practice" class="page" hidden></section>
+        <section id="page-review" class="page" hidden></section>
+        <section id="page-map" class="page" hidden></section>
+        <section id="page-week" class="page" hidden></section>
+        <section id="page-plan" class="page" hidden></section>
+        <section id="page-settings" class="page" hidden></section>
+      </main>
+    </div>
+  </div>
+</div>
+
+<script id="pure">
+function mergeStates(local, remote) {
+  function asRecord(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return value;
+  }
+
+  function copyRec(rec) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) return rec;
+    return { ...rec };
+  }
+
+  function mergeMaps(a, b) {
+    const out = {};
+    const keys = new Set([...Object.keys(a || {}), ...Object.keys(b || {})]);
+    for (const key of keys) {
+      const aHas = !!(a && Object.prototype.hasOwnProperty.call(a, key));
+      const bHas = !!(b && Object.prototype.hasOwnProperty.call(b, key));
+      const av = aHas ? a[key] : null;
+      const bv = bHas ? b[key] : null;
+      if (av != null && bv != null) {
+        const at = Number(av.updatedAt) || 0;
+        const bt = Number(bv.updatedAt) || 0;
+        out[key] = copyRec(bt > at ? bv : av);
+      } else if (av != null) {
+        out[key] = copyRec(av);
+      } else if (bv != null) {
+        out[key] = copyRec(bv);
+      }
+    }
+    return out;
+  }
+
+  const left = asRecord(local);
+  const right = asRecord(remote);
+  const sections = {};
+  const sectionsAt = {};
+  const sectionIds = new Set([
+    ...Object.keys(left.sections || {}),
+    ...Object.keys(right.sections || {}),
+    ...Object.keys(left.sectionsAt || {}),
+    ...Object.keys(right.sectionsAt || {})
+  ]);
+  for (const id of sectionIds) {
+    const lat = left.sectionsAt && Object.prototype.hasOwnProperty.call(left.sectionsAt, id)
+      ? (Number(left.sectionsAt[id]) || 0)
+      : 0;
+    const rat = right.sectionsAt && Object.prototype.hasOwnProperty.call(right.sectionsAt, id)
+      ? (Number(right.sectionsAt[id]) || 0)
+      : 0;
+    const lHas = !!(left.sections && Object.prototype.hasOwnProperty.call(left.sections, id));
+    const rHas = !!(right.sections && Object.prototype.hasOwnProperty.call(right.sections, id));
+    const useRemote = rat > lat;
+    if (useRemote) {
+      if (rHas) sections[id] = right.sections[id];
+      else if (lHas) sections[id] = left.sections[id];
+      else continue;
+      sectionsAt[id] = rHas ? rat : lat;
+    } else if (lHas) {
+      sections[id] = left.sections[id];
+      sectionsAt[id] = lat;
+    } else if (rHas) {
+      sections[id] = right.sections[id];
+      sectionsAt[id] = rat;
+    }
+  }
+
+  function stamp(state, key) {
+    if (!state || !Object.prototype.hasOwnProperty.call(state, key)) return null;
+    const n = Number(state[key]);
+    return Number.isFinite(n) ? n : 0;
+  }
+
+  const lBase = stamp(left, "baselineAt");
+  const rBase = stamp(right, "baselineAt");
+  const lBaseHas = lBase !== null || Object.prototype.hasOwnProperty.call(left, "baselineDone");
+  const rBaseHas = rBase !== null || Object.prototype.hasOwnProperty.call(right, "baselineDone");
+  let baselineDone = false;
+  let baselineAt = 0;
+  if (rBaseHas && (!lBaseHas || (rBase || 0) > (lBase || 0))) {
+    baselineDone = !!right.baselineDone;
+    baselineAt = rBase || 0;
+  } else if (lBaseHas) {
+    baselineDone = !!left.baselineDone;
+    baselineAt = lBase || 0;
+  } else if (rBaseHas) {
+    baselineDone = !!right.baselineDone;
+    baselineAt = rBase || 0;
+  }
+
+  const startedLeft = left.startedAt ? String(left.startedAt) : "";
+  const startedRight = right.startedAt ? String(right.startedAt) : "";
+  let startedAt = "";
+  if (!startedLeft) startedAt = startedRight;
+  else if (!startedRight) startedAt = startedLeft;
+  else startedAt = startedLeft <= startedRight ? startedLeft : startedRight;
+
+  return {
+    sections,
+    sectionsAt,
+    baselineDone,
+    baselineAt,
+    startedAt,
+    weeks: mergeMaps(left.weeks, right.weeks),
+    cards: mergeMaps(left.cards, right.cards),
+    attempts: mergeMaps(left.attempts, right.attempts)
+  };
+}
+</script>
+
+<script id="sync">
+function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } = {}) {
+  if (typeof fetchImpl !== "function") {
+    throw new Error("缺少 fetch");
+  }
+  const PROGRESS_PREFIX = "进度/";
+  let snapshot = null;
+
+  function emptyState() {
+    return {
+      sections: {},
+      sectionsAt: {},
+      baselineDone: false,
+      baselineAt: 0,
+      startedAt: "",
+      weeks: {},
+      cards: {},
+      attempts: {}
+    };
+  }
+
+  function cloneState(state) {
+    return JSON.parse(JSON.stringify(state || emptyState()));
+  }
+
+  function publicState(state) {
+    const copy = cloneState(state || emptyState());
+    for (const kind of ["cards", "attempts"]) {
+      const bucket = copy[kind];
+      if (!bucket || typeof bucket !== "object") continue;
+      for (const rec of Object.values(bucket)) {
+        if (rec && typeof rec === "object") delete rec.unit;
+      }
+    }
+    return copy;
+  }
+
+  function sortValue(value) {
+    if (Array.isArray(value)) return value.map(sortValue);
+    if (value && typeof value === "object") {
+      const out = {};
+      for (const key of Object.keys(value).sort()) out[key] = sortValue(value[key]);
+      return out;
+    }
+    return value;
+  }
+
+  function stableStringify(value) {
+    return JSON.stringify(sortValue(value), null, 2);
+  }
+
+  function utf8ToBase64(text) {
+    const bytes = new TextEncoder().encode(text);
+    let binary = "";
+    const size = 0x8000;
+    for (let i = 0; i < bytes.length; i += size) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + size));
+    }
+    return btoa(binary);
+  }
+
+  function base64ToUtf8(b64) {
+    const clean = String(b64 || "").replace(/\s/g, "");
+    if (!clean) return "";
+    const binary = atob(clean);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return new TextDecoder("utf-8").decode(bytes);
+  }
+
+  function canonText(text) {
+    return String(text == null ? "" : text).replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").replace(/\n+$/, "");
+  }
+
+  function decodeBlob(blob) {
+    if (!blob) return "";
+    const encoding = String(blob.encoding || "base64").toLowerCase();
+    if (encoding === "base64") return base64ToUtf8(blob.content);
+    return String(blob.content || "");
+  }
+
+  function resolveUnit(id, rec) {
+    if (rec && typeof rec.unit === "string" && rec.unit.trim()) return rec.unit.trim();
+    const source = `${id || ""} ${rec && rec.qid ? rec.qid : ""}`;
+    const matched = source.match(/U\d+/);
+    return matched ? matched[0] : "unknown";
+  }
+
+  function fileRecord(rec) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) return rec;
+    if (!Object.prototype.hasOwnProperty.call(rec, "unit")) return rec;
+    const copy = { ...rec };
+    delete copy.unit;
+    return copy;
+  }
+
+  function groupByUnit(records) {
+    const grouped = {};
+    for (const [id, rec] of Object.entries(records || {})) {
+      const unit = resolveUnit(id, rec);
+      if (!grouped[unit]) grouped[unit] = {};
+      grouped[unit][id] = fileRecord(rec);
+    }
+    return grouped;
+  }
+
+  function buildProgressFiles(state) {
+    const src = state || emptyState();
+    const files = {};
+    files[`${PROGRESS_PREFIX}state.json`] = stableStringify({
+      version: 1,
+      sections: src.sections || {},
+      sectionsAt: src.sectionsAt || {},
+      baselineDone: !!src.baselineDone,
+      baselineAt: Number(src.baselineAt) || 0,
+      startedAt: src.startedAt || "",
+      weeks: src.weeks || {}
+    });
+    const cards = groupByUnit(src.cards);
+    for (const unit of Object.keys(cards).sort()) {
+      files[`${PROGRESS_PREFIX}cards/${unit}.json`] = stableStringify(cards[unit]);
+    }
+    const attempts = groupByUnit(src.attempts);
+    for (const unit of Object.keys(attempts).sort()) {
+      files[`${PROGRESS_PREFIX}attempts/${unit}.json`] = stableStringify(attempts[unit]);
+    }
+    return files;
+  }
+
+  function changedPaths(state) {
+    const files = buildProgressFiles(state);
+    const texts = snapshot ? snapshot.texts : new Map();
+    const paths = [];
+    for (const path of Object.keys(files)) {
+      const text = files[path];
+      if (!texts.has(path) || canonText(texts.get(path)) !== canonText(text)) paths.push(path);
+    }
+    return { files, paths };
+  }
+
+  function isProgressJson(filePath) {
+    return typeof filePath === "string" && filePath.startsWith(PROGRESS_PREFIX) && filePath.endsWith(".json");
+  }
+
+  function unitFromPath(filePath) {
+    const match = /^进度\/(?:cards|attempts)\/([^/]+)\.json$/.exec(filePath || "");
+    return match ? match[1] : "";
+  }
+
+  function absorbRecords(bucket, json, unit) {
+    if (!json || typeof json !== "object" || Array.isArray(json)) return;
+    for (const [id, rec] of Object.entries(json)) {
+      if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
+      const copy = { ...rec };
+      if (unit) copy.unit = unit;
+      bucket[id] = copy;
+    }
+  }
+
+  function stateFromTexts(texts) {
+    const remote = emptyState();
+    for (const [filePath, text] of texts.entries()) {
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch (_) {
+        const err = new Error("远端进度无法解析");
+        throw err;
+      }
+      if (!json || typeof json !== "object" || Array.isArray(json)) continue;
+      if (filePath === `${PROGRESS_PREFIX}state.json`) {
+        remote.sections = json.sections || {};
+        remote.sectionsAt = json.sectionsAt || {};
+        if (Object.prototype.hasOwnProperty.call(json, "baselineDone")) remote.baselineDone = !!json.baselineDone;
+        if (Object.prototype.hasOwnProperty.call(json, "baselineAt")) remote.baselineAt = Number(json.baselineAt) || 0;
+        if (json.startedAt) remote.startedAt = String(json.startedAt);
+        remote.weeks = json.weeks || {};
+      } else if (filePath.startsWith(`${PROGRESS_PREFIX}cards/`)) {
+        absorbRecords(remote.cards, json, unitFromPath(filePath));
+      } else if (filePath.startsWith(`${PROGRESS_PREFIX}attempts/`)) {
+        absorbRecords(remote.attempts, json, unitFromPath(filePath));
+      }
+    }
+    return remote;
+  }
+
+  function fallbackMessage() {
+    const ms = now();
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Shanghai",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23"
+    }).formatToParts(new Date(ms));
+    const get = (type) => {
+      const found = parts.find((part) => part.type === type);
+      return found ? found.value : "";
+    };
+    return `进度：${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}`;
+  }
+
+  async function request(method, suffix, body) {
+    const cfg = config || {};
+    if (!cfg.token) {
+      const err = new Error("还没有令牌");
+      err.code = "no-token";
+      throw err;
+    }
+    const headers = {
+      Authorization: `Bearer ${cfg.token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    };
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    const owner = encodeURIComponent(cfg.owner || "");
+    const repo = encodeURIComponent(cfg.repo || "");
+    let res;
+    try {
+      res = await fetchImpl(`https://api.github.com/repos/${owner}/${repo}${suffix}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+    } catch (_) {
+      const err = new Error("网络不通");
+      err.network = true;
+      throw err;
+    }
+    const text = await res.text();
+    let data = null;
+    if (text) {
+      try { data = JSON.parse(text); } catch (_) { data = null; }
+    }
+    if (!res.ok) {
+      const err = new Error("同步失败");
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  async function loadSnapshot() {
+    const cfg = config || {};
+    const ref = await request("GET", `/git/ref/heads/${encodeURIComponent(cfg.branch || "")}`);
+    const headSha = ref && ref.object && ref.object.sha;
+    if (!headSha) {
+      const err = new Error("找不到分支");
+      throw err;
+    }
+    if (snapshot && snapshot.headSha === headSha) return snapshot;
+    const commit = await request("GET", `/git/commits/${headSha}`);
+    const treeSha = commit && commit.tree && commit.tree.sha;
+    if (!treeSha) {
+      const err = new Error("找不到目录树");
+      throw err;
+    }
+    const tree = await request("GET", `/git/trees/${treeSha}?recursive=1`);
+    if (tree && tree.truncated) {
+      const err = new Error("远端文件没读全");
+      throw err;
+    }
+    const texts = new Map();
+    const blobs = ((tree && tree.tree) || []).filter((item) => item && item.type === "blob" && isProgressJson(item.path));
+    for (const item of blobs) {
+      const blob = await request("GET", `/git/blobs/${item.sha}`);
+      texts.set(item.path, decodeBlob(blob));
+    }
+    snapshot = { headSha, treeSha, texts, state: stateFromTexts(texts) };
+    return snapshot;
+  }
+
+  async function pull() {
+    const current = await loadSnapshot();
+    return { headSha: current.headSha, state: publicState(current.state) };
+  }
+
+  async function testConnection() {
+    const repo = await request("GET", "");
+    const flag = repo && repo.permissions ? repo.permissions.push : undefined;
+    return { ok: true, canPush: flag === true ? true : flag === false ? false : null };
+  }
+
+  function changedFiles(localState) {
+    return changedPaths(localState).paths;
+  }
+
+  async function push(localState, options) {
+    const opts = options || {};
+    if (typeof mergeStates !== "function") {
+      const err = new Error("mergeStates 不可用");
+      throw err;
+    }
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const current = await loadSnapshot();
+      const local = typeof opts.readLocal === "function" ? opts.readLocal() : localState;
+      const merged = mergeStates(local, current.state);
+      const diff = changedPaths(merged);
+      if (!diff.paths.length) {
+        return { commitSha: current.headSha, changedFiles: [], state: publicState(merged) };
+      }
+      if (!current.treeSha || !current.headSha) {
+        const err = new Error("没有可基于的提交");
+        throw err;
+      }
+      const entries = [];
+      for (const path of diff.paths) {
+        const blob = await request("POST", "/git/blobs", {
+          content: utf8ToBase64(diff.files[path]),
+          encoding: "base64"
+        });
+        if (!blob || !blob.sha) {
+          const err = new Error("blob 没写上");
+          throw err;
+        }
+        entries.push({ path, mode: "100644", type: "blob", sha: blob.sha });
+      }
+      const tree = await request("POST", "/git/trees", {
+        base_tree: current.treeSha,
+        tree: entries
+      });
+      if (!tree || !tree.sha) {
+        const err = new Error("目录树没写上");
+        throw err;
+      }
+      const message = typeof opts.message === "function" ? opts.message() : (opts.message || fallbackMessage());
+      const commit = await request("POST", "/git/commits", {
+        message,
+        tree: tree.sha,
+        parents: [current.headSha]
+      });
+      if (!commit || !commit.sha) {
+        const err = new Error("提交没写上");
+        throw err;
+      }
+      try {
+        const cfg = config || {};
+        await request("PATCH", `/git/refs/heads/${encodeURIComponent(cfg.branch || "")}`, {
+          sha: commit.sha,
+          force: false
+        });
+      } catch (err) {
+        if (err && err.status === 422 && attempt < 3) {
+          snapshot = null;
+          continue;
+        }
+        throw err;
+      }
+      const texts = new Map(current.texts);
+      for (const [path, text] of Object.entries(diff.files)) texts.set(path, text);
+      snapshot = {
+        headSha: commit.sha,
+        treeSha: tree.sha,
+        texts,
+        state: cloneState(merged)
+      };
+      return { commitSha: commit.sha, changedFiles: diff.paths.slice(), state: publicState(merged) };
+    }
+    const err = new Error("远端有新提交");
+    err.status = 422;
+    throw err;
+  }
+
+  return { pull, push, testConnection, changedFiles };
+}
+</script>
+
+<script>
+const INTERVALS = [1, 3, 7, 14, 30, 60];
+
+function shanghaiToday(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  return formatter.format(date);
+}
+
+function parseYmd(ymd) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+function addDaysYmd(ymd, days) {
+  const ms = parseYmd(ymd) + days * 86400000;
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
+function diffDaysYmd(fromYmd, toYmd) {
+  return Math.floor((parseYmd(toYmd) - parseYmd(fromYmd)) / 86400000);
+}
+
+function nextCardRemember(card, today) {
+  const next = { ...card };
+  const nextStreak = (next.streak || 0) + 1;
+  next.streak = nextStreak;
+  if (nextStreak === 1) {
+    next.streakStart = today;
+  }
+  const nextBox = Math.min((next.box || 0) + 1, 5);
+  next.box = nextBox;
+  next.due = addDaysYmd(today, INTERVALS[nextBox]);
+  return next;
+}
+
+function nextCardForget(card, today) {
+  return {
+    ...card,
+    streak: 0,
+    streakStart: null,
+    box: 0,
+    due: addDaysYmd(today, 1)
+  };
+}
+
+function shouldClearWrongCard(card, today) {
+  if (card.src !== "wrong" || !card.streakStart) return false;
+  return (card.streak || 0) >= 3 && diffDaysYmd(card.streakStart, today) > 21;
+}
+
+function planSkeletonIntroductions(cards, states, today, activeUnits, cap) {
+  const limit = typeof cap === "number" ? cap : 10;
+  const active = new Set(activeUnits || []);
+  const byUnit = new Map();
+  for (const card of cards || []) {
+    if (!card || !active.has(card.unit)) continue;
+    if (!byUnit.has(card.unit)) byUnit.set(card.unit, []);
+    byUnit.get(card.unit).push(card);
+  }
+  const newcomers = [];
+  for (const list of byUnit.values()) {
+    const ordered = list.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    let introducedToday = 0;
+    for (const card of ordered) {
+      const state = states && states[card.id];
+      if (state && state.created === today) introducedToday += 1;
+    }
+    let slots = limit - introducedToday;
+    if (slots < 0) slots = 0;
+    for (const card of ordered) {
+      if (slots <= 0) break;
+      if (states && states[card.id]) continue;
+      newcomers.push(card);
+      slots -= 1;
+    }
+  }
+  return newcomers;
+}
+
+function isMultiSelect(type) {
+  return type === "多选" || type === "案例";
+}
+
+function normalizeChoice(choice, type) {
+  if (!choice) return "";
+  if (isMultiSelect(type)) {
+    return [...new Set(choice.split("").filter(Boolean))].sort().join("");
+  }
+  return choice;
+}
+
+function compareAnswer(choice, answer, type) {
+  if (!choice || !answer) return false;
+  const expected = String(answer).trim();
+  if (isMultiSelect(type)) {
+    return normalizeChoice(choice, type) === normalizeChoice(expected, type);
+  }
+  return String(choice).trim() === expected;
+}
+
+const EXAM_DATE = "2027-11-08"; // 按往年 11 月初估计，出公告后改
+const STORAGE_KEY = "study-state-cache-v1";
+const GITHUB_CONFIG_KEY = "study-github-config";
+const SYNC_META_KEY = "study-github-sync";
+const NAV_TABS = ["today", "practice", "review", "map", "week", "plan"];
+const VALID_TABS = NAV_TABS.concat(["settings"]);
+const DEFAULT_GITHUB = { owner: "menghuan331", repo: "fire-engineer-study", branch: "main" };
+const BOOK_NAMES = {
+  SWS: "实务上册",
+  SWX: "实务下册",
+  ZHS: "综合上册",
+  ZHX: "综合下册",
+  AL: "案例分析"
+};
+const BOOK_PAGE_OFFSET = {
+  SWS: -19,
+  SWX: 395,
+  ZHS: -19,
+  ZHX: 377,
+  AL: -15
+};
+
+function bookName(code) {
+  return BOOK_NAMES[code] || code || "";
+}
+
+function printedFromAnchor(anchor) {
+  const match = /^([A-Z]+):p(\d+)/.exec(String(anchor || ""));
+  if (!match || !Object.prototype.hasOwnProperty.call(BOOK_PAGE_OFFSET, match[1])) return null;
+  return {
+    book: match[1],
+    name: bookName(match[1]),
+    printed: Number(match[2]) + BOOK_PAGE_OFFSET[match[1]]
+  };
+}
+
+function anchorPrintedHtml(anchor) {
+  const info = printedFromAnchor(anchor);
+  if (!info) return "";
+  return `<p class="small">在教材中：${info.name} 印刷页 <span class="mono">${info.printed}</span></p>`;
+}
+
+function stemPreview(stem) {
+  const text = String(stem || "").replace(/\s+/g, " ").trim();
+  if (!text) return "（无题干）";
+  if (text.length <= 40) return text;
+  return `${text.slice(0, 40)}…`;
+}
+
+const app = {
+  data: null,
+  error: "",
+  state: createDefaultState(),
+  listeners: new Set(),
+  githubConfig: null,
+  sync: {
+    chain: Promise.resolve(),
+    busy: false,
+    pendingAgain: false,
+    dirty: false,
+    phase: "disconnected",
+    errorText: "",
+    lastSyncAt: 0,
+    remoteSha: "",
+    debounce: null,
+    retryTimer: null,
+    sessionAttempts: 0,
+    sessionReviews: 0,
+    countsReliable: false
+  },
+  ui: {
+    tab: "today",
+    practiceUnit: "",
+    practiceView: "list",
+    practiceQid: "",
+    practiceChoice: "",
+    reviewIndex: 0,
+    reviewShowAnswer: false,
+    mapView: "unit",
+    doubtOpen: false,
+    openUnits: new Set(),
+    openBooks: new Set(),
+    noteTimer: null,
+    weekTimer: null,
+    tokenEditing: false,
+    tokenDeleteArmed: false,
+    tokenHoldForm: false,
+    settingsTestMessage: "",
+    importPreview: null,
+    importError: ""
+  },
+  derived: {
+    rowById: new Map(),
+    unitRows: new Map(),
+    unitMeta: new Map(),
+    unitStart: new Map(),
+    questionById: new Map(),
+    rowQuestions: new Map(),
+    cardById: new Map()
+  }
+};
+
+function createDefaultState() {
+  return {
+    sections: {},
+    sectionsAt: {},
+    startedAt: shanghaiToday(),
+    baselineDone: false,
+    baselineAt: 0,
+    cards: {},
+    attempts: {},
+    weeks: {}
+  };
+}
+
+function safeParse(raw) {
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    return null;
+  }
+}
+
+function cloneObj(obj) {
+  return JSON.parse(JSON.stringify(obj));
+}
+
+function loadStateFromLocal() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      app.state = createDefaultState();
+      return;
+    }
+    const parsed = safeParse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
+    app.state = coerceState(parsed, { fillStarted: true });
+    saveStateToLocal();
+  } catch (_) {
+    app.state = createDefaultState();
+  }
+}
+
+function saveStateToLocal() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(app.state));
+  } catch (_) {}
+}
+
+function onChange(fn) {
+  app.listeners.add(fn);
+}
+
+function emitChange() {
+  for (const fn of app.listeners) fn(app.state);
+}
+
+function getState() {
+  return app.state;
+}
+
+function unitForCardId(cardId) {
+  const skeleton = app.derived.cardById.get(cardId);
+  if (skeleton && skeleton.unit) return skeleton.unit;
+  const state = app.state.cards[cardId];
+  const qid = (state && state.qid) || (String(cardId).startsWith("WQ-") ? String(cardId).slice(3) : "");
+  if (qid) {
+    const question = app.derived.questionById.get(qid);
+    if (question && question.unit) return question.unit;
+  }
+  return "unknown";
+}
+
+function unitForQuestionId(questionId) {
+  const question = app.derived.questionById.get(questionId);
+  return (question && question.unit) || "unknown";
+}
+
+function copyRecords(source, target) {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return;
+  for (const [id, rec] of Object.entries(source)) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
+    target[id] = { ...rec, updatedAt: Number(rec.updatedAt) || 0 };
+  }
+}
+
+function coerceState(input, options) {
+  const fillStarted = !options || options.fillStarted !== false;
+  const src = input && typeof input === "object" && !Array.isArray(input) ? input : {};
+  const state = {
+    sections: {},
+    sectionsAt: {},
+    baselineDone: !!src.baselineDone,
+    baselineAt: src.baselineAt == null || src.baselineAt === "" ? 0 : (Number(src.baselineAt) || 0),
+    startedAt: src.startedAt ? String(src.startedAt) : (fillStarted ? shanghaiToday() : ""),
+    cards: {},
+    attempts: {},
+    weeks: {}
+  };
+  const sections = src.sections && typeof src.sections === "object" && !Array.isArray(src.sections) ? src.sections : {};
+  const sectionsAt = src.sectionsAt && typeof src.sectionsAt === "object" && !Array.isArray(src.sectionsAt) ? src.sectionsAt : {};
+  for (const id of Object.keys(sections)) {
+    const status = Number(sections[id]);
+    state.sections[id] = status >= 0 && status <= 3 ? status : 0;
+    const at = sectionsAt[id];
+    state.sectionsAt[id] = at == null || at === "" ? 0 : (Number(at) || 0);
+  }
+  for (const id of Object.keys(sectionsAt)) {
+    if (!Object.prototype.hasOwnProperty.call(state.sectionsAt, id)) {
+      state.sectionsAt[id] = Number(sectionsAt[id]) || 0;
+    }
+  }
+  copyRecords(src.cards, state.cards);
+  copyRecords(src.attempts, state.attempts);
+  copyRecords(src.weeks, state.weeks);
+  return state;
+}
+
+function withoutStamp(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return JSON.stringify(value);
+  const copy = { ...value };
+  delete copy.updatedAt;
+  return JSON.stringify(copy);
+}
+
+function isUnchanged(path, value) {
+  if (path === "baselineDone") return !!app.state.baselineDone === !!value;
+  const slash = path.indexOf("/");
+  if (slash <= 0) return false;
+  const kind = path.slice(0, slash);
+  const id = path.slice(slash + 1);
+  const bucket = app.state[kind];
+  if (!bucket || !Object.prototype.hasOwnProperty.call(bucket, id)) return false;
+  const prev = bucket[id];
+  if (kind === "sections") return Number(prev) === Number(value);
+  return withoutStamp(prev) === withoutStamp(value);
+}
+
+function countAttemptDelta(path, value) {
+  if (!path.startsWith("attempts/")) return;
+  const id = path.slice("attempts/".length);
+  const prev = app.state.attempts[id];
+  const prevN = prev && Array.isArray(prev.tries) ? prev.tries.length : 0;
+  const nextN = value && Array.isArray(value.tries) ? value.tries.length : 0;
+  if (nextN > prevN) app.sync.sessionAttempts += nextN - prevN;
+}
+
+function setNestedState(path, value) {
+  const now = Date.now();
+  if (!app.state.sectionsAt) app.state.sectionsAt = {};
+  const slash = path.indexOf("/");
+  const kind = slash >= 0 ? path.slice(0, slash) : path;
+  const id = slash >= 0 ? path.slice(slash + 1) : "";
+  if (kind === "sections" && id) {
+    app.state.sections[id] = value;
+    app.state.sectionsAt[id] = now;
+  } else if (kind === "cards" && id) {
+    app.state.cards[id] = { ...value, updatedAt: now };
+  } else if (kind === "attempts" && id) {
+    app.state.attempts[id] = { ...value, updatedAt: now };
+  } else if (kind === "weeks" && id) {
+    app.state.weeks[id] = { ...value, updatedAt: now };
+  } else if (path === "startedAt") {
+    app.state.startedAt = value;
+  } else if (path === "baselineDone") {
+    app.state.baselineDone = !!value;
+    app.state.baselineAt = now;
+  }
+}
+
+function save(path, value) {
+  if (isUnchanged(path, value)) return;
+  countAttemptDelta(path, value);
+  setNestedState(path, value);
+  saveStateToLocal();
+  if (!hasToken()) {
+    app.sync.phase = "disconnected";
+    app.sync.errorText = "";
+  } else {
+    app.sync.dirty = true;
+    if (app.sync.busy) {
+      app.sync.pendingAgain = true;
+    } else {
+      app.sync.phase = "dirty";
+      clearTimeout(app.sync.debounce);
+      app.sync.debounce = setTimeout(() => requestPush("debounce"), 20000);
+    }
+  }
+  emitChange();
+  renderSyncStatus();
+}
+
+const store = { getState, save, onChange };
+
+function hasToken() {
+  return !!(app.githubConfig && app.githubConfig.token);
+}
+
+function loadGithubConfig() {
+  const defaults = {
+    token: "",
+    owner: DEFAULT_GITHUB.owner,
+    repo: DEFAULT_GITHUB.repo,
+    branch: DEFAULT_GITHUB.branch
+  };
+  try {
+    const raw = localStorage.getItem(GITHUB_CONFIG_KEY);
+    const parsed = raw ? safeParse(raw) : null;
+    if (!parsed || typeof parsed !== "object") return { ...defaults };
+    return {
+      token: typeof parsed.token === "string" ? parsed.token : "",
+      owner: typeof parsed.owner === "string" && parsed.owner.trim() ? parsed.owner.trim() : defaults.owner,
+      repo: typeof parsed.repo === "string" && parsed.repo.trim() ? parsed.repo.trim() : defaults.repo,
+      branch: typeof parsed.branch === "string" && parsed.branch.trim() ? parsed.branch.trim() : defaults.branch
+    };
+  } catch (_) {
+    return { ...defaults };
+  }
+}
+
+function saveGithubConfig(cfg) {
+  const next = {
+    token: cfg && typeof cfg.token === "string" ? cfg.token : "",
+    owner: cfg && typeof cfg.owner === "string" && cfg.owner.trim() ? cfg.owner.trim() : DEFAULT_GITHUB.owner,
+    repo: cfg && typeof cfg.repo === "string" && cfg.repo.trim() ? cfg.repo.trim() : DEFAULT_GITHUB.repo,
+    branch: cfg && typeof cfg.branch === "string" && cfg.branch.trim() ? cfg.branch.trim() : DEFAULT_GITHUB.branch
+  };
+  app.githubConfig = next;
+  try {
+    localStorage.setItem(GITHUB_CONFIG_KEY, JSON.stringify(next));
+  } catch (_) {}
+  return next;
+}
+
+function loadSyncMeta() {
+  try {
+    const parsed = safeParse(localStorage.getItem(SYNC_META_KEY) || "");
+    if (!parsed || typeof parsed !== "object") return;
+    app.sync.remoteSha = typeof parsed.sha === "string" ? parsed.sha : "";
+    app.sync.lastSyncAt = Number(parsed.lastSyncAt) || 0;
+  } catch (_) {}
+}
+
+function persistSyncMeta() {
+  try {
+    localStorage.setItem(SYNC_META_KEY, JSON.stringify({
+      sha: app.sync.remoteSha || "",
+      lastSyncAt: app.sync.lastSyncAt || 0
+    }));
+  } catch (_) {}
+}
+
+function shanghaiParts(ms) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date(ms));
+  const get = (type) => {
+    const found = parts.find((part) => part.type === type);
+    return found ? found.value : "";
+  };
+  return { y: get("year"), m: get("month"), d: get("day"), h: get("hour"), min: get("minute") };
+}
+
+function formatHm(ms) {
+  const p = shanghaiParts(ms);
+  return `${p.h}:${p.min}`;
+}
+
+function formatStamp(ms) {
+  const p = shanghaiParts(ms);
+  return `${p.y}-${p.m}-${p.d} ${p.h}:${p.min}`;
+}
+
+function lastSyncLabel() {
+  if (!app.sync.lastSyncAt) return "上次同步：还没有";
+  return `上次同步：${formatStamp(app.sync.lastSyncAt)}`;
+}
+
+function renderSyncStatus() {
+  const el = document.getElementById("sync-status");
+  if (el) {
+    if (!hasToken()) el.textContent = "未连接 GitHub";
+    else if (app.sync.phase === "syncing") el.textContent = "同步中…";
+    else if (app.sync.phase === "error") el.textContent = `同步失败：${app.sync.errorText || "同步失败"}`;
+    else if (app.sync.dirty || app.sync.phase === "dirty") el.textContent = "有改动未同步";
+    else if (app.sync.lastSyncAt) el.textContent = `已同步 ${formatHm(app.sync.lastSyncAt)}`;
+    else el.textContent = "有改动未同步";
+  }
+  const last = document.getElementById("settings-last-sync");
+  if (last) last.textContent = lastSyncLabel();
+}
+
+function mapSyncError(err) {
+  if (err && err.network) return "网络不通，稍后自动重试";
+  const status = err && err.status;
+  if (status === 401) return "令牌无效或过期";
+  if (status === 403 || status === 404) return "令牌没有这个仓库的权限";
+  if (status === 422) return "远端有新提交";
+  if (err && err.code === "no-token") return "还没有令牌";
+  if (err && err.message && err.message.length <= 24 && !/bearer|token|ghp_|github_pat/i.test(err.message)) return err.message;
+  return "同步失败";
+}
+
+let syncClient = null;
+let syncClientKey = "";
+
+function syncConfigKey(cfg) {
+  if (!cfg) return "";
+  return `${cfg.owner}\n${cfg.repo}\n${cfg.branch}\n${cfg.token}`;
+}
+
+function annotateUnits(state) {
+  const source = state || {};
+  const cards = {};
+  for (const [id, rec] of Object.entries(source.cards || {})) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
+    cards[id] = { ...rec, unit: unitForCardId(id) };
+  }
+  const attempts = {};
+  for (const [id, rec] of Object.entries(source.attempts || {})) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
+    attempts[id] = { ...rec, unit: unitForQuestionId(id) };
+  }
+  return { ...source, cards, attempts };
+}
+
+function getSync(cfg) {
+  const config = cfg || app.githubConfig || loadGithubConfig();
+  const key = syncConfigKey(config);
+  if (!syncClient || syncClientKey !== key) {
+    syncClientKey = key;
+    syncClient = createGithubSync({
+      fetch: (url, options) => fetch(url, options),
+      config,
+      now: () => Date.now()
+    });
+  }
+  return syncClient;
+}
+
+function sortValue(value) {
+  if (Array.isArray(value)) return value.map(sortValue);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = sortValue(value[key]);
+    return out;
+  }
+  return value;
+}
+
+function stableStringify(value) {
+  return JSON.stringify(sortValue(value), null, 2);
+}
+
+function buildCommitMessage() {
+  const stamp = formatStamp(Date.now());
+  if (!app.sync.countsReliable) return `进度：${stamp}`;
+  return `进度：${stamp}（做题 ${app.sync.sessionAttempts}，复习 ${app.sync.sessionReviews}）`;
+}
+
+function applyMerge(remoteState) {
+  const merged = mergeStates(app.state, remoteState);
+  app.state = coerceState(merged, { fillStarted: true });
+  saveStateToLocal();
+  emitChange();
+}
+
+function adoptSyncResult(state, sha) {
+  app.state = coerceState(state, { fillStarted: true });
+  saveStateToLocal();
+  if (sha) app.sync.remoteSha = sha;
+  persistSyncMeta();
+  emitChange();
+}
+
+function markSynced(touchTime) {
+  app.sync.dirty = false;
+  app.sync.phase = "synced";
+  app.sync.errorText = "";
+  if (touchTime === false) {
+    if (!app.sync.lastSyncAt) app.sync.lastSyncAt = Date.now();
+  } else {
+    app.sync.lastSyncAt = Date.now();
+  }
+  app.sync.countsReliable = true;
+  app.sync.sessionAttempts = 0;
+  app.sync.sessionReviews = 0;
+  clearTimeout(app.sync.retryTimer);
+  persistSyncMeta();
+  renderSyncStatus();
+}
+
+function failSync(err, isAutoRetry) {
+  if (!hasToken()) {
+    app.sync.phase = "disconnected";
+    app.sync.errorText = "";
+    renderSyncStatus();
+    return;
+  }
+  app.sync.phase = "error";
+  app.sync.errorText = mapSyncError(err);
+  app.sync.dirty = true;
+  renderSyncStatus();
+  if (!isAutoRetry) {
+    clearTimeout(app.sync.retryTimer);
+    app.sync.retryTimer = setTimeout(() => {
+      if (!hasToken()) return;
+      enqueue(() => runPushCycle(true));
+    }, 60000);
+  }
+}
+
+function flushEditors() {
+  const noteEl = document.getElementById("practice-note");
+  const noteValue = noteEl && app.ui.practiceQid ? noteEl.value.trim() : null;
+  const goodEl = document.getElementById("week-good");
+  const badEl = document.getElementById("week-bad");
+  const nextEl = document.getElementById("week-next");
+  const weekValues = goodEl && badEl && nextEl ? {
+    good: goodEl.value.trim(),
+    bad: badEl.value.trim(),
+    next: nextEl.value.trim()
+  } : null;
+  if (noteValue != null) {
+    clearTimeout(app.ui.noteTimer);
+    app.ui.noteTimer = null;
+    const old = getAttempt(app.ui.practiceQid);
+    if ((old.note || "") !== noteValue) savePracticeNote(app.ui.practiceQid, noteValue);
+  }
+  if (weekValues && app.data) {
+    clearTimeout(app.ui.weekTimer);
+    app.ui.weekTimer = null;
+    const week = getWeekContext(shanghaiToday()).week;
+    if (week) {
+      const prev = app.state.weeks[week.start] || {};
+      if ((prev.good || "") !== weekValues.good || (prev.bad || "") !== weekValues.bad || (prev.next || "") !== weekValues.next) {
+        store.save(`weeks/${week.start}`, {
+          ...prev,
+          good: weekValues.good,
+          bad: weekValues.bad,
+          next: weekValues.next
+        });
+      }
+    }
+  }
+}
+
+function notePendingFollowUp() {
+  if (!(app.sync.pendingAgain && hasToken()) || app.sync.phase === "error") {
+    app.sync.pendingAgain = false;
+    return;
+  }
+  app.sync.pendingAgain = false;
+  app.sync.dirty = true;
+  app.sync.phase = "dirty";
+  clearTimeout(app.sync.debounce);
+  app.sync.debounce = setTimeout(() => requestPush("debounce"), 20000);
+  renderSyncStatus();
+}
+
+async function runPushCycle(isAutoRetry) {
+  if (!hasToken()) return;
+  app.sync.phase = "syncing";
+  app.sync.errorText = "";
+  renderSyncStatus();
+  try {
+    flushEditors();
+    app.state = coerceState(app.state, { fillStarted: true });
+    const result = await getSync().push(annotateUnits(app.state), {
+      message: () => buildCommitMessage(),
+      readLocal() {
+        flushEditors();
+        app.state = coerceState(app.state, { fillStarted: true });
+        return annotateUnits(app.state);
+      }
+    });
+    adoptSyncResult(result.state, result.commitSha);
+    markSynced();
+  } catch (err) {
+    failSync(err, isAutoRetry);
+  } finally {
+    notePendingFollowUp();
+  }
+}
+
+async function pullOnly() {
+  if (!hasToken()) return;
+  app.sync.phase = "syncing";
+  app.sync.errorText = "";
+  renderSyncStatus();
+  try {
+    flushEditors();
+    const client = getSync();
+    const pulled = await client.pull();
+    applyMerge(pulled.state);
+    app.sync.remoteSha = pulled.headSha || "";
+    persistSyncMeta();
+    const dirty = client.changedFiles(annotateUnits(app.state)).length > 0;
+    app.sync.dirty = dirty;
+    if (dirty) {
+      app.sync.phase = "dirty";
+      renderSyncStatus();
+    } else {
+      markSynced(false);
+    }
+  } catch (err) {
+    failSync(err, false);
+  } finally {
+    notePendingFollowUp();
+  }
+}
+
+function enqueue(task) {
+  const run = app.sync.chain.then(async () => {
+    app.sync.busy = true;
+    try {
+      await task();
+    } catch (err) {
+      failSync(err, false);
+    } finally {
+      app.sync.busy = false;
+      renderSyncStatus();
+    }
+  });
+  app.sync.chain = run.then(() => {}, () => {});
+  return run;
+}
+
+function requestPush(trigger) {
+  if (!hasToken()) {
+    renderSyncStatus();
+    return;
+  }
+  if (trigger !== "retry") clearTimeout(app.sync.retryTimer);
+  clearTimeout(app.sync.debounce);
+  enqueue(() => runPushCycle(trigger === "retry"));
+}
+
+function requestPull() {
+  if (!hasToken()) return;
+  clearTimeout(app.sync.retryTimer);
+  enqueue(() => pullOnly());
+}
+
+function initialSync() {
+  if (!hasToken()) {
+    app.sync.phase = "disconnected";
+    renderSyncStatus();
+    return;
+  }
+  app.sync.phase = "syncing";
+  renderSyncStatus();
+  enqueue(async () => {
+    await pullOnly();
+    if (app.sync.dirty && hasToken() && app.sync.phase !== "error") {
+      clearTimeout(app.sync.debounce);
+      app.sync.debounce = setTimeout(() => requestPush("debounce"), 20000);
+    }
+  });
+}
+
+async function testGithubConnection(cfg) {
+  if (!cfg || !cfg.token) return "还没有令牌";
+  try {
+    const result = await getSync(cfg).testConnection();
+    if (result && result.canPush === true) return "连接成功，可读写";
+    if (result && result.canPush === false) return "能打开仓库，但没有写入权限";
+    return "能打开仓库，但没有确认写入权限";
+  } catch (err) {
+    return mapSyncError(err);
+  }
+}
+
+function exportableState() {
+  const state = coerceState(app.state, { fillStarted: true });
+  return {
+    version: 1,
+    sections: state.sections,
+    sectionsAt: state.sectionsAt,
+    baselineDone: state.baselineDone,
+    baselineAt: state.baselineAt,
+    startedAt: state.startedAt,
+    weeks: state.weeks,
+    cards: state.cards,
+    attempts: state.attempts
+  };
+}
+
+function exportProgress() {
+  const blob = new Blob([stableStringify(exportableState())], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `消考进度-${shanghaiToday()}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+function escapeHtml(text) {
+  return String(text ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function tokenTail(token) {
+  return String(token || "").slice(-4);
+}
+
+function readRepoFields() {
+  const cfg = app.githubConfig || loadGithubConfig();
+  const ownerEl = document.getElementById("gh-user");
+  const repoEl = document.getElementById("settings-repo");
+  const branchEl = document.getElementById("settings-branch");
+  return {
+    token: cfg.token || "",
+    owner: ownerEl ? ownerEl.value.trim() : cfg.owner,
+    repo: repoEl ? repoEl.value.trim() : cfg.repo,
+    branch: branchEl ? branchEl.value.trim() : cfg.branch
+  };
+}
+
+function configFromSettingsForm() {
+  const next = readRepoFields();
+  const tokenEl = document.getElementById("gh-token");
+  if (tokenEl && tokenEl.value.trim()) next.token = tokenEl.value.trim();
+  return next;
+}
+
+function clearSyncTimers() {
+  clearTimeout(app.sync.debounce);
+  clearTimeout(app.sync.retryTimer);
+  app.sync.debounce = null;
+  app.sync.retryTimer = null;
+}
+
+function renderSettings() {
+  const root = document.getElementById("page-settings");
+  if (!root || app.ui.tab !== "settings") return;
+  if (app.ui.tokenHoldForm) {
+    const last = document.getElementById("settings-last-sync");
+    if (last) last.textContent = lastSyncLabel();
+    return;
+  }
+  const active = document.activeElement;
+  if (active && root.contains(active) && /^(gh-token|gh-user|settings-repo|settings-branch)$/.test(active.id)) {
+    const last = document.getElementById("settings-last-sync");
+    if (last) last.textContent = lastSyncLabel();
+    return;
+  }
+  const cfg = app.githubConfig || loadGithubConfig();
+  const saved = !!cfg.token && !app.ui.tokenEditing;
+  const preview = app.ui.importPreview;
+  const testMessage = app.ui.settingsTestMessage || "";
+  const importError = app.ui.importError || "";
+  root.innerHTML = `
+    <h1 class="h1">设置</h1>
+    <section class="panel">
+      <h2 class="h2">GitHub</h2>
+      <form id="gh-form" autocomplete="on">
+        <div class="field">
+          <label for="gh-user" class="label">owner</label>
+          <input id="gh-user" name="username" class="text-input" type="text" autocomplete="username" autocapitalize="off" spellcheck="false" value="${escapeHtml(cfg.owner)}">
+        </div>
+        ${saved ? `
+          <p>已保存（末 4 位 ${escapeHtml(tokenTail(cfg.token))}）</p>
+          <div class="button-row">
+            <button id="settings-token-replace" class="btn btn-secondary tap-target" type="button">更换</button>
+            <button id="settings-token-delete" class="btn btn-secondary tap-target" type="button">${app.ui.tokenDeleteArmed ? "再点一次确认删除" : "删除令牌"}</button>
+          </div>
+        ` : `
+          <div class="field">
+            <label for="gh-token" class="label">令牌</label>
+            <input id="gh-token" name="password" class="text-input" type="password" autocomplete="current-password" spellcheck="false">
+          </div>
+          <div class="button-row">
+            <button id="settings-token-save" class="btn btn-primary tap-target" type="submit">保存令牌</button>
+            ${cfg.token ? `<button id="settings-token-cancel" class="btn btn-secondary tap-target" type="button">取消</button>` : ""}
+          </div>
+        `}
+      </form>
+      <p class="small">在 iPhone、Mac 上打开这个页面，点令牌框会出现钥匙串里保存的令牌，点一下就填好。</p>
+      <div class="field">
+        <label for="settings-repo" class="label">repo</label>
+        <input id="settings-repo" class="text-input" type="text" autocomplete="off" value="${escapeHtml(cfg.repo)}">
+      </div>
+      <div class="field">
+        <label for="settings-branch" class="label">branch</label>
+        <input id="settings-branch" class="text-input" type="text" autocomplete="off" value="${escapeHtml(cfg.branch)}">
+      </div>
+      <div class="button-row">
+        <button id="settings-test" class="btn btn-secondary tap-target" type="button">测试连接</button>
+        <button id="settings-sync-now" class="btn btn-primary tap-target" type="button">立即同步</button>
+      </div>
+      <p id="settings-test-result" class="small" ${testMessage ? "" : "hidden"}>${escapeHtml(testMessage)}</p>
+      <p id="settings-last-sync" class="small">${escapeHtml(lastSyncLabel())}</p>
+    </section>
+    <section class="panel">
+      <h2 class="h2">进度文件</h2>
+      <div class="button-row">
+        <button id="settings-export" class="btn btn-secondary tap-target" type="button">导出进度</button>
+      </div>
+      <div class="field">
+        <label for="settings-import" class="label">导入进度</label>
+        <input id="settings-import" class="text-input" type="file" accept="application/json,.json">
+      </div>
+      <p id="settings-import-preview" class="small" ${preview ? "" : "hidden"}>${preview ? `作答 ${preview.attempts} 条，卡片 ${preview.cards} 张，周记录 ${preview.weeks} 条。确认后与本机合并。` : ""}</p>
+      <p id="settings-import-error" class="small danger" ${importError ? "" : "hidden"}>${escapeHtml(importError)}</p>
+      <div class="button-row">
+        <button id="settings-import-confirm" class="btn btn-primary tap-target" type="button" ${preview ? "" : "hidden"}>确认合并</button>
+      </div>
+    </section>
+    <section class="panel">
+      <p class="settings-note">令牌只存在这台设备上。生成方法见 <a href="./令牌设置.html">令牌设置说明</a>。</p>
+    </section>
+  `;
+  wireSettings();
+}
+
+function wireSettings() {
+  const form = document.getElementById("gh-form");
+  if (form) {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      if (app.ui.tokenHoldForm) return;
+      const tokenEl = document.getElementById("gh-token");
+      if (!tokenEl) {
+        saveGithubConfig(readRepoFields());
+        return;
+      }
+      const typed = tokenEl.value.trim();
+      if (!typed) {
+        app.ui.settingsTestMessage = "先粘贴令牌";
+        render();
+        return;
+      }
+      const next = readRepoFields();
+      next.token = typed;
+      saveGithubConfig(next);
+      app.ui.tokenDeleteArmed = false;
+      app.ui.settingsTestMessage = "";
+      app.sync.countsReliable = false;
+      app.ui.tokenHoldForm = true;
+      setTimeout(() => {
+        app.ui.tokenHoldForm = false;
+        app.ui.tokenEditing = false;
+        const active = document.activeElement;
+        if (active && typeof active.blur === "function") active.blur();
+        render();
+        initialSync();
+      }, 500);
+    });
+  }
+  const cancelBtn = document.getElementById("settings-token-cancel");
+  if (cancelBtn) {
+    cancelBtn.addEventListener("click", () => {
+      app.ui.tokenEditing = false;
+      render();
+    });
+  }
+  const replaceBtn = document.getElementById("settings-token-replace");
+  if (replaceBtn) {
+    replaceBtn.addEventListener("click", () => {
+      app.ui.tokenEditing = true;
+      app.ui.tokenDeleteArmed = false;
+      render();
+    });
+  }
+  const deleteBtn = document.getElementById("settings-token-delete");
+  if (deleteBtn) {
+    deleteBtn.addEventListener("click", () => {
+      if (!app.ui.tokenDeleteArmed) {
+        app.ui.tokenDeleteArmed = true;
+        render();
+        return;
+      }
+      const next = readRepoFields();
+      next.token = "";
+      saveGithubConfig(next);
+      app.ui.tokenDeleteArmed = false;
+      app.ui.tokenEditing = false;
+      clearSyncTimers();
+      app.sync.dirty = false;
+      app.sync.phase = "disconnected";
+      app.sync.errorText = "";
+      renderSyncStatus();
+      render();
+    });
+  }
+  ["gh-user", "settings-repo", "settings-branch"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener("change", () => {
+      saveGithubConfig(readRepoFields());
+    });
+  });
+  const testBtn = document.getElementById("settings-test");
+  if (testBtn) {
+    testBtn.addEventListener("click", async () => {
+      const cfg = saveGithubConfig(configFromSettingsForm());
+      app.ui.settingsTestMessage = "正在测试…";
+      render();
+      app.ui.settingsTestMessage = await testGithubConnection(cfg);
+      render();
+    });
+  }
+  const syncBtn = document.getElementById("settings-sync-now");
+  if (syncBtn) {
+    syncBtn.addEventListener("click", () => {
+      saveGithubConfig(configFromSettingsForm());
+      if (!hasToken()) {
+        app.ui.settingsTestMessage = "还没有令牌";
+        render();
+        return;
+      }
+      requestPush("manual");
+    });
+  }
+  const exportBtn = document.getElementById("settings-export");
+  if (exportBtn) exportBtn.addEventListener("click", () => exportProgress());
+  const importInput = document.getElementById("settings-import");
+  if (importInput) {
+    importInput.addEventListener("change", () => {
+      const file = importInput.files && importInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        const parsed = safeParse(String(reader.result || ""));
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          app.ui.importError = "这个文件不是进度 JSON";
+          app.ui.importPreview = null;
+          render();
+          return;
+        }
+        const state = coerceState(parsed, { fillStarted: false });
+        app.ui.importError = "";
+        app.ui.importPreview = {
+          attempts: Object.keys(state.attempts).length,
+          cards: Object.keys(state.cards).length,
+          weeks: Object.keys(state.weeks).length,
+          state
+        };
+        render();
+      };
+      reader.readAsText(file);
+    });
+  }
+  const confirmBtn = document.getElementById("settings-import-confirm");
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", () => {
+      const preview = app.ui.importPreview;
+      if (!preview || !preview.state) return;
+      const merged = mergeStates(app.state, preview.state);
+      app.state = coerceState(merged, { fillStarted: true });
+      saveStateToLocal();
+      app.ui.importPreview = null;
+      app.ui.importError = "";
+      app.sync.countsReliable = false;
+      app.sync.dirty = true;
+      emitChange();
+      if (hasToken()) requestPush("manual");
+      else {
+        app.sync.phase = "disconnected";
+        renderSyncStatus();
+      }
+    });
+  }
+}
+
+function registerServiceWorker() {
+  if (!navigator.serviceWorker) return;
+  navigator.serviceWorker.register("./sw.js").catch(() => {});
+}
+function sanitizeTab(hash) {
+  const key = (hash || "").replace(/^#/, "");
+  if (VALID_TABS.includes(key)) return key;
+  return "today";
+}
+
+function fetchJson(path, fileHint) {
+  return fetch(path).then((res) => {
+    if (!res.ok) {
+      throw new Error(`读不到 ${fileHint}，请让 Claude 重新发布`);
+    }
+    return res.json();
+  }).catch((err) => {
+    if (err.message.includes("读不到")) throw err;
+    throw new Error(`读不到 ${fileHint}，请让 Claude 重新发布`);
+  });
+}
+
+function buildIndexes() {
+  const { map, schedule, questions, cards } = app.data;
+  app.derived.rowById = new Map(map.rows.map((row) => [row.id, row]));
+  app.derived.unitRows = new Map();
+  for (const row of map.rows) {
+    if (!app.derived.unitRows.has(row.unit)) app.derived.unitRows.set(row.unit, []);
+    app.derived.unitRows.get(row.unit).push(row);
+  }
+  app.derived.unitMeta = new Map(schedule.units.map((u) => [u.id, u]));
+  app.derived.unitStart = new Map();
+  for (const week of schedule.weeks) {
+    for (const uid of week.units || []) {
+      if (!app.derived.unitStart.has(uid)) app.derived.unitStart.set(uid, week.start);
+    }
+  }
+  app.derived.questionById = new Map(questions.questions.map((q) => [q.id, q]));
+  app.derived.rowQuestions = new Map();
+  for (const q of questions.questions) {
+    for (const rid of q.rows || []) {
+      if (!app.derived.rowQuestions.has(rid)) app.derived.rowQuestions.set(rid, []);
+      app.derived.rowQuestions.get(rid).push(q.id);
+    }
+  }
+  app.derived.cardById = new Map(cards.cards.map((c) => [c.id, c]));
+}
+
+function firstStudyUnitId() {
+  const week = (app.data.schedule.weeks || []).find((item) => (item.units || []).length);
+  return week?.units?.[0] || "U01";
+}
+
+function getWeekContext(today) {
+  const { schedule } = app.data;
+  const firstStart = schedule.start;
+  if (today < firstStart) {
+    const unitId = firstStudyUnitId();
+    const uname = app.derived.unitMeta.get(unitId)?.name || unitId;
+    const week = {
+      start: addDaysYmd(firstStart, -7),
+      end: addDaysYmd(firstStart, -1),
+      kind: "study",
+      index: 0,
+      units: [unitId],
+      preview: true
+    };
+    return {
+      phase: "pre",
+      week,
+      weekLabel: `第 0 周 · 预习${uname}`,
+      units: [unitId]
+    };
+  }
+  for (const week of schedule.weeks) {
+    if (today >= week.start && today <= week.end) {
+      const unitNames = (week.units || []).map((u) => app.derived.unitMeta.get(u)?.name || u);
+      const weekName = week.kind === "buffer" ? "机动周" : `第 ${week.index} 周`;
+      return {
+        phase: "active",
+        week,
+        weekLabel: `${weekName} · ${unitNames.join(" / ") || "复习"}`,
+        units: week.units || []
+      };
+    }
+  }
+  const last = schedule.weeks[schedule.weeks.length - 1];
+  const names = (last.units || []).map((u) => app.derived.unitMeta.get(u)?.name || u);
+  return {
+    phase: "post",
+    week: last,
+    weekLabel: `第 ${last.index || "末"} 周后 · ${names.join(" / ")}`,
+    units: last.units || []
+  };
+}
+
+function getSectionStatus(rowId) {
+  return Number(app.state.sections[rowId] || 0);
+}
+
+function setSectionStatus(rowId, status) {
+  const prev = getSectionStatus(rowId);
+  if (prev === status) return;
+  store.save(`sections/${rowId}`, status);
+}
+
+function unitProgress(unitId) {
+  const rows = app.derived.unitRows.get(unitId) || [];
+  if (!rows.length) return { total: 0, done: 0, pct: 0 };
+  const done = rows.filter((r) => getSectionStatus(r.id) >= 1).length;
+  return { total: rows.length, done, pct: Math.round((done / rows.length) * 100) };
+}
+
+function getAttempt(questionId) {
+  return app.state.attempts[questionId] || { tries: [], note: "", err: "" };
+}
+
+function latestTry(questionId) {
+  const a = getAttempt(questionId);
+  return (a.tries || [])[a.tries.length - 1] || null;
+}
+
+function tryInRange(tryItem, start, end) {
+  const day = String(tryItem.at || "").slice(0, 10);
+  return day >= start && day <= end;
+}
+
+function getQuestionState(questionId) {
+  const last = latestTry(questionId);
+  if (!last) return "未做";
+  return last.ok ? "答对" : "答错";
+}
+
+function getQuestionStateClass(questionId) {
+  const last = latestTry(questionId);
+  if (!last) return "status-pill";
+  return last.ok ? "status-pill status-ok" : "status-pill status-bad";
+}
+
+function ensureSkeletonActivation(today) {
+  if (!app.data) return;
+  const active = [];
+  const seen = new Set();
+  const previewUnit = today < app.data.schedule.start ? firstStudyUnitId() : "";
+  for (const card of app.data.cards.cards) {
+    if (seen.has(card.unit)) continue;
+    const unitStart = app.derived.unitStart.get(card.unit);
+    const rows = app.derived.unitRows.get(card.unit) || [];
+    const anyStarted = rows.some((row) => getSectionStatus(row.id) >= 1);
+    const started = (previewUnit && card.unit === previewUnit)
+      || (unitStart && today >= unitStart)
+      || anyStarted;
+    if (!started) continue;
+    seen.add(card.unit);
+    active.push(card.unit);
+  }
+  const newcomers = planSkeletonIntroductions(app.data.cards.cards, app.state.cards, today, active, 10);
+  for (const card of newcomers) {
+    store.save(`cards/${card.id}`, {
+      box: 0,
+      due: today,
+      streak: 0,
+      streakStart: null,
+      cleared: false,
+      src: "skeleton",
+      created: today
+    });
+  }
+}
+
+function getReviewQueue(today) {
+  const all = Object.entries(app.state.cards)
+    .map(([id, card]) => ({ id, ...card }))
+    .filter((card) => !card.cleared && card.due && card.due <= today);
+  const wrong = all.filter((c) => c.src === "wrong");
+  const skeleton = all.filter((c) => c.src !== "wrong");
+  const sorter = (a, b) => `${a.due}-${a.created || ""}`.localeCompare(`${b.due}-${b.created || ""}`);
+  wrong.sort(sorter);
+  skeleton.sort(sorter);
+  return [...wrong, ...skeleton].slice(0, 60);
+}
+
+function getTomorrowDueCount(today) {
+  const tomorrow = addDaysYmd(today, 1);
+  return Object.values(app.state.cards).filter((card) => !card.cleared && card.due === tomorrow).length;
+}
+
+function upsertWrongCard(question, today) {
+  if (question.verify?.status === "doubt") return;
+  const id = `WQ-${question.id}`;
+  const existing = app.state.cards[id];
+  if (existing) {
+    const reset = nextCardForget(existing, today);
+    reset.src = "wrong";
+    reset.qid = question.id;
+    reset.created = existing.created || today;
+    store.save(`cards/${id}`, reset);
+    return;
+  }
+  store.save(`cards/${id}`, {
+    box: 0,
+    due: addDaysYmd(today, 1),
+    streak: 0,
+    streakStart: null,
+    cleared: false,
+    src: "wrong",
+    qid: question.id,
+    created: today
+  });
+}
+
+function evaluateRowsAfterAttempt(question) {
+  const nonDoubtQuestions = app.data.questions.questions.filter((q) => q.verify?.status !== "doubt");
+  for (const rid of question.rows || []) {
+    const current = getSectionStatus(rid);
+    if (current < 2) {
+      setSectionStatus(rid, 2);
+    }
+    const rel = (app.derived.rowQuestions.get(rid) || []).map((qid) => app.derived.questionById.get(qid)).filter(Boolean).filter((q) => q.verify?.status !== "doubt");
+    if (!rel.length) continue;
+    const allTried = rel.every((q) => (getAttempt(q.id).tries || []).length > 0);
+    const allLatestOk = rel.every((q) => latestTry(q.id)?.ok);
+    if (allTried && allLatestOk) {
+      setSectionStatus(rid, 3);
+    }
+  }
+  if (!nonDoubtQuestions.length) return;
+}
+
+function savePracticeNote(questionId, text) {
+  const old = getAttempt(questionId);
+  const next = { ...old, note: text };
+  store.save(`attempts/${questionId}`, next);
+}
+
+function setPracticeErr(questionId, errValue) {
+  const old = getAttempt(questionId);
+  const next = { ...old, err: errValue };
+  store.save(`attempts/${questionId}`, next);
+}
+
+function submitAnswer(question, choice) {
+  const today = shanghaiToday();
+  const ok = compareAnswer(choice, question.answer, question.type);
+  const old = getAttempt(question.id);
+  const tries = [...(old.tries || []), { at: `${today}T00:00:00+08:00`, choice, ok }];
+  const next = { ...old, tries };
+  store.save(`attempts/${question.id}`, next);
+  evaluateRowsAfterAttempt(question);
+  if (!ok) {
+    upsertWrongCard(question, today);
+  }
+}
+
+function formatUnitNames(unitIds) {
+  return unitIds.map((u) => app.derived.unitMeta.get(u)?.name || u).join(" / ");
+}
+
+function navigateTo(tab) {
+  const target = VALID_TABS.includes(tab) ? tab : "today";
+  if (location.hash !== `#${target}`) {
+    location.hash = target;
+  } else {
+    render();
+  }
+}
+
+function renderStatusBar(today, weekCtx) {
+  document.getElementById("status-center").textContent = weekCtx.weekLabel;
+  const days = Math.max(0, diffDaysYmd(today, EXAM_DATE));
+  const countdown = document.getElementById("exam-countdown");
+  if (countdown) countdown.innerHTML = `距考试 <span class="mono">${days}</span> 天`;
+  renderSyncStatus();
+}
+
+function renderToday(today, weekCtx) {
+  const root = document.getElementById("page-today");
+  if (!app.data) {
+    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+    return;
+  }
+  if (app.error) {
+    root.innerHTML = `<div class="app-error">${app.error}</div>`;
+    return;
+  }
+
+  const dueCards = getReviewQueue(today).length;
+  const eta = Math.round(dueCards * 0.6);
+  const weekUnits = weekCtx.units;
+  const weekRows = weekUnits.flatMap((u) => app.derived.unitRows.get(u) || []);
+  const nextRow = weekRows.find((row) => getSectionStatus(row.id) === 0);
+  const weekQuestions = app.data.questions.questions.filter((q) => weekUnits.includes(q.unit));
+  const pendingQuestions = weekQuestions.filter((q) => !latestTry(q.id)).length;
+  const currentWeek = weekCtx.week;
+  const weekCase = currentWeek?.case ? app.derived.rowById.get(currentWeek.case) : null;
+  const weekCaseDone = weekCase ? getSectionStatus(weekCase.id) >= 1 : false;
+  const doneRows = weekRows.filter((r) => getSectionStatus(r.id) >= 1).length;
+  const rowTotal = weekRows.length || 1;
+  const progressPct = Math.round((doneRows / rowTotal) * 100);
+  const weekDoc = currentWeek ? app.state.weeks[currentWeek.start] || {} : {};
+  const baselineBlock = weekCtx.phase === "pre" ? `
+    <section class="panel">
+      <p>这周找一套综合能力真题，不计时做一遍，只看题型。</p>
+      <label class="check-row" for="baseline-done">
+        <input id="baseline-done" type="checkbox" ${app.state.baselineDone ? "checked" : ""}>
+        <span>做完了</span>
+      </label>
+    </section>
+  ` : "";
+
+  root.innerHTML = `
+    <h1 class="h1">今日</h1>
+    ${baselineBlock}
+    <section class="panel">
+      <h2 class="h2">今日任务卡</h2>
+      <div class="task-list">
+        <div class="task-item">
+          <div class="task-head">
+            <strong>1. 复习</strong>
+            <span class="status-pill ${dueCards ? "status-warn" : "status-ok"}">${dueCards ? `到期 ${dueCards} 张` : "今日无到期卡片"}</span>
+          </div>
+          <p class="small">约 ${eta} 分钟</p>
+          <div class="button-row">
+            <button id="today-go-review" class="btn btn-primary tap-target">开始复习</button>
+          </div>
+        </div>
+
+        <div class="task-item">
+          <div class="task-head">
+            <strong>2. 学新内容</strong>
+            <span class="status-pill ${nextRow ? "" : "status-ok"}">${nextRow ? "待完成" : "已完成"}</span>
+          </div>
+          ${nextRow ? `
+            <p>${bookName(nextRow.book)} · ${nextRow.chapter_title || nextRow.part_title} · ${nextRow.title}</p>
+            <p class="small mono">印刷页 ${nextRow.printed_start}</p>
+            <div class="button-row"><button id="today-mark-read" class="btn btn-secondary tap-target">读完了（标记学过）</button></div>
+          ` : `<p class="small">本周单元已没有“未学”节。</p>`}
+        </div>
+
+        <div class="task-item">
+          <div class="task-head">
+            <strong>3. 做题</strong>
+            <span class="status-pill ${pendingQuestions ? "" : "status-ok"}">${pendingQuestions} 题未做</span>
+          </div>
+          ${weekQuestions.length ? `
+            <p class="small">本周单元还没做过的真题：${pendingQuestions} 题。</p>
+            <div class="button-row"><button id="today-go-practice" class="btn btn-secondary tap-target">去做题</button></div>
+          ` : `
+            <p class="small">这个单元的真题还没整理，先读教材、做骨架卡。</p>
+          `}
+        </div>
+      </div>
+      <p class="small">忙的时候，只做第 1 步也算今天完成。</p>
+    </section>
+
+    <section class="panel">
+      <h2 class="h2">本周概况</h2>
+      <p>${formatUnitNames(weekUnits)}</p>
+      <div class="progress"><span style="width:${progressPct}%"></span></div>
+      <p class="small">${doneRows}/${weekRows.length || 0} 节已学过</p>
+      ${weekCase ? `
+        <p>${weekCase.title} <span class="small mono">印刷页 ${weekCase.printed_start}</span></p>
+        <div class="button-row">
+          <button id="today-case-done" class="btn ${weekCaseDone ? "btn-secondary" : "btn-primary"} tap-target" ${weekCaseDone ? "disabled" : ""}>看完了（标记学过）</button>
+        </div>
+      ` : `<p class="small">本周不安排综合案例。</p>`}
+      <p class="small">本周作业状态：${weekDoc.submittedAt ? `已交（${weekDoc.submittedAt}）` : "未交"}</p>
+    </section>
+  `;
+
+  const baselineInput = document.getElementById("baseline-done");
+  if (baselineInput) {
+    baselineInput.addEventListener("change", () => {
+      store.save("baselineDone", baselineInput.checked);
+    });
+  }
+  const reviewBtn = document.getElementById("today-go-review");
+  if (reviewBtn) reviewBtn.addEventListener("click", () => navigateTo("review"));
+  const practiceBtn = document.getElementById("today-go-practice");
+  if (practiceBtn) practiceBtn.addEventListener("click", () => navigateTo("practice"));
+  const readBtn = document.getElementById("today-mark-read");
+  if (readBtn && nextRow) {
+    readBtn.addEventListener("click", () => {
+      setSectionStatus(nextRow.id, 1);
+      ensureSkeletonActivation(today);
+    });
+  }
+  const caseBtn = document.getElementById("today-case-done");
+  if (caseBtn && weekCase) {
+    caseBtn.addEventListener("click", () => setSectionStatus(weekCase.id, Math.max(1, getSectionStatus(weekCase.id))));
+  }
+}
+
+function practiceQuestionLists(unitId) {
+  const unitQuestions = app.data.questions.questions.filter((q) => q.unit === unitId);
+  const normal = unitQuestions.filter((q) => q.verify?.status !== "doubt");
+  const doubts = unitQuestions.filter((q) => q.verify?.status === "doubt");
+  return { normal, doubts };
+}
+
+function nextPracticeQuestion(current, normal, doubts) {
+  const group = current.verify?.status === "doubt" ? doubts : normal;
+  const index = group.findIndex((q) => q.id === current.id);
+  if (index < 0 || index + 1 >= group.length) return null;
+  return group[index + 1];
+}
+
+function optionButtonClass(key, question, lastTry) {
+  const classes = ["option-btn", "tap-target"];
+  const answer = String(question.answer || "").trim();
+  const showResult = !!lastTry && !app.ui.practiceChoice && /^[A-Z]+$/.test(answer);
+  if (showResult) {
+    const correct = new Set(answer.split(""));
+    const chosen = new Set(String(lastTry.choice || "").split(""));
+    if (correct.has(key)) classes.push("opt-ok");
+    else if (chosen.has(key)) classes.push("opt-bad");
+  } else if (app.ui.practiceChoice.includes(key)) {
+    classes.push("on");
+  }
+  return classes.join(" ");
+}
+
+function renderPracticeListRow(q) {
+  return `
+    <li class="q-item">
+      <button class="q-btn" data-qid="${q.id}" type="button">
+        <span class="q-copy">
+          <span class="q-stem">${stemPreview(q.stem)}</span>
+          <span class="q-meta">${q.year || "----"} · ${q.subject} · ${q.type}</span>
+        </span>
+        <span class="${getQuestionStateClass(q.id)}">${getQuestionState(q.id)}</span>
+      </button>
+    </li>`;
+}
+
+function renderPractice(today, weekCtx) {
+  const root = document.getElementById("page-practice");
+  if (!app.data) {
+    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+    return;
+  }
+  const units = app.data.schedule.units.filter((u) => u.id !== "CASE");
+  const defaultUnit = weekCtx.units[0] || units[0]?.id || "";
+  if (!app.ui.practiceUnit || !units.some((u) => u.id === app.ui.practiceUnit)) {
+    app.ui.practiceUnit = defaultUnit;
+    app.ui.practiceView = "list";
+    app.ui.practiceQid = "";
+    app.ui.practiceChoice = "";
+  }
+  const { normal, doubts } = practiceQuestionLists(app.ui.practiceUnit);
+  const ordered = [...normal, ...doubts];
+  const current = ordered.find((q) => q.id === app.ui.practiceQid) || null;
+  if (app.ui.practiceView === "question" && current) {
+    renderPracticeQuestion(root, current, normal, doubts);
+    return;
+  }
+  app.ui.practiceView = "list";
+
+  root.innerHTML = `
+    <h1 class="h1">做题</h1>
+    <section class="panel">
+      <label for="practice-unit-select" class="label">单元</label>
+      <select id="practice-unit-select" class="tap-target">
+        ${units.map((u) => `<option value="${u.id}" ${u.id === app.ui.practiceUnit ? "selected" : ""}>${u.id} · ${u.name}</option>`).join("")}
+      </select>
+    </section>
+    <section class="panel">
+      ${ordered.length ? `
+      <ul class="q-list">
+        ${normal.map(renderPracticeListRow).join("")}
+      </ul>
+      ${doubts.length ? `
+      <details class="doubt-fold" ${app.ui.doubtOpen ? "open" : ""}>
+        <summary class="doubt-summary">存疑（不计入复习）</summary>
+        <ul class="q-list">
+          ${doubts.map(renderPracticeListRow).join("")}
+        </ul>
+      </details>` : ""}` : `
+      <div class="empty">这个单元的真题还没整理，先读教材、做骨架卡。</div>`}
+    </section>
+  `;
+
+  document.getElementById("practice-unit-select").addEventListener("change", (event) => {
+    app.ui.practiceUnit = event.target.value;
+    app.ui.practiceQid = "";
+    app.ui.practiceChoice = "";
+    app.ui.practiceView = "list";
+    render();
+  });
+
+  const doubtFold = root.querySelector(".doubt-fold");
+  if (doubtFold) {
+    doubtFold.addEventListener("toggle", () => {
+      app.ui.doubtOpen = doubtFold.open;
+    });
+  }
+
+  root.querySelectorAll("[data-qid]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      app.ui.practiceQid = btn.dataset.qid;
+      app.ui.practiceChoice = "";
+      app.ui.practiceView = "question";
+      const picked = ordered.find((q) => q.id === btn.dataset.qid);
+      if (picked?.verify?.status === "doubt") app.ui.doubtOpen = true;
+      render();
+    });
+  });
+}
+
+function renderPracticeQuestion(root, current, normal, doubts) {
+  const attempt = getAttempt(current.id);
+  const lastTry = latestTry(current.id);
+  const verify = current.verify || {};
+  const verifyLabel = verify.status === "ok" ? "已核实" : verify.status === "fixed" ? "已按教材改正" : "存疑";
+  const verifyClass = verify.status === "ok" ? "status-ok" : verify.status === "fixed" ? "status-warn" : "status-bad";
+  const options = current.options ? Object.entries(current.options) : [];
+  const multi = isMultiSelect(current.type);
+  const hasAnswer = String(current.answer || "").trim().length > 0;
+  const explanation = String(current.explanation || "").trim();
+  const fixedHint = verify.status === "fixed"
+    ? ` <span class="small">来源答案 ${current.source_answer ?? ""} 有误，已按教材改正</span>`
+    : "";
+  const nextQ = nextPracticeQuestion(current, normal, doubts);
+
+  root.innerHTML = `
+    <h1 class="h1">做题</h1>
+    <div class="button-row">
+      <button id="practice-back" class="btn btn-secondary tap-target" type="button">← 题目列表</button>
+    </div>
+    <article class="panel">
+      <p><strong>${current.id}</strong></p>
+      <p>${current.stem || "（题干缺失）"}</p>
+      ${options.length ? `
+      <ul class="option-list">
+        ${options.map(([key, value]) => `
+          <li>
+            <button class="${optionButtonClass(key, current, lastTry)}" data-choice="${key}" type="button">
+              <span class="mono">${key}.</span>&nbsp;<span>${value}</span>
+            </button>
+          </li>`).join("")}
+      </ul>
+      ${multi ? `<div class="button-row"><button id="practice-submit" class="btn btn-primary tap-target" type="button">提交答案</button></div>` : ""}
+      ` : `<p class="small">该题暂无结构化选项，可直接看解析。</p>`}
+      ${lastTry ? `
+      <section class="panel">
+        <p><span class="status-pill ${lastTry.ok ? "status-ok" : "status-bad"}">${lastTry.ok ? "答对了" : "答错了"}</span></p>
+        ${hasAnswer ? `<p><strong>正确答案：</strong>${current.answer}${fixedHint}</p>` : `<p>答案存疑，见说明</p>`}
+        ${explanation ? `<p><strong>解析：</strong>${explanation}</p>` : ""}
+        ${verify.note ? `<p><strong>说明：</strong>${verify.note}</p>` : ""}
+        <p><strong>教材原文摘录：</strong>${verify.excerpt || "（暂无）"}</p>
+        <p class="small mono">${verify.anchor || current.anchor || "-"}</p>
+        <p><span class="verify-badge ${verifyClass}">${verifyLabel}${verify.status === "fixed" && verify.note ? `：${verify.note}` : ""}</span></p>
+      </section>
+      ` : ""}
+      ${lastTry && !lastTry.ok && verify.status !== "doubt" ? `
+      <section class="panel">
+        <p>错因：</p>
+        <div class="button-row">
+          ${["不会", "记混", "没读清题"].map((txt) => `<button class="btn ${attempt.err === txt ? "btn-primary" : "btn-secondary"} tap-target" data-err="${txt}" type="button">${txt}</button>`).join("")}
+        </div>
+      </section>` : ""}
+      <section class="panel">
+        <label for="practice-note" class="label">我的解析（答案 + 依据 + 规律）</label>
+        <textarea id="practice-note" class="textarea" placeholder="写给下一次复习的自己">${attempt.note || ""}</textarea>
+        <p class="small">失焦或停顿 1.5 秒自动保存。</p>
+      </section>
+    </article>
+    <div class="button-row">
+      <button id="practice-next" class="btn btn-secondary tap-target" type="button" ${nextQ ? "" : "disabled"}>下一题 →</button>
+    </div>
+  `;
+
+  document.getElementById("practice-back").addEventListener("click", () => {
+    app.ui.practiceView = "list";
+    app.ui.practiceChoice = "";
+    render();
+  });
+
+  const nextBtn = document.getElementById("practice-next");
+  if (nextBtn && nextQ) {
+    nextBtn.addEventListener("click", () => {
+      app.ui.practiceQid = nextQ.id;
+      app.ui.practiceChoice = "";
+      app.ui.practiceView = "question";
+      render();
+    });
+  }
+
+  root.querySelectorAll("[data-choice]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.choice;
+      if (isMultiSelect(current.type)) {
+        const set = new Set(app.ui.practiceChoice.split("").filter(Boolean));
+        if (set.has(key)) set.delete(key); else set.add(key);
+        app.ui.practiceChoice = [...set].sort().join("");
+        render();
+      } else {
+        app.ui.practiceChoice = "";
+        submitAnswer(current, key);
+      }
+    });
+  });
+
+  const submitBtn = document.getElementById("practice-submit");
+  if (submitBtn) {
+    submitBtn.addEventListener("click", () => {
+      if (!app.ui.practiceChoice) return;
+      const choice = app.ui.practiceChoice;
+      app.ui.practiceChoice = "";
+      submitAnswer(current, choice);
+    });
+  }
+
+  root.querySelectorAll("[data-err]").forEach((btn) => {
+    btn.addEventListener("click", () => setPracticeErr(current.id, btn.dataset.err));
+  });
+
+  const noteEl = document.getElementById("practice-note");
+  const saveNoteDebounced = () => {
+    clearTimeout(app.ui.noteTimer);
+    app.ui.noteTimer = setTimeout(() => {
+      savePracticeNote(current.id, noteEl.value.trim());
+    }, 1500);
+  };
+  noteEl.addEventListener("input", saveNoteDebounced);
+  noteEl.addEventListener("blur", () => savePracticeNote(current.id, noteEl.value.trim()));
+}
+
+function reviewCardContent(card) {
+  if (card.src === "wrong") {
+    const q = app.derived.questionById.get(card.qid);
+    if (!q) return { front: "原题已不存在", back: "请删除这张卡", anchor: "-" };
+    const options = q.options ? Object.entries(q.options).map(([k, v]) => `${k}. ${v}`).join("\n") : "";
+    const verify = q.verify || {};
+    const answerLine = String(q.answer || "").trim() ? `正确答案：${q.answer}` : "答案存疑，见说明";
+    const backParts = [answerLine];
+    if (verify.note) backParts.push(verify.note);
+    if (verify.excerpt) backParts.push(verify.excerpt);
+    return {
+      front: `${q.stem || "（无题干）"}\n${options}`,
+      back: backParts.join("\n"),
+      anchor: verify.anchor || q.anchor || "-"
+    };
+  }
+  const base = app.derived.cardById.get(card.id);
+  if (!base) return { front: "骨架卡数据缺失", back: "请检查 data/cards.json", anchor: "-" };
+  return {
+    front: base.q,
+    back: base.a,
+    anchor: base.anchor || "-"
+  };
+}
+
+function renderReview(today) {
+  const root = document.getElementById("page-review");
+  if (!app.data) {
+    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+    return;
+  }
+  const queue = getReviewQueue(today);
+  if (app.ui.reviewIndex >= queue.length) app.ui.reviewIndex = Math.max(0, queue.length - 1);
+  if (!queue.length) {
+    root.innerHTML = `
+      <h1 class="h1">复习</h1>
+      <section class="panel">
+        <div class="empty">
+          <p>今天队列已完成。</p>
+          <p class="small">明天到期：${getTomorrowDueCount(today)} 张。</p>
+        </div>
+      </section>
+    `;
+    return;
+  }
+  const card = queue[app.ui.reviewIndex];
+  const content = reviewCardContent(card);
+  root.innerHTML = `
+    <h1 class="h1">复习</h1>
+    <section class="panel">
+      <p class="small mono">第 ${app.ui.reviewIndex + 1} / ${queue.length} 张（最多 60）</p>
+      <article class="review-card">
+        <p>${content.front.replace(/\n/g, "<br>")}</p>
+        ${app.ui.reviewShowAnswer ? `<section class="panel"><p>${content.back.replace(/\n/g, "<br>")}</p><p class="small mono">${content.anchor}</p>${anchorPrintedHtml(content.anchor)}</section>` : ""}
+        <div class="button-row">
+          <button id="review-show-answer" class="btn btn-secondary tap-target">${app.ui.reviewShowAnswer ? "收起答案" : "看答案"}</button>
+        </div>
+      </article>
+      ${app.ui.reviewShowAnswer ? `
+      <div class="button-row" style="margin-top:8px;">
+        <button id="review-remember" class="btn btn-ok tap-target">记住了</button>
+        <button id="review-forget" class="btn btn-bad tap-target">没记住</button>
+      </div>` : ""}
+    </section>
+  `;
+
+  document.getElementById("review-show-answer").addEventListener("click", () => {
+    app.ui.reviewShowAnswer = !app.ui.reviewShowAnswer;
+    render();
+  });
+
+  const remBtn = document.getElementById("review-remember");
+  const forgetBtn = document.getElementById("review-forget");
+  if (remBtn && forgetBtn) {
+    remBtn.addEventListener("click", () => {
+      let next = nextCardRemember(card, today);
+      if (shouldClearWrongCard(next, today)) {
+        next = { ...next, cleared: true, clearedAt: today };
+      }
+      app.sync.sessionReviews += 1;
+      store.save(`cards/${card.id}`, next);
+      app.ui.reviewIndex += 1;
+      app.ui.reviewShowAnswer = false;
+    });
+    forgetBtn.addEventListener("click", () => {
+      const next = nextCardForget(card, today);
+      app.sync.sessionReviews += 1;
+      store.save(`cards/${card.id}`, next);
+      app.ui.reviewIndex += 1;
+      app.ui.reviewShowAnswer = false;
+    });
+  }
+}
+
+function renderMap() {
+  const root = document.getElementById("page-map");
+  if (!app.data) {
+    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+    return;
+  }
+  const rows = app.data.map.rows;
+  const total = rows.length;
+  const count0 = rows.filter((r) => getSectionStatus(r.id) === 0).length;
+  const count1 = rows.filter((r) => getSectionStatus(r.id) === 1).length;
+  const count2 = rows.filter((r) => getSectionStatus(r.id) === 2).length;
+  const count3 = rows.filter((r) => getSectionStatus(r.id) === 3).length;
+  const missing = rows.filter((r) => !r.unit);
+  root.innerHTML = `
+    <h1 class="h1">地图</h1>
+    <section class="panel">
+      <div class="map-toolbar">
+        <button id="map-view-unit" class="btn ${app.ui.mapView === "unit" ? "btn-primary" : "btn-secondary"} tap-target">按单元</button>
+        <button id="map-view-book" class="btn ${app.ui.mapView === "book" ? "btn-primary" : "btn-secondary"} tap-target">按书</button>
+      </div>
+      <p class="small">总行数 ${total}；未学 ${count0} / 学过 ${count1} / 做过题 ${count2} / 达标 ${count3}</p>
+      ${missing.length === 0 ? `<p class="small">没有遗漏：${total} 行全部有归属</p>` : `<p class="small danger">缺少 unit 归属：${missing.map((m) => m.id).join("，")}</p>`}
+    </section>
+    <section id="map-groups" class="panel"></section>
+  `;
+
+  document.getElementById("map-view-unit").addEventListener("click", () => {
+    app.ui.mapView = "unit";
+    render();
+  });
+  document.getElementById("map-view-book").addEventListener("click", () => {
+    app.ui.mapView = "book";
+    render();
+  });
+
+  const groups = document.getElementById("map-groups");
+  if (app.ui.mapView === "unit") {
+    groups.innerHTML = app.data.schedule.units.filter((u) => u.id !== "CASE").map((u) => {
+      const rowsForUnit = app.derived.unitRows.get(u.id) || [];
+      const prog = unitProgress(u.id);
+      const segs = statusSegments(rowsForUnit);
+      const isOpen = app.ui.openUnits.has(u.id);
+      return `
+        <section class="group">
+          <button class="group-head tap-target" data-open-unit="${u.id}">
+            <strong>${u.id} · ${u.name}</strong>
+            <span class="small">第 ${u.week_from || "-"}~${u.week_to || "-"} 周 · ${prog.done}/${prog.total}</span>
+            <span class="segbar" aria-hidden="true">
+              <span class="seg-0" style="width:${segs[0]}%"></span>
+              <span class="seg-1" style="width:${segs[1]}%"></span>
+              <span class="seg-2" style="width:${segs[2]}%"></span>
+              <span class="seg-3" style="width:${segs[3]}%"></span>
+            </span>
+          </button>
+          ${isOpen ? `<ul class="row-list">${rowsForUnit.map(renderMapRow).join("")}</ul>` : ""}
+        </section>
+      `;
+    }).join("");
+  } else {
+    const byBook = new Map();
+    for (const row of rows) {
+      if (!byBook.has(row.book)) byBook.set(row.book, []);
+      byBook.get(row.book).push(row);
+    }
+    groups.innerHTML = [...byBook.entries()].map(([book, list]) => {
+      const isOpen = app.ui.openBooks.has(book);
+      return `
+        <section class="group">
+          <button class="group-head tap-target" data-open-book="${book}">
+            <strong>${bookName(book)}</strong>
+            <span class="small">${list.length} 行</span>
+          </button>
+          ${isOpen ? `<ul class="row-list">${list.map(renderMapRow).join("")}</ul>` : ""}
+        </section>
+      `;
+    }).join("");
+  }
+
+  groups.querySelectorAll("[data-open-unit]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.openUnit;
+      if (app.ui.openUnits.has(id)) app.ui.openUnits.delete(id); else app.ui.openUnits.add(id);
+      render();
+    });
+  });
+  groups.querySelectorAll("[data-open-book]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.openBook;
+      if (app.ui.openBooks.has(id)) app.ui.openBooks.delete(id); else app.ui.openBooks.add(id);
+      render();
+    });
+  });
+  groups.querySelectorAll("[data-row-lamp]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const rowId = btn.dataset.rowLamp;
+      const next = (getSectionStatus(rowId) + 1) % 4;
+      setSectionStatus(rowId, next);
+      ensureSkeletonActivation(shanghaiToday());
+    });
+  });
+}
+
+function statusSegments(rows) {
+  const counts = [0, 0, 0, 0];
+  for (const row of rows) {
+    const status = getSectionStatus(row.id);
+    if (status >= 0 && status <= 3) counts[status] += 1;
+  }
+  const total = rows.length || 1;
+  return counts.map((count) => (count / total) * 100);
+}
+
+function renderMapRow(row) {
+  const status = getSectionStatus(row.id);
+  const sectionName = row.section ? `§${row.section}` : "导言";
+  const chapter = row.chapter_title || row.part_title || "";
+  return `
+    <li>
+      <button type="button" class="map-row" data-row-lamp="${row.id}">
+        <span class="lamp lamp-${status}" aria-hidden="true"></span>
+        <span class="tag">${row.subject}</span>
+        <span class="map-row-main">${chapter} · ${sectionName} · ${row.title}</span>
+        <span class="map-row-page mono">印刷页 ${row.printed_start}</span>
+      </button>
+    </li>
+  `;
+}
+
+function renderWeek(today, weekCtx) {
+  const root = document.getElementById("page-week");
+  if (!app.data) {
+    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+    return;
+  }
+  if (!weekCtx.week) {
+    root.innerHTML = `<h1 class="h1">本周</h1><p class="small">当前没有可复盘的一周。</p>`;
+    return;
+  }
+  const week = weekCtx.week;
+  const units = week.units || [];
+  const weekQuestions = app.data.questions.questions.filter((q) => units.includes(q.unit) && q.verify?.status !== "doubt");
+  const attemptedQids = new Set();
+  let totalTries = 0;
+  let correctTries = 0;
+  const wrongFirstWeek = new Set();
+
+  for (const q of weekQuestions) {
+    const tries = getAttempt(q.id).tries || [];
+    let hadWrongBefore = false;
+    for (const tr of tries) {
+      if (!tr.ok) {
+        const day = String(tr.at).slice(0, 10);
+        if (day < week.start) hadWrongBefore = true;
+      }
+    }
+    for (const tr of tries) {
+      if (tryInRange(tr, week.start, week.end)) {
+        attemptedQids.add(q.id);
+        totalTries += 1;
+        if (tr.ok) correctTries += 1;
+        if (!tr.ok && !hadWrongBefore) wrongFirstWeek.add(q.id);
+      }
+    }
+  }
+
+  const clearedCount = Object.values(app.state.cards).filter((card) => card.src === "wrong" && card.cleared && card.clearedAt && card.clearedAt >= week.start && card.clearedAt <= week.end).length;
+  const backlog = Object.values(app.state.cards).filter((card) => card.src === "wrong" && !card.cleared).length;
+  const rate = totalTries ? Math.round((correctTries / totalTries) * 100) : 0;
+  const weekDoc = app.state.weeks[week.start] || { good: "", bad: "", next: "" };
+
+  root.innerHTML = `
+    <h1 class="h1">本周</h1>
+    <section class="panel">
+      <p>${Number.isInteger(week.index) ? `第 ${week.index} 周` : "当前周"} · ${formatUnitNames(units)}</p>
+      <p class="small">做了 ${attemptedQids.size} 题，正确率 ${rate}% ，新增错题 ${wrongFirstWeek.size} ，清掉错题 ${clearedCount} ，错题积压 ${backlog}</p>
+    </section>
+    <section class="panel">
+      <label for="week-good" class="label">这周什么管用</label>
+      <textarea id="week-good" class="textarea">${weekDoc.good || ""}</textarea>
+      <label for="week-bad" class="label">这周什么不管用</label>
+      <textarea id="week-bad" class="textarea">${weekDoc.bad || ""}</textarea>
+      <label for="week-next" class="label">下周改什么</label>
+      <textarea id="week-next" class="textarea">${weekDoc.next || ""}</textarea>
+      <p class="small">自动保存。</p>
+      <div class="button-row">
+        <button id="week-submit" class="btn ${weekDoc.submittedAt ? "btn-secondary" : "btn-primary"} tap-target" ${weekDoc.submittedAt ? "disabled" : ""}>交作业</button>
+      </div>
+      <p class="small">${weekDoc.submittedAt ? `已交：${weekDoc.submittedAt}` : "未交"}。周日交，Claude 会来验收。</p>
+    </section>
+  `;
+
+  const saveWeekDebounced = () => {
+    clearTimeout(app.ui.weekTimer);
+    app.ui.weekTimer = setTimeout(() => {
+      const next = {
+        ...(app.state.weeks[week.start] || {}),
+        good: document.getElementById("week-good").value.trim(),
+        bad: document.getElementById("week-bad").value.trim(),
+        next: document.getElementById("week-next").value.trim()
+      };
+      store.save(`weeks/${week.start}`, next);
+    }, 900);
+  };
+
+  ["week-good", "week-bad", "week-next"].forEach((id) => {
+    const el = document.getElementById(id);
+    el.addEventListener("input", saveWeekDebounced);
+    el.addEventListener("blur", () => {
+      const next = {
+        ...(app.state.weeks[week.start] || {}),
+        good: document.getElementById("week-good").value.trim(),
+        bad: document.getElementById("week-bad").value.trim(),
+        next: document.getElementById("week-next").value.trim()
+      };
+      store.save(`weeks/${week.start}`, next);
+    });
+  });
+
+  const submitBtn = document.getElementById("week-submit");
+  submitBtn.addEventListener("click", () => {
+    const todayStamp = shanghaiToday();
+    const next = {
+      ...(app.state.weeks[week.start] || {}),
+      good: document.getElementById("week-good").value.trim(),
+      bad: document.getElementById("week-bad").value.trim(),
+      next: document.getElementById("week-next").value.trim(),
+      submittedAt: `${todayStamp} 23:59`
+    };
+    store.save(`weeks/${week.start}`, next);
+    requestPush("submit");
+  });
+}
+
+function renderPlan(today, weekCtx) {
+  const root = document.getElementById("page-plan");
+  if (!app.data) {
+    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+    return;
+  }
+  const rows = app.data.schedule.weeks.map((w) => {
+    const names = formatUnitNames(w.units || []);
+    const caseTitle = w.case ? app.derived.rowById.get(w.case)?.title || w.case : "";
+    const isCurrent = weekCtx.week?.start === w.start;
+    const isPast = today > w.end;
+    let progressText = "";
+    if (isPast && w.units && w.units.length) {
+      const allRows = w.units.flatMap((u) => app.derived.unitRows.get(u) || []);
+      const done = allRows.filter((r) => getSectionStatus(r.id) >= 1).length;
+      progressText = `${done}/${allRows.length} 节`;
+    }
+    const weekName = w.kind === "buffer" ? "机动周" : `第 ${w.index} 周`;
+    return `
+      <div class="week-row ${isCurrent ? "current" : ""} ${w.kind === "buffer" ? "buffer" : ""}">
+        <div class="week-dates"><span class="mono">${w.start} ~ ${w.end}</span> <span class="small">${weekName}</span></div>
+        <div class="week-unit">${names || w.note || "复习 / 清错题"}${progressText ? ` <span class="small mono">${progressText}</span>` : ""}</div>
+        <div class="week-case">${caseTitle || "—"}</div>
+      </div>
+    `;
+  }).join("");
+  root.innerHTML = `
+    <h1 class="h1">排程</h1>
+    <section class="panel">
+      <div class="timeline">${rows}</div>
+    </section>
+    <section class="panel">
+      <p><strong>强化期（2027-06～08）</strong>：专题刷题、易混数值反复背，案例每周 2～3 道且必须动笔写。</p>
+      <p><strong>冲刺期（2027-09～11）</strong>：每 1～2 周一套三科计时模拟，清错题，只复习薄弱卡。</p>
+    </section>
+  `;
+}
+
+function renderNav() {
+  const tab = app.ui.tab;
+  document.querySelectorAll("[data-tab-link]").forEach((link) => {
+    const on = link.dataset.tabLink === tab;
+    link.classList.toggle("active", on);
+  });
+}
+
+function renderPages() {
+  const tab = app.ui.tab;
+  VALID_TABS.forEach((name) => {
+    const el = document.getElementById(`page-${name}`);
+    if (el) el.hidden = tab !== name;
+  });
+}
+
+function render() {
+  app.ui.tab = sanitizeTab(location.hash);
+  renderPages();
+  renderNav();
+  renderSettings();
+  const today = shanghaiToday();
+  if (!app.data) {
+    document.getElementById("status-center").textContent = "加载中";
+    const countdown = document.getElementById("exam-countdown");
+    if (countdown) countdown.innerHTML = `距考试 <span class="mono">--</span> 天`;
+    renderSyncStatus();
+    renderToday(today, { phase: "pre", week: null, weekLabel: "加载中", units: [] });
+    return;
+  }
+  const weekCtx = getWeekContext(today);
+  renderStatusBar(today, weekCtx);
+  renderToday(today, weekCtx);
+  renderPractice(today, weekCtx);
+  renderReview(today);
+  renderMap();
+  renderWeek(today, weekCtx);
+  renderPlan(today, weekCtx);
+}
+
+function wireRouting() {
+  window.addEventListener("hashchange", () => {
+    const key = (location.hash || "").replace(/^#/, "");
+    if (!VALID_TABS.includes(key)) {
+      location.hash = "#today";
+      return;
+    }
+    app.ui.tab = key;
+    render();
+  });
+  const syncStatus = document.getElementById("sync-status");
+  if (syncStatus) {
+    syncStatus.addEventListener("click", () => {
+      if ((location.hash || "") !== "#settings") location.hash = "#settings";
+      else render();
+    });
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!hasToken()) return;
+    if (document.visibilityState === "hidden") {
+      if (app.sync.dirty || app.sync.phase === "dirty" || app.sync.phase === "error") requestPush("background");
+    } else {
+      requestPull();
+    }
+  });
+}
+
+async function boot() {
+  app.githubConfig = loadGithubConfig();
+  loadSyncMeta();
+  loadStateFromLocal();
+  app.sync.phase = hasToken() ? "syncing" : "disconnected";
+  if (!location.hash || !VALID_TABS.includes(location.hash.slice(1))) {
+    location.hash = "#today";
+  }
+  app.ui.tab = sanitizeTab(location.hash);
+  wireRouting();
+  onChange(() => render());
+  render();
+
+  try {
+    const [map, schedule, cards, questions] = await Promise.all([
+      fetchJson("data/map.json", "data/map.json"),
+      fetchJson("data/schedule.json", "data/schedule.json"),
+      fetchJson("data/cards.json", "data/cards.json"),
+      fetchJson("data/questions.json", "data/questions.json")
+    ]);
+    app.data = { map, schedule, cards, questions };
+    buildIndexes();
+    ensureSkeletonActivation(shanghaiToday());
+    render();
+  } catch (err) {
+    app.error = err.message || "读不到数据文件，请让 Claude 重新发布";
+    render();
+  }
+
+  registerServiceWorker();
+  initialSync();
+}
+
+boot();
+</script>
+</body>
+</html>

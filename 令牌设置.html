@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>令牌设置说明</title>
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #eef0f2; --panel: #f8f9fa; --ink: #1d2329; --ink-2: #56606b; --line: #d3d8dd;
+  --accent: #c4271d; --ok: #2f9a5d; --warn: #b7791f;
+  --font-display: "Noto Serif SC", "Songti SC", serif;
+  --font-body: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #15191d; --panel: #1c2126; --ink: #e4e8ec; --ink-2: #98a2ad; --line: #2c333a;
+  --accent: #e5483c; --ok: #45b878; --warn: #e3ad2e; color-scheme: dark; } }
+* { box-sizing: border-box; }
+html { padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.65 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.page { max-width: 680px; margin: 0 auto; padding-block: 24px 48px; }
+.strip { height: 6px; background: var(--accent); border-radius: 3px; width: 48px; margin-bottom: 16px; }
+h1 { font: 600 28px/1.3 var(--font-display); margin: 0 0 8px; text-wrap: balance; }
+.lede { color: var(--ink-2); margin: 0 0 28px; }
+ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 0; border-top: 1px solid var(--line); }
+ol.steps > li { counter-increment: s; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px;
+  padding-block: 20px; border-bottom: 1px solid var(--line); }
+ol.steps > li::before { content: counter(s); font: 500 14px/28px var(--font-mono); text-align: center;
+  width: 28px; height: 28px; border: 1px solid var(--line); border-radius: 50%; color: var(--ink-2); }
+h2 { font-size: 17px; margin: 2px 0 6px; }
+p { margin: 0 0 8px; }
+ul { margin: 6px 0 0; padding-left: 18px; }
+li li { margin: 4px 0; }
+code, .k { font-family: var(--font-mono); font-size: 14px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 4px; padding: 1px 6px; word-break: break-all; }
+a { color: var(--accent); }
+.btn { display: inline-block; margin-top: 8px; padding: 10px 16px; min-height: 44px; border-radius: 6px;
+  background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+.note { margin-top: 28px; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+.note h2 { margin-top: 0; }
+.warn { color: var(--warn); font-weight: 600; }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="strip" aria-hidden="true"></div>
+  <h1>令牌设置说明</h1>
+  <p class="lede">学习台把进度存进你自己的私有仓库 <span class="k">fire-engineer-study</span>。为此需要一个只能读写这一个仓库的 GitHub 令牌。一次设置，大约 5 分钟；令牌只存在你这台设备上。</p>
+
+  <ol class="steps">
+    <li><div>
+      <h2>打开 GitHub 的新建令牌页面</h2>
+      <p>登录 GitHub 后直接打开：</p>
+      <a class="btn" href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">新建细粒度令牌</a>
+      <p style="margin-top:8px;color:var(--ink-2)">找不到的话：头像 → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token。</p>
+    </div></li>
+    <li><div>
+      <h2>填名称和有效期</h2>
+      <ul>
+        <li>Token name：<code>消考学习台</code>（所有设备共用这一个）</li>
+        <li>Expiration：选 Custom，日期填 <code>2027-12-31</code></li>
+      </ul>
+    </div></li>
+    <li><div>
+      <h2>只给这一个仓库</h2>
+      <ul>
+        <li>Repository access：选 <b>Only select repositories</b></li>
+        <li>下拉里只勾 <code>menghuan331/fire-engineer-study</code></li>
+      </ul>
+    </div></li>
+    <li><div>
+      <h2>只给"内容读写"一项权限</h2>
+      <ul>
+        <li>Permissions → Repository permissions → <b>Contents</b>：选 <b>Read and write</b></li>
+        <li>Metadata 会自动变成 Read-only，这是必需的，保持即可</li>
+        <li>其他权限全部保持 No access</li>
+      </ul>
+    </div></li>
+    <li><div>
+      <h2>生成并复制</h2>
+      <p>点最下面的 <b>Generate token</b>，复制以 <code>github_pat_</code> 开头的那串字符。<span class="warn">它只显示这一次</span>，关掉页面就看不到了。</p>
+    </div></li>
+    <li><div>
+      <h2>粘贴进学习台</h2>
+      <ul>
+        <li>打开学习台，点右上角的状态字（显示"未连接 GitHub"）进入设置</li>
+        <li>把令牌粘贴进输入框，保存</li>
+        <li>点 <b>测试连接</b>，看到"连接成功，可读写"就好了</li>
+        <li>再点 <b>立即同步</b>，状态字变成"已同步 HH:mm"</li>
+      </ul>
+    </div></li>
+    <li><div>
+      <h2>添加到主屏幕</h2>
+      <p>在 iPad 的 Safari 里点分享按钮 → <b>添加到主屏幕</b>。以后从主屏幕图标打开，进度不会被 Safari 清掉。</p>
+    </div></li>
+    <li><div>
+      <h2>其他设备：一点就填好</h2>
+      <p>进度在所有设备之间自动同步，不用复制。每台新设备只要填一次令牌：</p>
+      <ul>
+        <li><b>iPhone、Mac 等苹果设备</b>：第 6 步保存令牌时，Safari 会问要不要存进钥匙串，选"存储"。之后在别的苹果设备上打开设置页，点令牌框会出现保存的令牌，点一下就填好，再点"立即同步"。</li>
+        <li><b>其他电脑</b>：把同一个令牌手动粘贴一次即可，一个令牌可以多台设备共用。</li>
+      </ul>
+    </div></li>
+  </ol>
+
+  <div class="note">
+    <h2>安全须知</h2>
+    <ul>
+      <li>令牌等于这个仓库的钥匙，不要发给任何人，也不要贴到聊天里。</li>
+      <li>它只能读写 <span class="k">fire-engineer-study</span> 这一个仓库，碰不到你的其他仓库和账号设置。</li>
+      <li>设备丢了：到 GitHub 的 Fine-grained tokens 页面删掉这个令牌，照这页重新生成一个，在还在用的设备上换成新的。</li>
+      <li>到期前 GitHub 会发邮件提醒，照这页再生成一个替换即可。</li>
+    </ul>
+  </div>
+</main>
+</body>
+</html>
