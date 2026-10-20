@@ -2034,7 +2034,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-20.8";
+const APP_VERSION = "2026-10-20.9";
 let swControllerReload = false;
 const INTERVALS = [1, 3, 7, 14, 30, 60];
 
@@ -2117,6 +2117,24 @@ function planSkeletonIntroductions(cards, states, today, activeUnits, cap) {
     }
   }
   return newcomers;
+}
+
+function newSkeletonCardState(today) {
+  return {
+    box: 0,
+    due: today,
+    streak: 0,
+    streakStart: null,
+    cleared: false,
+    src: "skeleton",
+    created: today,
+    updatedAt: 1,
+    intro: true
+  };
+}
+
+function shouldActivateSkeletons(tokenConfigured, initialPullSettled) {
+  return !tokenConfigured || !!initialPullSettled;
 }
 
 function isMultiSelect(type) {
@@ -2209,7 +2227,8 @@ const app = {
     retryTimer: null,
     sessionAttempts: 0,
     sessionReviews: 0,
-    countsReliable: false
+    countsReliable: false,
+    initialPullSettled: false
   },
   ui: {
     tab: "today",
@@ -2409,7 +2428,25 @@ function countAttemptDelta(path, value) {
   if (nextN > prevN) app.sync.sessionAttempts += nextN - prevN;
 }
 
-function setNestedState(path, value) {
+function stampSavedRecord(value, options, now) {
+  const next = { ...(value && typeof value === "object" && !Array.isArray(value) ? value : {}) };
+  if (options && options.keepUpdatedAt) {
+    const at = Number(next.updatedAt);
+    next.updatedAt = Number.isFinite(at) ? at : 0;
+  } else {
+    next.updatedAt = now;
+  }
+  return next;
+}
+
+function cardWriteValue(value, options, now) {
+  const next = stampSavedRecord(value, options, now);
+  if (!(options && options.keepUpdatedAt)) delete next.intro;
+  return next;
+}
+
+function setNestedState(path, value, options) {
+  const keepUpdatedAt = !!(options && options.keepUpdatedAt);
   const now = Date.now();
   if (!app.state.sectionsAt) app.state.sectionsAt = {};
   const slash = path.indexOf("/");
@@ -2417,28 +2454,28 @@ function setNestedState(path, value) {
   const id = slash >= 0 ? path.slice(slash + 1) : "";
   if (kind === "sections" && id) {
     app.state.sections[id] = value;
-    app.state.sectionsAt[id] = now;
+    if (!keepUpdatedAt) app.state.sectionsAt[id] = now;
   } else if (kind === "cards" && id) {
-    app.state.cards[id] = { ...value, updatedAt: now };
+    app.state.cards[id] = cardWriteValue(value, options, now);
   } else if (kind === "attempts" && id) {
-    app.state.attempts[id] = { ...value, updatedAt: now };
+    app.state.attempts[id] = stampSavedRecord(value, options, now);
   } else if (kind === "weeks" && id) {
-    app.state.weeks[id] = { ...value, updatedAt: now };
+    app.state.weeks[id] = stampSavedRecord(value, options, now);
   } else if (kind === "chunks" && id) {
     if (!app.state.chunks) app.state.chunks = {};
-    app.state.chunks[id] = { ...value, updatedAt: now };
+    app.state.chunks[id] = stampSavedRecord(value, options, now);
   } else if (path === "startedAt") {
     app.state.startedAt = value;
   } else if (path === "baselineDone") {
     app.state.baselineDone = !!value;
-    app.state.baselineAt = now;
+    if (!keepUpdatedAt) app.state.baselineAt = now;
   }
 }
 
-function save(path, value) {
+function save(path, value, options) {
   if (isUnchanged(path, value)) return;
   countAttemptDelta(path, value);
-  setNestedState(path, value);
+  setNestedState(path, value, options);
   saveStateToLocal();
   if (!hasToken()) {
     app.sync.phase = "disconnected";
@@ -2763,7 +2800,10 @@ async function runPushCycle(isAutoRetry) {
 }
 
 async function pullOnly() {
-  if (!hasToken()) return;
+  if (!hasToken()) {
+    app.sync.initialPullSettled = true;
+    return;
+  }
   app.sync.phase = "syncing";
   app.sync.errorText = "";
   renderSyncStatus();
@@ -2771,6 +2811,7 @@ async function pullOnly() {
     flushEditors();
     const client = getSync();
     const pulled = await client.pull();
+    app.sync.initialPullSettled = true;
     applyMerge(pulled.state);
     app.sync.remoteSha = pulled.headSha || "";
     persistSyncMeta();
@@ -2784,6 +2825,8 @@ async function pullOnly() {
     }
   } catch (err) {
     failSync(err, false);
+    app.sync.initialPullSettled = true;
+    if (app.data) ensureSkeletonActivation(shanghaiToday());
   } finally {
     notePendingFollowUp();
   }
@@ -2823,6 +2866,7 @@ function requestPull() {
 
 function initialSync() {
   if (!hasToken()) {
+    app.sync.initialPullSettled = true;
     app.sync.phase = "disconnected";
     renderSyncStatus();
     return;
@@ -3311,7 +3355,11 @@ function getQuestionStateClass(questionId) {
   return last.ok ? "status-pill status-ok" : "status-pill status-bad";
 }
 
+let skeletonActivationLock = false;
+
 function ensureSkeletonActivation(today) {
+  if (skeletonActivationLock) return;
+  if (!shouldActivateSkeletons(hasToken(), app.sync.initialPullSettled)) return;
   if (!app.data) return;
   const active = [];
   const seen = new Set();
@@ -3329,16 +3377,13 @@ function ensureSkeletonActivation(today) {
     active.push(card.unit);
   }
   const newcomers = planSkeletonIntroductions(app.data.cards.cards, app.state.cards, today, active, 10);
-  for (const card of newcomers) {
-    store.save(`cards/${card.id}`, {
-      box: 0,
-      due: today,
-      streak: 0,
-      streakStart: null,
-      cleared: false,
-      src: "skeleton",
-      created: today
-    });
+  skeletonActivationLock = true;
+  try {
+    for (const card of newcomers) {
+      store.save(`cards/${card.id}`, newSkeletonCardState(today), { keepUpdatedAt: true });
+    }
+  } finally {
+    skeletonActivationLock = false;
   }
 }
 
@@ -3920,7 +3965,7 @@ function markChunkDone(meta) {
       raised = true;
     }
   }
-  if (raised) ensureSkeletonActivation(today);
+  if (raised && shouldActivateSkeletons(hasToken(), app.sync.initialPullSettled)) ensureSkeletonActivation(today);
   if (hasToken()) requestPush("learn");
 }
 
@@ -4954,14 +4999,17 @@ function reviewDueCount(today) {
 }
 
 function applyReviewGrade(card, action, today) {
+  let next;
   if (action === "remember") {
-    let next = nextCardRemember(card, today);
+    next = nextCardRemember(card, today);
     if (shouldClearWrongCard(next, today)) {
       next = { ...next, cleared: true, clearedAt: today };
     }
-    return next;
+  } else {
+    next = nextCardForget(card, today);
   }
-  return nextCardForget(card, today);
+  if (next && Object.prototype.hasOwnProperty.call(next, "intro")) delete next.intro;
+  return next;
 }
 
 function reviewUndoHtml() {
@@ -5004,7 +5052,8 @@ function undoCurrentReview() {
   const id = result.session.currentId;
   app.ui.review = result.session;
   if (app.sync.sessionReviews > 0) app.sync.sessionReviews -= 1;
-  store.save(`cards/${id}`, result.card);
+  const keepIntroStamp = !!(result.card && result.card.intro);
+  store.save(`cards/${id}`, result.card, keepIntroStamp ? { keepUpdatedAt: true } : undefined);
   render();
 }
 
@@ -5217,7 +5266,9 @@ function renderMap() {
       const rowId = btn.dataset.rowLamp;
       const next = (getSectionStatus(rowId) + 1) % 4;
       setSectionStatus(rowId, next);
-      ensureSkeletonActivation(shanghaiToday());
+      if (shouldActivateSkeletons(hasToken(), app.sync.initialPullSettled)) {
+        ensureSkeletonActivation(shanghaiToday());
+      }
     });
   });
   groups.querySelectorAll("[data-toggle-chunks]").forEach((btn) => {
@@ -5487,6 +5538,9 @@ function render() {
     renderLearn();
     return;
   }
+  if (shouldActivateSkeletons(hasToken(), app.sync.initialPullSettled)) {
+    ensureSkeletonActivation(today);
+  }
   const weekCtx = getWeekContext(today);
   renderStatusBar(today, weekCtx);
   renderToday(today, weekCtx);
@@ -5533,6 +5587,7 @@ async function boot() {
   app.githubConfig = loadGithubConfig();
   loadSyncMeta();
   loadStateFromLocal();
+  app.sync.initialPullSettled = !hasToken();
   app.sync.phase = hasToken() ? "syncing" : "disconnected";
   if (!knownHash(location.hash)) {
     location.hash = "#today";
@@ -5553,7 +5608,6 @@ async function boot() {
     app.data = { map, schedule, cards, questions };
     app.lectures = lectures;
     buildIndexes();
-    ensureSkeletonActivation(shanghaiToday());
     render();
   } catch (err) {
     app.error = err.message || "读不到数据文件，请让 Claude 重新发布";
