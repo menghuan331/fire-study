@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>火灾探测报警系统组成</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 布局：单栏阅读（最大 720px），顶部固定一条"可听"播放条；正文按 Reconstruct 顺序：没有规定的楼 → 推导 → 落到原文 → 类比 → 想一想 */
+:root {
+  --bg: #eef0f2; --panel: #f8f9fa; --ink: #1d2329; --ink-2: #56606b; --line: #d3d8dd;
+  --accent: #c4271d; --accent-soft: #c4271d1a;
+  --lamp-read: #3d7fb8; --lamp-done: #d39a12; --ok: #2f9a5d; --bad: #c4271d;
+  --font-display: "Noto Serif SC", "Songti SC", serif;
+  --font-body: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #15191d; --panel: #1c2126; --ink: #e4e8ec; --ink-2: #98a2ad; --line: #2c333a;
+  --accent: #e5483c; --accent-soft: #e5483c22;
+  --lamp-read: #5b9bd5; --lamp-done: #e3ad2e; --ok: #45b878; --bad: #e5483c; color-scheme: dark; } }
+* { box-sizing: border-box; }
+html { padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.75 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.page { max-width: 720px; margin: 0 auto; padding-block: 0 64px; }
+.player { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+  padding-block: 12px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.player-row { display: flex; align-items: center; gap: 12px; }
+.play { min-width: 44px; height: 44px; border-radius: 22px; border: 0; background: var(--accent); color: #fff;
+  font: 600 15px var(--font-body); padding: 0 16px; cursor: pointer; }
+.play:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bar { flex: 1; height: 4px; background: var(--line); border-radius: 2px; position: relative; cursor: pointer; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 2px; width: 0; }
+.time { font: 13px var(--font-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 92px; text-align: right; }
+.now { font-size: 14px; color: var(--ink-2); min-height: 1.6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now b { color: var(--ink); font-weight: 600; margin-right: 6px; }
+.back { margin: 16px 0 0; font-size: 15px; }
+.back a { color: var(--accent); text-decoration: none; display: inline-block; min-height: 44px; line-height: 44px; }
+.eyebrow { font: 500 12px var(--font-mono); letter-spacing: .06em; color: var(--ink-2); margin: 28px 0 4px; }
+h1 { font: 600 30px/1.3 var(--font-display); margin: 0 0 6px; text-wrap: balance; }
+.meta { color: var(--ink-2); font-size: 14px; margin: 0 0 8px; }
+h2 { font: 600 21px/1.4 var(--font-display); margin: 40px 0 10px; text-wrap: balance; display: flex; gap: 10px; align-items: baseline; }
+h2 .step { font: 500 13px var(--font-mono); color: var(--accent); }
+p { margin: 0 0 14px; }
+.scene { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
+.scene p:last-child { margin: 0; }
+.punch { font-weight: 600; border-left: 3px solid var(--accent); padding-left: 12px; margin: 18px 0; }
+figure { margin: 18px 0; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.tbl { overflow-x: auto; border-top: 1px solid var(--line); margin: 14px 0; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; letter-spacing: .04em; color: var(--ink-2); font-weight: 600; }
+td .a { font: 12px var(--font-mono); color: var(--ink-2); display: block; margin-top: 2px; }
+.tag { display: inline-block; font-size: 12px; line-height: 20px; padding: 0 7px; border-radius: 10px; border: 1px solid; white-space: nowrap; }
+.tag.why { color: var(--lamp-read); border-color: var(--lamp-read); }
+.tag.rule { color: var(--lamp-done); border-color: var(--lamp-done); }
+.hl { background: var(--accent-soft); border-radius: 3px; padding: 0 3px; }
+.cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 14px 0; }
+.cmp > div { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+.cmp h3 { font-size: 15px; margin: 0 0 6px; }
+.cmp .yes h3 { color: var(--ok); } .cmp .no h3 { color: var(--bad); }
+.cmp p { font-size: 15px; margin: 0; }
+details { border-top: 1px solid var(--line); padding-block: 12px; }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; gap: 10px; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "+"; font-family: var(--font-mono); color: var(--accent); width: 1em; flex: none; }
+details[open] summary::before { content: "−"; }
+details .ans { margin: 10px 0 0 1.6em; color: var(--ink); font-size: 16px; }
+details .ans .src { color: var(--ink-2); font-size: 13px; }
+.transcript { margin-top: 12px; }
+.line { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+.line .who { font: 600 13px/1.9 var(--font-body); color: var(--ink-2); }
+.line.on { background: var(--accent-soft); }
+.line.on .who { color: var(--accent); }
+.exam li { margin-bottom: 8px; }
+.derive { padding-left: 1.4em; } .derive li { margin-bottom: 14px; }
+.note { color: var(--ink-2); font-size: 15px; border-top: 1px solid var(--line); padding-top: 12px; }
+td .a, .a { font: 12px var(--font-mono); color: var(--ink-2); }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="player" role="region" aria-label="播放讲解">
+    <div class="player-row">
+      <button class="play" id="play" type="button">▶ 听讲解</button>
+      <div class="bar" id="bar" aria-hidden="true"><i id="fill"></i></div>
+      <span class="time" id="time">0:00 / 3:28</span>
+    </div>
+    <div class="now" id="now">两人对谈，约 3 分半钟。可以边听边看下面的图和表。</div>
+    <audio id="audio" src="火灾探测报警系统组成.mp3" preload="metadata"></audio>
+  </div>
+
+  <p class="back"><a href="../../#today">← 返回学习台</a></p>
+  <p class="eyebrow">U01 火灾自动报警系统 · 精讲</p>
+  <h1>火灾探测报警系统：为什么是这几样东西</h1>
+  <p class="meta">对应教材：实务下册 第十章 第一节 一、火灾探测报警系统的组成、工作原理及产品性能要求（印刷页 491～495）· 阅读约 7 分钟</p>
+
+  <h2><span class="step">00</span>先把位置摆好</h2>
+  <p>“火灾自动报警系统”是一个总称，下面有四个子系统：<b>火灾探测报警系统</b>、消防联动控制系统、可燃气体探测报警系统、电气火灾监控系统 <span class="a">[SWX:p96:b10479]</span>。这一块只讲第一个：负责<b>早发现、早报警</b>的那部分。后面三块再讲另外三个。</p>
+
+  <h2><span class="step">01</span>先想象一家没有报警系统的宾馆</h2>
+  <div class="scene">
+    <p>半夜两点，客人都睡着了。三楼一间客房的电线开始冒烟。</p>
+    <p>没有任何设备。烟慢慢灌满走道，第一个被呛醒的人已经找不到楼梯。</p>
+  </div>
+  <p class="punch">要让大家活着出来，必须依次做成五件事：<br>有东西替人感觉到火 → 信号送到一个地方被确认 → 叫醒现场的人 → 全程不能断电 → 让人知道火在哪。<br>这五件事，就是这个系统的五个组成部分。</p>
+
+  <h2><span class="step">02</span>一件事一件事推出来</h2>
+  <figure>
+    <svg viewBox="0 0 680 300" role="img" aria-label="火产生烟热光气，被探测器感知；人发现火按手报；两者的信号送到火灾报警控制器，控制器确认后驱动火灾警报装置和区域显示器；主电源和备用电源为控制器供电">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--ink-2)"/></marker></defs>
+      <g font-family="-apple-system, PingFang SC, sans-serif" font-size="13" fill="var(--ink)">
+        <text x="70" y="26" text-anchor="middle" font-size="12" fill="var(--ink-2)">触发器件</text>
+        <rect x="8" y="36" width="124" height="54" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="70" y="58" text-anchor="middle" font-weight="600">火灾探测器</text>
+        <text x="70" y="77" text-anchor="middle" font-size="12" fill="var(--ink-2)">自动：烟 热 光 气</text>
+        <rect x="8" y="110" width="124" height="54" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="70" y="132" text-anchor="middle" font-weight="600">手动报警按钮</text>
+        <text x="70" y="151" text-anchor="middle" font-size="12" fill="var(--ink-2)">人工：看见火就按</text>
+        <path d="M132 63 C180 63 190 100 228 104" fill="none" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <path d="M132 137 C180 137 190 112 228 112" fill="none" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="180" y="96" text-anchor="middle" font-size="11" fill="var(--ink-2)">报警</text>
+        <rect x="230" y="60" width="180" height="96" rx="6" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.5"/>
+        <text x="320" y="84" text-anchor="middle" font-weight="600">火灾报警控制器</text>
+        <text x="320" y="102" text-anchor="middle" font-size="12" fill="var(--accent)">＝火灾报警装置</text>
+        <text x="320" y="122" text-anchor="middle" font-size="12" fill="var(--ink-2)">确认 · 显示部位 · 记时间</text>
+        <text x="320" y="140" text-anchor="middle" font-size="12" fill="var(--ink-2)">给探测器供电 · 监视故障</text>
+        <path d="M410 90 H470" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <path d="M410 130 H470" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="440" y="82" text-anchor="middle" font-size="11" fill="var(--ink-2)">警报</text>
+        <rect x="472" y="62" width="200" height="48" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="572" y="82" text-anchor="middle" font-weight="600">火灾警报装置</text>
+        <text x="572" y="100" text-anchor="middle" font-size="12" fill="var(--ink-2)">声、光叫醒现场的人</text>
+        <rect x="472" y="116" width="200" height="48" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="572" y="136" text-anchor="middle" font-weight="600">区域显示器</text>
+        <text x="572" y="154" text-anchor="middle" font-size="12" fill="var(--ink-2)">各楼层显示报警部位</text>
+        <rect x="230" y="210" width="180" height="62" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="320" y="232" text-anchor="middle" font-weight="600">电源</text>
+        <text x="320" y="250" text-anchor="middle" font-size="12" fill="var(--ink-2)">主电：消防电源</text>
+        <text x="320" y="266" text-anchor="middle" font-size="12" fill="var(--ink-2)">备电：控制器自带蓄电池</text>
+        <path d="M320 210 V160" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+      </g>
+    </svg>
+    <figcaption>对照教材图 3-10-2 和图 3-10-4。组成见 <span class="a">[SWX:p97:b10484]</span>，工作原理见 <span class="a">[SWX:p99:b10517]</span>。</figcaption>
+  </figure>
+
+  <ol class="derive">
+    <li><b>替人感觉到火 → 火灾探测器。</b>火会产生烟、热、火焰辐射和气体，所以探测器就按“感觉什么”分成六种基本类型：<span class="hl">感烟、感温、感光（火焰）、图像型、气体、复合</span> <span class="a">[SWX:p98:b10490]</span>。<br>有人醒着先看见火怎么办？让人自己按，这就是<b>手动火灾报警按钮</b>。探测器加手报，合称<b>触发器件</b>：凡是能自动或手动产生火灾报警信号的器件 <span class="a">[SWX:p97:b10487]</span>。</li>
+    <li><b>信号送到一个地方被确认 → 火灾报警控制器。</b>教材叫它<b>火灾报警装置</b>。它不只是“收信号”：还要给探测器供电、监视探测器和自身有没有故障、发出声光报警、指示报警部位和时间 <span class="a">[SWX:p98:b10509]</span>。</li>
+    <li><b>叫醒现场的人 → 火灾警报装置。</b>用声、光和音响向报警区域发出警报，而且要<span class="hl">区别于环境的声和光</span>，不然会被当成普通铃声 <span class="a">[SWX:p98:b10511]</span>。</li>
+    <li><b>全程不能断电 → 电源。</b>着火时市电可能被切断，所以主电源用<span class="hl">消防电源</span>（市电的消防设备专用回路），备用电源一般是<span class="hl">控制器自带的蓄电池</span> <span class="a">[SWX:p99:b10513]</span>。</li>
+    <li><b>让人知道火在哪 → 区域显示器。</b>控制器在值班室，现场的人看不到。宾馆、饭店等场所每个防火分区或楼层设一台，显示报警部件的编号和具体部位 <span class="a">[SWX:p99:b10515]</span>。</li>
+  </ol>
+
+  <h2><span class="step">03</span>落到原文：探测器的四种分法</h2>
+  <p>同一个探测器，可以从四个角度去分。考试常把不同角度的分类混在一个选项里，要能分清它是按哪个角度分的。</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>按什么分</th><th>分成哪几类</th><th>记忆提示</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>探测的火灾参数</td><td>感烟、感温、感光、图像型、气体、复合（6 种）<span class="a">SWX:p98:b10490</span></td><td>火产生什么，就感觉什么</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>　感烟再细分</td><td><span class="hl">离子感烟、光电感烟、红外光束、吸气型</span><span class="a">SWX:p98:b10491</span></td><td>考过原题，四个要记全</td><td><span class="tag rule">记结论</span></td></tr>
+        <tr><td>　感温响应什么</td><td>异常温度、温升速率、温差变化<span class="a">SWX:p98:b10492</span></td><td>定温、差温、差定温的来历</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>　感光再细分</td><td>紫外、红外、复合；感光探测器又叫<span class="hl">火焰探测器</span><span class="a">SWX:p98:b10493</span></td><td>感“光”就是感火焰辐射</td><td><span class="tag rule">记结论</span></td></tr>
+        <tr><td>　复合举例</td><td>烟温复合、红外紫外复合<span class="a">SWX:p98:b10496</span></td><td>多种原理合在一起</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>监视范围</td><td>点型、线型；另有多点型（如热电偶）<span class="a">SWX:p98:b10497 · b10500</span></td><td>一个点、一条线、一串点</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>报警后能否恢复</td><td>可复位、不可复位<span class="a">SWX:p98:b10501</span></td><td>不换零件能否回到监视状态</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>维修时能否拆下</td><td>可拆卸、不可拆卸<span class="a">SWX:p98:b10504</span></td><td>为维修保养方便</td><td><span class="tag why">有道理</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>三个最常考的地方：</p>
+  <ol>
+    <li><b>报警装置和警报装置不是一回事。</b>报警是“往里报”：控制器接收、显示、传递报警信号，是<b>火灾报警装置</b>；警报是“往外警”：声光警报器、警铃叫醒现场的人，是<b>火灾警报装置</b>。题目常拿两个名字互换来设陷阱。</li>
+    <li><b>探测器探测的参数是烟、温度、火焰辐射、气体浓度。</b>教材原文就是这几个 <span class="a">[SWX:p97:b10488]</span>，选项里出现“湿度”就是干扰项。</li>
+    <li><b>“基本组成部分之一”。</b>火灾探测器、手动火灾报警按钮、火灾报警装置、火灾警报装置，教材对每一个都写了“是火灾自动报警系统的基本组成部分之一” <span class="a">[SWX:p97:b10488 · p98:b10507 · b10509 · b10511]</span>。</li>
+  </ol>
+  <p class="note">最后那张产品性能要求表（表 3-10-1）：了解每种产品主要看哪些性能即可，<b>不用背标准号</b> <span class="a">[SWX:p100:b10522]</span>。</p>
+
+  <h2><span class="step">04</span>用电信设计来想：哪里像，哪里不像</h2>
+  <div class="cmp">
+    <div class="yes"><h3>像：一套告警采集系统</h3><p>探测器像现场的传感器和告警采集点，控制器像网管：汇聚信号、判断、定位到具体部位、记录时间，还要监视每个采集点自己有没有掉线（故障报警）。主电加蓄电池，也和通信电源的主用加电池组一样。</p></div>
+    <div class="no"><h3>不像：告警要送到每一个人</h3><p>网管告警只需要送到值班人员；火灾警报必须送到楼里的每一个人，而且要能把睡着的人叫醒、和环境声音区分开。所以多出了“火灾警报装置”和“区域显示器”这两样网管里没有的东西。</p></div>
+  </div>
+
+  <h2><span class="step">05</span>读完想一想</h2>
+  <p>先自己想，再点开看参考思路。</p>
+  <details><summary>如果只装探测器、不装手动报警按钮，会漏掉什么情况？</summary>
+    <div class="ans">（推理）有人已经看见火、但烟还没飘到探测器的时候。手报让“人先发现”这条路也能报警，所以它和探测器一起算触发器件。</div></details>
+  <details><summary>控制器为什么要给探测器供电、还要监视探测器？只收信号不行吗？</summary>
+    <div class="ans">探测器断电或损坏时不会报火警，只收信号的话，控制器以为“一切正常”，其实整片区域已经失明。监视故障就是为了把“沉默的失效”变成看得见的故障报警。<span class="src">依据：SWX:p98:b10509</span></div></details>
+  <details><summary>“气体释放指示灯”算不算火灾警报装置？</summary>
+    <div class="ans">不算（2025 年考过）。火灾警报装置是向报警区域发出火灾警报的声光装置 <span class="src">SWX:p98:b10511</span>；气体释放指示灯属于气体灭火系统，用来提示防护区正在放气、不要进入。</div></details>
+  <details><summary>动手：不看上面，画出“触发器件 → 控制器 → 警报装置”这条链，并在旁边写上电源和区域显示器</summary>
+    <div class="ans">画得出来，这一块的骨架就有了。对照第 02 步的图检查一遍。</div></details>
+
+  <h2><span class="step">06</span>考试里怎么出现</h2>
+  <ul class="exam">
+    <li><b>实务单选</b>：感烟探测器分哪几种、哪个不属于火灾警报装置、探测器探测哪些参数（均考过原题）。</li>
+    <li><b>实务判断类说法题</b>：把报警装置和警报装置互换，或说某部件“不是基本组成部分”。</li>
+    <li><b>综合、案例</b>：区域显示器装在哪里、主备电源怎么配，常和后面“检测验收”的内容一起考。</li>
+  </ul>
+
+  <h2><span class="step">听</span>对谈文字稿</h2>
+  <p class="meta">点任意一句，从那里开始播放。</p>
+  <div class="transcript" id="transcript"></div>
+</main>
+<script>
+(function () {
+  const audio = document.getElementById("audio");
+  const play = document.getElementById("play");
+  const fill = document.getElementById("fill");
+  const time = document.getElementById("time");
+  const now = document.getElementById("now");
+  const bar = document.getElementById("bar");
+  const box = document.getElementById("transcript");
+  let lines = [], timing = [], cur = -1;
+  const fmt = (s) => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+  Promise.all([
+    fetch("火灾探测报警系统组成.dialogue.json").then((r) => r.json()),
+    fetch("火灾探测报警系统组成.timing.json").then((r) => r.json())
+  ]).then(([d, t]) => {
+    lines = d.lines; timing = t.lines;
+    box.innerHTML = "";
+    lines.forEach(([who, text], i) => {
+      const el = document.createElement("div");
+      el.className = "line"; el.dataset.i = i;
+      const w = document.createElement("span"); w.className = "who"; w.textContent = who === "师" ? "老师" : "学员";
+      const p = document.createElement("span"); p.textContent = text;
+      el.append(w, p);
+      el.addEventListener("click", () => { audio.currentTime = timing[i].start + 0.05; audio.play(); });
+      box.appendChild(el);
+    });
+  }).catch(() => { box.textContent = "文字稿读取失败。"; });
+  play.addEventListener("click", () => { audio.paused ? audio.play() : audio.pause(); });
+  audio.addEventListener("play", () => { play.textContent = "❚❚ 暂停"; });
+  audio.addEventListener("pause", () => { play.textContent = "▶ 继续听"; });
+  bar.addEventListener("click", (e) => {
+    const r = bar.getBoundingClientRect();
+    if (audio.duration) audio.currentTime = (e.clientX - r.left) / r.width * audio.duration;
+  });
+  audio.addEventListener("timeupdate", () => {
+    const d = audio.duration || 208;
+    fill.style.width = (audio.currentTime / d * 100) + "%";
+    time.textContent = fmt(audio.currentTime) + " / " + fmt(d);
+    let i = -1;
+    for (let k = 0; k < timing.length; k++) if (timing[k].start <= audio.currentTime) i = k;
+    if (i !== cur && i >= 0 && lines[i]) {
+      cur = i;
+      box.querySelectorAll(".line.on").forEach((x) => x.classList.remove("on"));
+      const el = box.querySelector('[data-i="' + i + '"]');
+      if (el) el.classList.add("on");
+      now.innerHTML = "";
+      const b = document.createElement("b"); b.textContent = lines[i][0] === "师" ? "老师" : "学员";
+      now.append(b, document.createTextNode(lines[i][1]));
+    }
+  });
+})();
+</script>
+</body>
+</html>
