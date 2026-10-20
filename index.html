@@ -653,10 +653,12 @@ button.sync-status {
   line-height: 1.4;
 }
 
-.map-row .lecture-tag {
+.tag.lecture-tag {
   border-color: var(--lamp-read);
   color: var(--lamp-read);
+  background: transparent;
   font-size: 12px;
+  cursor: pointer;
 }
 
 .lecture-block {
@@ -943,10 +945,12 @@ button.sync-status {
   font-size: 12px;
 }
 
-.map-learn {
+.map-section {
+  min-width: 0;
+}
+
+.map-chunks-toggle {
   flex: none;
-  width: 44px;
-  min-width: 44px;
   min-height: 44px;
   border: 0;
   border-left: 1px solid var(--line);
@@ -954,7 +958,122 @@ button.sync-status {
   background: transparent;
   color: var(--lamp-read);
   cursor: pointer;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.map-chunk-list {
+  list-style: none;
+  margin: 0;
   padding: 0;
+}
+
+.map-chunk {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  padding-left: 28px;
+  border-top: 1px solid var(--line);
+  min-width: 0;
+  gap: 4px;
+}
+
+.map-chunk-open {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  max-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0 4px 0 0;
+  text-align: left;
+  cursor: pointer;
+}
+
+.map-chunk-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.map-chunk-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.map-chunk-meta {
+  color: var(--ink-2);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chunk-mark {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chunk-mark.is-done {
+  color: var(--ok);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.chunk-mark.is-todo::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border: 1.5px solid var(--lamp-off);
+  border-radius: 999px;
+}
+
+.map-chunk-lecture {
+  flex: none;
+  align-self: center;
+  min-height: 28px;
+  height: 28px;
+  margin-right: 4px;
+  padding: 0 8px;
+  line-height: 26px;
+}
+
+.today-all {
+  margin: 10px 0 0;
+}
+
+.today-all .text-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.learn-review-note {
+  margin: 0 0 8px;
+  color: var(--ink-2);
 }
 
 .learn-top {
@@ -1915,7 +2034,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-20.7";
+const APP_VERSION = "2026-10-20.8";
 let swControllerReload = false;
 const INTERVALS = [1, 3, 7, 14, 30, 60];
 
@@ -2103,6 +2222,8 @@ const app = {
     mapView: "unit",
     doubtOpen: false,
     openUnits: new Set(),
+    openRows: new Set(),
+    mapWeekReady: false,
     openBooks: new Set(),
     noteTimer: null,
     weekTimer: null,
@@ -3646,6 +3767,58 @@ function chunksTouchingRow(rowId) {
   return list;
 }
 
+function chunksOwnedByRow(rowId) {
+  const list = [];
+  for (const index of Object.values(app.study.indexes)) {
+    for (const chunk of index.chunks || []) {
+      if (chunk && chunk.row === rowId) list.push(chunk);
+    }
+  }
+  return list;
+}
+
+function chunkHasJiang(chunk) {
+  const jiang = chunk && chunk.jiang;
+  if (Array.isArray(jiang)) return jiang.some(Boolean);
+  return !!jiang;
+}
+
+function unitChunkIndexLoaded(unitId) {
+  const index = app.study.indexes[unitId];
+  return !!(index && Array.isArray(index.chunks));
+}
+
+function unitLectureCount(unitId) {
+  const index = app.study.indexes[unitId];
+  if (index && Array.isArray(index.chunks)) {
+    return index.chunks.filter((chunk) => chunkHasJiang(chunk)).length;
+  }
+  return (app.lectures || []).filter((item) => item && item.unit === unitId).length;
+}
+
+function ensureMapWeekOpen() {
+  if (!app.data || app.ui.mapWeekReady || app.ui.mapView !== "unit") return;
+  app.ui.mapWeekReady = true;
+  const units = getWeekContext(shanghaiToday()).units || [];
+  for (const id of units) {
+    if (!id) continue;
+    app.ui.openUnits.add(id);
+    kickUnitIndex(id);
+  }
+}
+
+function openWeekMap() {
+  app.ui.mapView = "unit";
+  if (app.data) {
+    for (const id of getWeekContext(shanghaiToday()).units || []) {
+      if (!id) continue;
+      app.ui.openUnits.add(id);
+      kickUnitIndex(id);
+    }
+  }
+  navigateTo("map");
+}
+
 function rowChunkStats(rowId) {
   const chunks = chunksTouchingRow(rowId);
   if (!chunks.length) return null;
@@ -3749,6 +3922,19 @@ function markChunkDone(meta) {
   }
   if (raised) ensureSkeletonActivation(today);
   if (hasToken()) requestPush("learn");
+}
+
+function completeLearnChunk(meta) {
+  if (!meta) return;
+  const prev = app.state.chunks && app.state.chunks[meta.id];
+  if (prev && prev.doneAt) {
+    const next = { ...prev, lastReviewAt: shanghaiToday() };
+    delete next.updatedAt;
+    store.save(`chunks/${meta.id}`, next);
+    if (hasToken()) requestPush("learn");
+    return;
+  }
+  markChunkDone(meta);
 }
 
 function hashRoute() {
@@ -4172,11 +4358,14 @@ function doneStepHtml(meta) {
   const score = chunkScore(meta);
   const chunks = unitChunks([meta.unit]);
   const next = nextChunkAfter(chunks, meta);
+  const rec = app.state.chunks && app.state.chunks[meta.id];
+  const reviewed = rec && rec.doneAt;
   return `
+    ${reviewed ? `<p class="learn-review-note" id="learn-review-note">已于 ${escapeHtml(rec.doneAt)} 学完，这次是复习。</p>` : ""}
     <p id="learn-minutes">用时 ${learnMinutes(meta.id)} 分钟</p>
     <p id="learn-score">做题 ${score.done} 道对 ${score.correct} 道</p>
     <div class="button-row">
-      <button id="learn-finish" class="btn btn-primary tap-target" type="button">这一块学完了</button>
+      <button id="learn-finish" class="btn btn-primary tap-target" type="button">${reviewed ? "再学一遍完成" : "这一块学完了"}</button>
       ${next ? `<button id="learn-finish-next" class="btn btn-secondary tap-target" type="button" data-next-chunk="${escapeHtml(next.id)}">学下一块</button>` : ""}
     </div>
   `;
@@ -4289,12 +4478,12 @@ function renderLearn() {
   const recallNext = document.getElementById("learn-recall-next");
   if (recallNext) recallNext.addEventListener("click", () => { app.ui.learnRecall += 1; app.ui.learnReveal = false; render(); });
   const finish = document.getElementById("learn-finish");
-  if (finish) finish.addEventListener("click", () => { markChunkDone(meta); navigateTo("today"); });
+  if (finish) finish.addEventListener("click", () => { completeLearnChunk(meta); navigateTo("today"); });
   const finishNext = document.getElementById("learn-finish-next");
   if (finishNext) {
     finishNext.addEventListener("click", () => {
       const nextId = finishNext.dataset.nextChunk;
-      markChunkDone(meta);
+      completeLearnChunk(meta);
       app.ui.learnBoundChunk = "";
       writeLearnMemory(nextId, "");
       openLearn(nextId);
@@ -4437,6 +4626,7 @@ function renderToday(today, weekCtx) {
       <p id="today-chunk-title">${escapeHtml(shown.title || shown.id)}</p>
       <p class="small">${escapeHtml(chunkMetaLine(shown))}</p>
       <p class="today-check" id="today-chunk-done">✓ 已学完</p>
+      <div class="button-row"><button id="today-review-again" class="btn btn-secondary tap-target" type="button" data-chunk="${escapeHtml(shown.id)}">再看一遍</button></div>
       ${next ? `<div class="button-row"><button id="today-learn-next" class="btn btn-secondary tap-target" type="button" data-chunk="${escapeHtml(next.id)}">再学一块：${escapeHtml(next.title || next.id)}</button></div>` : `<p class="small">本周的块都学完了。</p>`}
     `;
   } else {
@@ -4459,9 +4649,10 @@ function renderToday(today, weekCtx) {
         <h2 class="today-kicker">① 复习</h2>
         ${reviewBody}
       </article>
-      <article class="today-task">
+      <article class="today-task" id="today-chunk-card">
         <h2 class="today-kicker">② 今天这一块</h2>
         ${chunkBody}
+        <p class="today-all"><button id="today-all-chunks" class="text-link" type="button">全部学习块 →</button></p>
       </article>
     </section>
     ${baseline}
@@ -4478,8 +4669,12 @@ function renderToday(today, weekCtx) {
   if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
   const startBtn = document.getElementById("today-start-learn");
   if (startBtn) startBtn.addEventListener("click", () => openLearn(startBtn.dataset.chunk));
+  const againBtn = document.getElementById("today-review-again");
+  if (againBtn) againBtn.addEventListener("click", () => openLearn(againBtn.dataset.chunk));
   const nextBtn = document.getElementById("today-learn-next");
   if (nextBtn) nextBtn.addEventListener("click", () => openLearn(nextBtn.dataset.chunk));
+  const allBtn = document.getElementById("today-all-chunks");
+  if (allBtn) allBtn.addEventListener("click", () => openWeekMap());
 }
 
 function practiceQuestionLists(unitId) {
@@ -4915,6 +5110,7 @@ function renderMap() {
     root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
     return;
   }
+  ensureMapWeekOpen();
   const rows = app.data.map.rows;
   const total = rows.length;
   const count0 = rows.filter((r) => getSectionStatus(r.id) === 0).length;
@@ -4951,11 +5147,14 @@ function renderMap() {
       const prog = unitProgress(u.id);
       const segs = statusSegments(rowsForUnit);
       const isOpen = app.ui.openUnits.has(u.id);
+      if (isOpen) kickUnitIndex(u.id);
+      const lectureCount = unitLectureCount(u.id);
+      const lectureNote = lectureCount > 0 ? ` · ${lectureCount} 篇精讲` : "";
       return `
         <section class="group">
           <button class="group-head tap-target" data-open-unit="${u.id}">
             <strong>${u.id} · ${u.name}</strong>
-            <span class="small">第 ${u.week_from || "-"}~${u.week_to || "-"} 周 · ${prog.done}/${prog.total}</span>
+            <span class="small">第 ${u.week_from || "-"}~${u.week_to || "-"} 周 · ${prog.done}/${prog.total}${lectureNote}</span>
             <span class="segbar" aria-hidden="true">
               <span class="seg-0" style="width:${segs[0]}%"></span>
               <span class="seg-1" style="width:${segs[1]}%"></span>
@@ -5021,11 +5220,21 @@ function renderMap() {
       ensureSkeletonActivation(shanghaiToday());
     });
   });
-  groups.querySelectorAll("[data-learn-id]").forEach((btn) => {
+  groups.querySelectorAll("[data-toggle-chunks]").forEach((btn) => {
     btn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openLearn(btn.dataset.learnId);
+      const id = btn.dataset.toggleChunks;
+      if (app.ui.openRows.has(id)) app.ui.openRows.delete(id);
+      else app.ui.openRows.add(id);
+      render();
+    });
+  });
+  groups.querySelectorAll("[data-chunk-open]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openLearn(btn.dataset.chunkOpen);
     });
   });
 }
@@ -5040,30 +5249,63 @@ function statusSegments(rows) {
   return counts.map((count) => (count / total) * 100);
 }
 
+function renderMapChunk(chunk) {
+  const done = chunkDone(chunk.id);
+  const mark = done
+    ? `<span class="chunk-mark is-done" aria-hidden="true">✓</span>`
+    : `<span class="chunk-mark is-todo" aria-hidden="true"></span>`;
+  const questions = Array.isArray(chunk.questions) ? chunk.questions.length : 0;
+  const minutes = Number(chunk.minutes) || 0;
+  const lecture = lecturesForChunk(chunk)[0];
+  const tag = lecture
+    ? `<button type="button" class="tag lecture-tag map-chunk-lecture" data-lecture-url="${escapeHtml(lecture.url)}">精讲</button>`
+    : "";
+  return `
+    <li class="map-chunk">
+      <button type="button" class="map-chunk-open" data-chunk-open="${escapeHtml(chunk.id)}">
+        ${mark}
+        <span class="map-chunk-copy">
+          <span class="map-chunk-title">${escapeHtml(chunk.title || chunk.id)}</span>
+          <span class="map-chunk-meta">${minutes} 分钟 · ${questions} 题</span>
+        </span>
+      </button>
+      ${tag}
+    </li>
+  `;
+}
+
 function renderMapRow(row) {
   const status = getSectionStatus(row.id);
   const sectionName = row.section ? `§${row.section}` : "导言";
   const chapter = row.chapter_title || row.part_title || "";
-  const lecture = lectureForRow(row.id);
+  const owned = chunksOwnedByRow(row.id);
+  const lecture = unitChunkIndexLoaded(row.unit) ? null : lectureForRow(row.id);
   const lectureTag = lecture
     ? `<span class="tag lecture-tag" data-lecture-url="${escapeHtml(lecture.url)}">精讲</span>`
     : "";
   const stats = rowChunkStats(row.id);
   const chunkLabel = stats ? `<span class="map-chunk-count mono">${stats.done}/${stats.total} 块</span>` : "";
-  const learnBtn = stats && stats.nextId
-    ? `<button type="button" class="map-learn" data-learn-id="${escapeHtml(stats.nextId)}">学</button>`
+  const open = app.ui.openRows.has(row.id);
+  const toggle = owned.length
+    ? `<button type="button" class="map-chunks-toggle" data-toggle-chunks="${escapeHtml(row.id)}" aria-expanded="${open ? "true" : "false"}">块 ▾</button>`
+    : "";
+  const chunks = open && owned.length
+    ? `<ul class="map-chunk-list">${owned.map(renderMapChunk).join("")}</ul>`
     : "";
   return `
-    <li class="map-row-line">
-      <button type="button" class="map-row" data-row-lamp="${row.id}">
-        <span class="lamp lamp-${status}" aria-hidden="true"></span>
-        <span class="tag">${row.subject}</span>
-        <span class="map-row-main">${chapter} · ${sectionName} · ${row.title}</span>
-        ${lectureTag}
-        ${chunkLabel}
-        <span class="map-row-page mono">印刷页 ${row.printed_start}</span>
-      </button>
-      ${learnBtn}
+    <li class="map-section">
+      <div class="map-row-line">
+        <button type="button" class="map-row" data-row-lamp="${row.id}">
+          <span class="lamp lamp-${status}" aria-hidden="true"></span>
+          <span class="tag">${row.subject}</span>
+          <span class="map-row-main">${chapter} · ${sectionName} · ${row.title}</span>
+          ${lectureTag}
+          ${chunkLabel}
+          <span class="map-row-page mono">印刷页 ${row.printed_start}</span>
+        </button>
+        ${toggle}
+      </div>
+      ${chunks}
     </li>
   `;
 }
