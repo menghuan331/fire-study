@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-v4";
+const CACHE_VERSION = "study-v6";
 const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [
@@ -115,7 +115,8 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    const oldKeys = keys.filter((key) => key !== CACHE_VERSION);
+    const keep = new Set([CACHE_VERSION, "study-chunks-v1"]);
+    const oldKeys = keys.filter((key) => !keep.has(key));
     await Promise.all(oldKeys.map((key) => caches.delete(key)));
     await self.clients.claim();
     // v2 页面没有 controllerchange 监听。不能 await navigate：activate 未结束时

@@ -1,14 +1,24 @@
 {
- "note": "精讲目录。rows 是这篇精讲覆盖的覆盖地图行 id；url 相对于网站根目录。",
+ "note": "精讲目录。rows 是覆盖地图行 id；anchors 是这篇精讲讲到的原文锚点（用来挂到学习块）；url 相对于网站根目录。",
  "items": [
   {
    "id": "U01-联动触发逻辑",
    "unit": "U01",
    "title": "联动的“与”逻辑",
-   "rows": ["SWX-3-10-02"],
+   "rows": [
+    "SWX-3-10-02"
+   ],
    "url": "精讲/U01/联动触发逻辑.html",
    "minutes": 7,
-   "audioMinutes": 4
+   "audioMinutes": 4,
+   "anchors": [
+    "SWX:p127:b11286",
+    "SWX:p128:b11291",
+    "SWX:p128:b11303",
+    "SWX:p130:b11334",
+    "SWX:p130:b11338",
+    "SWX:p131:b11351"
+   ]
   }
  ]
 }

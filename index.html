@@ -218,6 +218,8 @@ button.sync-status {
 
 .page {
   padding: 14px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page + .page {
@@ -877,6 +879,303 @@ button.sync-status {
   }
 }
 
+.today-board {
+  border: 1px solid var(--line);
+  margin-top: 8px;
+}
+
+.today-task {
+  padding: 14px 12px;
+}
+
+.today-task + .today-task {
+  border-top: 1px solid var(--line);
+}
+
+.today-kicker {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.today-check {
+  margin: 8px 0 0;
+  color: var(--ok);
+}
+
+.today-foot {
+  margin: 12px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.today-foot.is-ok {
+  color: var(--ok);
+}
+
+.today-week {
+  margin: 8px 0 0;
+}
+
+.baseline-line {
+  margin-top: 8px;
+}
+
+.map-row-line {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+}
+
+.map-row-line .map-row {
+  border-top: 0;
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.map-chunk-count {
+  flex: none;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+
+.map-learn {
+  flex: none;
+  width: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: var(--lamp-read);
+  cursor: pointer;
+  padding: 0;
+}
+
+.learn-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.learn-steps {
+  display: flex;
+  gap: 2px;
+  list-style: none;
+  margin: 8px 0 12px;
+  padding: 0;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.learn-steps button {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--lamp-off);
+  flex: none;
+}
+
+.learn-steps .is-current {
+  color: var(--ink);
+}
+
+.learn-steps .is-current .step-dot {
+  background: var(--accent);
+}
+
+.learn-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 6;
+  display: flex;
+  gap: 8px;
+  padding: 8px max(16px, env(safe-area-inset-right, 0px)) calc(8px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+}
+
+.learn-bar .btn {
+  flex: 1 1 0;
+}
+
+.read-flow {
+  font-size: 17px;
+  line-height: 1.75;
+  min-width: 0;
+}
+
+.read-block {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 8px;
+  margin: 0 0 16px;
+  min-width: 0;
+}
+
+.page-mark {
+  font-size: 12px;
+  color: var(--ink-2);
+  line-height: 1.4;
+  padding-top: 6px;
+}
+
+.read-copy {
+  position: relative;
+  min-width: 0;
+}
+
+.read-copy.has-ask {
+  padding-right: 52px;
+}
+
+.read-flow h3,
+.read-flow h4,
+.read-flow h5,
+.read-flow h6 {
+  margin: 0;
+  line-height: 1.45;
+  font-weight: 600;
+}
+
+.read-flow h3 { font-size: 20px; }
+.read-flow h4,
+.read-flow h5,
+.read-flow h6 { font-size: 17px; }
+
+.read-flow p {
+  margin: 0;
+}
+
+.ask-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.read-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+  margin-top: 8px;
+}
+
+.read-table-wrap table {
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.45;
+  width: 100%;
+  min-width: 560px;
+  table-layout: auto;
+}
+
+.read-table-wrap td,
+.read-table-wrap th {
+  border: 1px solid var(--line);
+  padding: 4px 6px;
+  vertical-align: top;
+  text-align: left;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  min-width: 3em;
+}
+
+.read-table-wrap tr:first-child > td,
+.read-table-wrap tr:first-child > th {
+  background: var(--panel);
+}
+
+.read-figure img,
+.read-flow img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.read-equation,
+.katex-display {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.tex-raw {
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.lecture-frame {
+  width: 100%;
+  height: 75vh;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.recall-card {
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+
+.ask-fallback {
+  width: 100%;
+  min-height: 120px;
+  margin-top: 8px;
+}
+
+body.is-learn .nav {
+  display: none;
+}
+
+body.is-learn .main-layout {
+  display: block;
+}
+
+body.is-learn .main-column {
+  max-width: 880px;
+  margin-inline: auto;
+}
+
+body.is-learn .app-shell {
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 600px) {
+  .learn-steps .step-label {
+    display: none;
+  }
+
+  .learn-steps .is-current .step-label {
+    display: inline;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition: none !important;
@@ -915,6 +1214,7 @@ button.sync-status {
         <section id="page-week" class="page" hidden></section>
         <section id="page-plan" class="page" hidden></section>
         <section id="page-settings" class="page" hidden></section>
+        <section id="page-learn" class="page" hidden></section>
       </main>
     </div>
   </div>
@@ -1025,7 +1325,8 @@ function mergeStates(local, remote) {
     startedAt,
     weeks: mergeMaps(left.weeks, right.weeks),
     cards: mergeMaps(left.cards, right.cards),
-    attempts: mergeMaps(left.attempts, right.attempts)
+    attempts: mergeMaps(left.attempts, right.attempts),
+    chunks: mergeMaps(left.chunks, right.chunks)
   };
 }
 
@@ -1223,7 +1524,8 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
       startedAt: "",
       weeks: {},
       cards: {},
-      attempts: {}
+      attempts: {},
+      chunks: {}
     };
   }
 
@@ -1322,7 +1624,8 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
       baselineDone: !!src.baselineDone,
       baselineAt: Number(src.baselineAt) || 0,
       startedAt: src.startedAt || "",
-      weeks: src.weeks || {}
+      weeks: src.weeks || {},
+      chunks: src.chunks || {}
     });
     const cards = groupByUnit(src.cards);
     for (const unit of Object.keys(cards).sort()) {
@@ -1383,6 +1686,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
         if (Object.prototype.hasOwnProperty.call(json, "baselineAt")) remote.baselineAt = Number(json.baselineAt) || 0;
         if (json.startedAt) remote.startedAt = String(json.startedAt);
         remote.weeks = json.weeks || {};
+        remote.chunks = json.chunks && typeof json.chunks === "object" && !Array.isArray(json.chunks) ? json.chunks : {};
       } else if (filePath.startsWith(`${PROGRESS_PREFIX}cards/`)) {
         absorbRecords(remote.cards, json, unitFromPath(filePath));
       } else if (filePath.startsWith(`${PROGRESS_PREFIX}attempts/`)) {
@@ -1571,12 +1875,47 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
     throw err;
   }
 
-  return { pull, push, testConnection, changedFiles };
+  async function getRaw(path) {
+    const cfg = config || {};
+    if (!cfg.token) {
+      const err = new Error("还没有令牌");
+      err.code = "no-token";
+      throw err;
+    }
+    const encodedPath = String(path || "").split("/").filter(Boolean).map((part) => encodeURIComponent(part)).join("/");
+    const owner = encodeURIComponent(cfg.owner || "");
+    const repo = encodeURIComponent(cfg.repo || "");
+    const branch = encodeURIComponent(cfg.branch || "");
+    const headers = {
+      Authorization: `Bearer ${cfg.token}`,
+      Accept: "application/vnd.github.raw+json",
+      "X-GitHub-Api-Version": "2022-11-28"
+    };
+    let res;
+    try {
+      res = await fetchImpl(`https://api.github.com/repos/${owner}/${repo}/contents/${encodedPath}?ref=${branch}`, {
+        method: "GET",
+        headers
+      });
+    } catch (_) {
+      const err = new Error("网络不通");
+      err.network = true;
+      throw err;
+    }
+    if (!res.ok) {
+      const err = new Error("读取失败");
+      err.status = res.status;
+      throw err;
+    }
+    return res;
+  }
+
+  return { pull, push, testConnection, changedFiles, getRaw };
 }
 </script>
 
 <script>
-const APP_VERSION = "2026-10-20.4";
+const APP_VERSION = "2026-10-20.6";
 let swControllerReload = false;
 const INTERVALS = [1, 3, 7, 14, 30, 60];
 
@@ -1772,8 +2111,24 @@ const app = {
     tokenHoldForm: false,
     settingsTestMessage: "",
     importPreview: null,
-    importError: ""
+    importError: "",
+    learnQid: "",
+    learnChoice: "",
+    learnQuiz: "list",
+    learnRecall: 0,
+    learnReveal: false,
+    learnBoundChunk: "",
+    learnPlace: null,
+    katexState: ""
   },
+  study: {
+    indexes: {},
+    bodies: {},
+    imageUrls: {},
+    indexState: {},
+    bodyState: {}
+  },
+  lecturePrefix: "",
   derived: {
     rowById: new Map(),
     unitRows: new Map(),
@@ -1794,7 +2149,8 @@ function createDefaultState() {
     baselineAt: 0,
     cards: {},
     attempts: {},
-    weeks: {}
+    weeks: {},
+    chunks: {}
   };
 }
 
@@ -1880,7 +2236,8 @@ function coerceState(input, options) {
     startedAt: src.startedAt ? String(src.startedAt) : (fillStarted ? shanghaiToday() : ""),
     cards: {},
     attempts: {},
-    weeks: {}
+    weeks: {},
+    chunks: {}
   };
   const sections = src.sections && typeof src.sections === "object" && !Array.isArray(src.sections) ? src.sections : {};
   const sectionsAt = src.sectionsAt && typeof src.sectionsAt === "object" && !Array.isArray(src.sectionsAt) ? src.sectionsAt : {};
@@ -1898,6 +2255,7 @@ function coerceState(input, options) {
   copyRecords(src.cards, state.cards);
   copyRecords(src.attempts, state.attempts);
   copyRecords(src.weeks, state.weeks);
+  copyRecords(src.chunks, state.chunks);
   return state;
 }
 
@@ -1945,6 +2303,9 @@ function setNestedState(path, value) {
     app.state.attempts[id] = { ...value, updatedAt: now };
   } else if (kind === "weeks" && id) {
     app.state.weeks[id] = { ...value, updatedAt: now };
+  } else if (kind === "chunks" && id) {
+    if (!app.state.chunks) app.state.chunks = {};
+    app.state.chunks[id] = { ...value, updatedAt: now };
   } else if (path === "startedAt") {
     app.state.startedAt = value;
   } else if (path === "baselineDone") {
@@ -2203,7 +2564,9 @@ function failSync(err, isAutoRetry) {
 
 function flushEditors() {
   const noteEl = document.getElementById("practice-note");
+  const learnNoteEl = document.getElementById("learn-note");
   const noteValue = noteEl && app.ui.practiceQid ? noteEl.value.trim() : null;
+  const learnNoteValue = learnNoteEl && app.ui.learnQid ? learnNoteEl.value.trim() : null;
   const goodEl = document.getElementById("week-good");
   const badEl = document.getElementById("week-bad");
   const nextEl = document.getElementById("week-next");
@@ -2217,6 +2580,10 @@ function flushEditors() {
     app.ui.noteTimer = null;
     const old = getAttempt(app.ui.practiceQid);
     if ((old.note || "") !== noteValue) savePracticeNote(app.ui.practiceQid, noteValue);
+  }
+  if (learnNoteValue != null) {
+    const old = getAttempt(app.ui.learnQid);
+    if ((old.note || "") !== learnNoteValue) savePracticeNote(app.ui.learnQid, learnNoteValue);
   }
   if (weekValues && app.data) {
     clearTimeout(app.ui.weekTimer);
@@ -2373,7 +2740,8 @@ function exportableState() {
     startedAt: state.startedAt,
     weeks: state.weeks,
     cards: state.cards,
-    attempts: state.attempts
+    attempts: state.attempts,
+    chunks: state.chunks
   };
 }
 
@@ -2950,15 +3318,23 @@ function navigateTo(tab) {
   }
 }
 
+function lectureCandidates() {
+  const inAppDir = /\/app\/[^/]*$/.test(location.pathname);
+  if (inAppDir) return ["../精讲/index.json", "精讲/index.json"];
+  return ["精讲/index.json"];
+}
+
 async function loadLectureIndex() {
-  try {
-    const res = await fetch("精讲/index.json");
-    if (!res.ok) return [];
-    const data = await res.json();
-    return Array.isArray(data.items) ? data.items : [];
-  } catch (_) {
-    return [];
+  for (const path of lectureCandidates()) {
+    try {
+      const res = await fetch(path);
+      if (!res.ok) continue;
+      const data = await res.json();
+      app.lecturePrefix = path.startsWith("../") ? "../" : "";
+      return Array.isArray(data.items) ? data.items : [];
+    } catch (_) {}
   }
+  return [];
 }
 
 function lecturesForUnits(unitIds) {
@@ -2970,8 +3346,16 @@ function lectureForRow(rowId) {
   return (app.lectures || []).find((item) => item && item.url && Array.isArray(item.rows) && item.rows.includes(rowId)) || null;
 }
 
+function lectureHref(url) {
+  if (!url) return "";
+  if (/^https?:\/\//.test(url)) return url;
+  if (app.lecturePrefix && !url.startsWith("../")) return app.lecturePrefix + url;
+  return url;
+}
+
 function openLecture(url) {
-  if (url) location.href = url;
+  const href = lectureHref(url);
+  if (href) location.href = href;
 }
 
 function renderUnitLectureBlock(unitIds) {
@@ -3002,6 +3386,975 @@ function renderStatusBar(today, weekCtx) {
   renderSyncStatus();
 }
 
+const STUDY_CACHE = "study-chunks-v1";
+const BOOK_TITLES = {
+  SWS: "消防安全技术实务（上册）",
+  SWX: "消防安全技术实务（下册）",
+  ZHS: "消防安全技术综合能力（上册）",
+  ZHX: "消防安全技术综合能力（下册）",
+  AL: "消防安全案例分析"
+};
+
+function bookTitle(code) {
+  return BOOK_TITLES[code] || bookName(code) || "教材";
+}
+
+function mockRepoOn() {
+  try {
+    const host = location.hostname;
+    if (host !== "localhost" && host !== "127.0.0.1") return false;
+    return new URLSearchParams(location.search).get("mockrepo") === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function canReadRepo() {
+  return hasToken() || mockRepoOn();
+}
+
+function studyCacheRequest(repoPath) {
+  const encoded = String(repoPath || "").split("/").filter(Boolean).map((part) => encodeURIComponent(part)).join("/");
+  return new Request(`https://study-chunks.local/${encoded}`);
+}
+
+async function cachedStudyResponse(repoPath) {
+  try {
+    if (!window.caches) return null;
+    const cache = await caches.open(STUDY_CACHE);
+    return (await cache.match(studyCacheRequest(repoPath))) || null;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function cacheStudyResponse(repoPath, response) {
+  try {
+    if (!window.caches || !response) return;
+    const cache = await caches.open(STUDY_CACHE);
+    await cache.put(studyCacheRequest(repoPath), response.clone());
+  } catch (_) {}
+}
+
+async function fetchStudyResponse(repoPath) {
+  if (mockRepoOn()) {
+    const url = new URL(`../../${repoPath}`, location.href);
+    let res;
+    try {
+      res = await fetch(url.href);
+    } catch (_) {
+      const err = new Error("网络不通");
+      err.network = true;
+      throw err;
+    }
+    if (!res.ok) {
+      const err = new Error("读取失败");
+      err.status = res.status;
+      throw err;
+    }
+    return res;
+  }
+  if (!hasToken()) {
+    const err = new Error("还没有令牌");
+    err.code = "no-token";
+    throw err;
+  }
+  return getSync().getRaw(repoPath);
+}
+
+function ingestStudyText(repoPath, text) {
+  const indexMatch = /^教材\/([^/]+)\/index\.json$/.exec(repoPath || "");
+  if (indexMatch) {
+    try {
+      app.study.indexes[indexMatch[1]] = JSON.parse(text);
+      app.study.indexState[indexMatch[1]] = "ready";
+    } catch (_) {
+      app.study.indexState[indexMatch[1]] = "error";
+    }
+    return;
+  }
+  const chunkMatch = /^教材\/([^/]+)\/chunks\/([^/]+)\.json$/.exec(repoPath || "");
+  if (chunkMatch) {
+    try {
+      app.study.bodies[chunkMatch[2]] = JSON.parse(text);
+      app.study.bodyState[chunkMatch[2]] = "ready";
+    } catch (_) {
+      app.study.bodyState[chunkMatch[2]] = "error";
+    }
+  }
+}
+
+async function loadStudyText(repoPath) {
+  const cached = await cachedStudyResponse(repoPath);
+  const pull = async () => {
+    const res = await fetchStudyResponse(repoPath);
+    const clone = res.clone();
+    const text = await res.text();
+    await cacheStudyResponse(repoPath, clone);
+    return text;
+  };
+  if (cached) {
+    const text = await cached.text();
+    pull().then((fresh) => {
+      if (fresh === text) return;
+      ingestStudyText(repoPath, fresh);
+      render();
+    }).catch(() => {});
+    ingestStudyText(repoPath, text);
+    return text;
+  }
+  try {
+    const text = await pull();
+    ingestStudyText(repoPath, text);
+    return text;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function loadStudyBlobUrl(repoPath, filename) {
+  if (app.study.imageUrls[filename]) return app.study.imageUrls[filename];
+  const remember = async (res) => {
+    const blob = await res.blob();
+    if (app.study.imageUrls[filename]) URL.revokeObjectURL(app.study.imageUrls[filename]);
+    const url = URL.createObjectURL(blob);
+    app.study.imageUrls[filename] = url;
+    return url;
+  };
+  const cached = await cachedStudyResponse(repoPath);
+  if (cached) {
+    await remember(cached);
+    fetchStudyResponse(repoPath).then(async (res) => {
+      const clone = res.clone();
+      await cacheStudyResponse(repoPath, clone);
+      const previous = app.study.imageUrls[filename];
+      await remember(res);
+      if (previous !== app.study.imageUrls[filename] && app.ui.tab === "learn") render();
+    }).catch(() => {});
+    return app.study.imageUrls[filename];
+  }
+  const res = await fetchStudyResponse(repoPath);
+  const clone = res.clone();
+  await cacheStudyResponse(repoPath, clone);
+  return remember(res);
+}
+
+function kickUnitIndex(unitId) {
+  if (!unitId || app.study.indexes[unitId]) return;
+  const state = app.study.indexState[unitId];
+  if (state === "loading" || state === "ready" || state === "missing" || state === "error") return;
+  app.study.indexState[unitId] = "loading";
+  loadStudyText(`教材/${unitId}/index.json`).then((text) => {
+    if (app.study.indexes[unitId]) {
+      app.study.indexState[unitId] = "ready";
+    } else if (!text) {
+      app.study.indexState[unitId] = "missing";
+    }
+    render();
+  });
+}
+
+function kickChunkBody(meta) {
+  if (!meta || !canReadRepo()) return;
+  if (app.study.bodies[meta.id]) return;
+  const state = app.study.bodyState[meta.id];
+  if (state === "loading" || state === "ready" || state === "missing" || state === "error") return;
+  app.study.bodyState[meta.id] = "loading";
+  const repoPath = `教材/${meta.unit}/chunks/${meta.id}.json`;
+  loadStudyText(repoPath).then(async (text) => {
+    if (!app.study.bodies[meta.id]) {
+      app.study.bodyState[meta.id] = text ? "error" : "missing";
+      render();
+      return;
+    }
+    const files = Array.isArray(app.study.bodies[meta.id].images) ? app.study.bodies[meta.id].images : [];
+    await Promise.all(files.map((file) => loadStudyBlobUrl(`教材/图片/${file}`, file).catch(() => null)));
+    app.study.bodyState[meta.id] = "ready";
+    render();
+  }).catch(() => {
+    app.study.bodyState[meta.id] = "error";
+    render();
+  });
+}
+
+function kickKatex() {
+  if (window.katex) {
+    app.ui.katexState = "ready";
+    return;
+  }
+  if (app.ui.katexState === "loading" || app.ui.katexState === "ready" || app.ui.katexState === "failed") return;
+  app.ui.katexState = "loading";
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css";
+  document.head.appendChild(link);
+  const script = document.createElement("script");
+  script.src = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js";
+  script.onload = () => {
+    app.ui.katexState = window.katex ? "ready" : "failed";
+    if (app.ui.tab === "learn") render();
+  };
+  script.onerror = () => {
+    app.ui.katexState = "failed";
+  };
+  document.head.appendChild(script);
+}
+
+function unitChunks(unitIds) {
+  const list = [];
+  for (const unitId of unitIds || []) {
+    const index = app.study.indexes[unitId];
+    if (!index || !Array.isArray(index.chunks)) continue;
+    list.push(...index.chunks);
+  }
+  return list;
+}
+
+function findChunkMeta(chunkId) {
+  if (!chunkId) return null;
+  for (const index of Object.values(app.study.indexes)) {
+    const found = (index.chunks || []).find((chunk) => chunk && chunk.id === chunkId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function chunkDone(chunkId) {
+  const rec = app.state.chunks && app.state.chunks[chunkId];
+  return !!(rec && rec.doneAt);
+}
+
+function chunksTouchingRow(rowId) {
+  const list = [];
+  for (const index of Object.values(app.study.indexes)) {
+    for (const chunk of index.chunks || []) {
+      if (!chunk) continue;
+      if (chunk.row === rowId || (Array.isArray(chunk.rows) && chunk.rows.includes(rowId))) list.push(chunk);
+    }
+  }
+  return list;
+}
+
+function rowChunkStats(rowId) {
+  const chunks = chunksTouchingRow(rowId);
+  if (!chunks.length) return null;
+  const done = chunks.filter((chunk) => chunkDone(chunk.id)).length;
+  const next = chunks.find((chunk) => !chunkDone(chunk.id)) || chunks[0];
+  return { done, total: chunks.length, nextId: next ? next.id : "" };
+}
+
+function nextChunkAfter(chunks, current) {
+  const index = chunks.findIndex((chunk) => chunk.id === current.id);
+  for (let i = Math.max(index, 0) + 1; i < chunks.length; i += 1) {
+    if (!chunkDone(chunks[i].id)) return chunks[i];
+  }
+  return chunks.find((chunk) => chunk.id !== current.id && !chunkDone(chunk.id)) || null;
+}
+
+function questionsForChunk(meta) {
+  return (meta && meta.questions || []).map((id) => app.derived.questionById.get(id)).filter(Boolean);
+}
+
+function cardsForChunk(meta) {
+  return (meta && meta.cards || []).map((id) => app.derived.cardById.get(id)).filter(Boolean);
+}
+
+function lecturesForChunk(meta) {
+  const ids = new Set(meta && meta.jiang || []);
+  return (app.lectures || []).filter((item) => item && ids.has(item.id) && item.url);
+}
+
+function printedRange(meta) {
+  if (!meta) return "";
+  const from = meta.printedFrom;
+  const to = meta.printedTo;
+  if (from == null && to == null) return "";
+  if (from === to || to == null) return String(from);
+  if (from == null) return String(to);
+  return `${from}–${to}`;
+}
+
+function chunkMetaLine(meta) {
+  const questions = Array.isArray(meta.questions) ? meta.questions.length : 0;
+  const parts = [
+    bookName(meta.book),
+    `印刷页 ${printedRange(meta)}`,
+    `${Number(meta.minutes) || 0} 分钟`,
+    `${questions} 题`
+  ];
+  if (Array.isArray(meta.jiang) && meta.jiang.length) parts.push("有精讲");
+  return parts.filter(Boolean).join(" · ");
+}
+
+function questionsAnsweredOn(today) {
+  let count = 0;
+  for (const attempt of Object.values(app.state.attempts || {})) {
+    const tries = attempt && attempt.tries;
+    if (!Array.isArray(tries)) continue;
+    if (tries.some((item) => String(item && item.at || "").slice(0, 10) === today)) count += 1;
+  }
+  return count;
+}
+
+function daysLeftInWeek(today, week) {
+  if (!week || !week.end || today > week.end) return 0;
+  return diffDaysYmd(today, week.end) + 1;
+}
+
+function todayReviewView(today) {
+  const due = getReviewQueue(today).length;
+  const session = app.ui.review && app.ui.review.sessionDate === today ? app.ui.review : null;
+  const stats = session && session.stats ? session.stats : emptyReviewStats();
+  const reviewed = (stats.remember || 0) + (stats.wrong || 0) + (stats.blank || 0);
+  const remaining = reviewDueCount(today);
+  return { due, stats, reviewed, remaining, done: remaining === 0 };
+}
+
+function chunkScore(meta) {
+  let done = 0;
+  let correct = 0;
+  for (const question of questionsForChunk(meta)) {
+    const last = latestTry(question.id);
+    if (!last) continue;
+    done += 1;
+    if (last.ok) correct += 1;
+  }
+  return { done, correct };
+}
+
+function markChunkDone(meta) {
+  if (!meta) return;
+  const today = shanghaiToday();
+  store.save(`chunks/${meta.id}`, { doneAt: today });
+  const rowIds = new Set([meta.row, ...(meta.rows || [])].filter(Boolean));
+  let raised = false;
+  for (const rowId of rowIds) {
+    const stats = rowChunkStats(rowId);
+    if (!stats || stats.done !== stats.total) continue;
+    if (getSectionStatus(rowId) < 1) {
+      setSectionStatus(rowId, 1);
+      raised = true;
+    }
+  }
+  if (raised) ensureSkeletonActivation(today);
+  if (hasToken()) requestPush("learn");
+}
+
+function hashRoute() {
+  let key = (location.hash || "").replace(/^#/, "");
+  try { key = decodeURIComponent(key); } catch (_) {}
+  if (key.startsWith("learn-")) return { tab: "learn", chunkId: key.slice("learn-".length) };
+  if (VALID_TABS.includes(key)) return { tab: key, chunkId: "" };
+  return { tab: "today", chunkId: "" };
+}
+
+function openLearn(chunkId) {
+  if (!chunkId) return;
+  const next = `#learn-${encodeURIComponent(chunkId)}`;
+  if (location.hash !== next) location.hash = next;
+  else render();
+}
+
+function readLearnMemory() {
+  try {
+    const parsed = JSON.parse(sessionStorage.getItem("study-learn-place") || "null");
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeLearnMemory(chunkId, stepId) {
+  app.ui.learnPlace = { chunkId, stepId };
+  try {
+    sessionStorage.setItem("study-learn-place", JSON.stringify({ chunkId, stepId }));
+  } catch (_) {}
+}
+
+function ensureLearnTimer(chunkId) {
+  const key = "study-learn-timer";
+  let stored = null;
+  try { stored = JSON.parse(sessionStorage.getItem(key) || "null"); } catch (_) { stored = null; }
+  if (!stored || stored.chunkId !== chunkId || !stored.startedAt) {
+    stored = { chunkId, startedAt: Date.now() };
+    try { sessionStorage.setItem(key, JSON.stringify(stored)); } catch (_) {}
+  }
+  return stored.startedAt;
+}
+
+function learnMinutes(chunkId) {
+  const started = ensureLearnTimer(chunkId);
+  return Math.max(1, Math.round((Date.now() - started) / 60000));
+}
+
+function buildLearnSteps(meta) {
+  const normal = questionsForChunk(meta).filter((question) => question.verify?.status !== "doubt");
+  const cards = cardsForChunk(meta);
+  const steps = [];
+  if (normal.length) steps.push({ id: "preview", label: "先看题" });
+  steps.push({ id: "read", label: "原文" });
+  steps.push({ id: "lecture", label: "精讲" });
+  if (cards.length) steps.push({ id: "recall", label: "想一想" });
+  steps.push({ id: "quiz", label: "做题" });
+  steps.push({ id: "done", label: "完成" });
+  return steps;
+}
+
+function currentLearnStep(chunkId, steps) {
+  const memory = app.ui.learnPlace && app.ui.learnPlace.chunkId === chunkId
+    ? app.ui.learnPlace
+    : readLearnMemory();
+  const preferred = memory && memory.chunkId === chunkId ? memory.stepId : "";
+  if (steps.some((step) => step.id === preferred)) return preferred;
+  return steps[0] ? steps[0].id : "read";
+}
+
+function renderTex(tex, display) {
+  const raw = display ? `$$${tex}$$` : `$${tex}$`;
+  if (!window.katex) return `<span class="tex-raw">${escapeHtml(raw)}</span>`;
+  try {
+    return window.katex.renderToString(tex, { displayMode: !!display, throwOnError: false });
+  } catch (_) {
+    return `<span class="tex-raw">${escapeHtml(raw)}</span>`;
+  }
+}
+
+function imageFileName(src) {
+  const clean = String(src || "").replace(/[<>]/g, "").split("?")[0];
+  const name = clean.split("/").pop() || "";
+  try { return decodeURIComponent(name); } catch (_) { return name; }
+}
+
+function imageHtml(src, alt) {
+  const file = imageFileName(src);
+  const url = app.study.imageUrls[file];
+  if (!url) return `<span class="small">${escapeHtml(alt || file || "图片")}</span>`;
+  return `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt || "")}">`;
+}
+
+function renderPlain(text) {
+  return escapeHtml(text).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
+}
+
+function renderRich(md) {
+  const source = String(md || "");
+  const re = /\$\$([\s\S]+?)\$\$|!\[([^\]]*)\]\(<([^>]+)>\)|!\[([^\]]*)\]\(([^)]+)\)|\$([^$\n]+?)\$/g;
+  let last = 0;
+  let match;
+  const parts = [];
+  while ((match = re.exec(source))) {
+    parts.push(renderPlain(source.slice(last, match.index)));
+    if (match[1] != null) parts.push(`<div class="read-equation">${renderTex(match[1].trim(), true)}</div>`);
+    else if (match[3] != null) parts.push(imageHtml(match[3], match[2]));
+    else if (match[5] != null) parts.push(imageHtml(match[5], match[4]));
+    else if (match[6] != null) parts.push(renderTex(match[6].trim(), false));
+    last = match.index + match[0].length;
+  }
+  parts.push(renderPlain(source.slice(last)));
+  return parts.join("");
+}
+
+function sanitizeTableHtml(html) {
+  const allowed = new Set(["TABLE", "THEAD", "TBODY", "TR", "TD", "TH"]);
+  const drop = new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "LINK", "META"]);
+  const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+  const clean = (node) => {
+    const out = [];
+    for (const child of [...node.childNodes]) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        out.push(document.createTextNode(child.textContent));
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      if (drop.has(child.tagName)) continue;
+      if (!allowed.has(child.tagName)) {
+        out.push(...clean(child));
+        continue;
+      }
+      const el = document.createElement(child.tagName.toLowerCase());
+      if (child.tagName === "TD" || child.tagName === "TH") {
+        const colspan = child.getAttribute("colspan");
+        const rowspan = child.getAttribute("rowspan");
+        if (colspan && /^\d+$/.test(colspan)) el.setAttribute("colspan", colspan);
+        if (rowspan && /^\d+$/.test(rowspan)) el.setAttribute("rowspan", rowspan);
+      }
+      for (const grand of clean(child)) el.appendChild(grand);
+      out.push(el);
+    }
+    return out;
+  };
+  const holder = document.createElement("div");
+  for (const node of clean(doc.body)) holder.appendChild(node);
+  return holder.innerHTML;
+}
+
+function splitTableMd(md) {
+  const text = String(md || "");
+  const match = text.match(/<table[\s\S]*<\/table>/i);
+  if (!match) return { before: text, table: "" };
+  return { before: text.slice(0, match.index), table: match[0] };
+}
+
+function plainExcerpt(md) {
+  return String(md || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\$\$[\s\S]*?\$\$/g, " ")
+    .replace(/\$[^$\n]+\$/g, " ")
+    .replace(/[#*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 600);
+}
+
+function askPrompt(meta, block) {
+  const printed = block && block.printed != null ? block.printed : (meta && meta.printedFrom);
+  return `我在学注册消防工程师《${bookTitle(meta && meta.book)}》印刷页 ${printed}。这段原文：「${plainExcerpt(block && block.md)}」。请先讲清楚为什么需要这条规定（从没有它会出什么问题讲起），再讲考试怎么考。`;
+}
+
+function stripHashes(md) {
+  return String(md || "").replace(/^#{1,6}\s*/, "");
+}
+
+function renderReadBlocks(meta, body) {
+  const blocks = body && Array.isArray(body.blocks) ? body.blocks : [];
+  let lastPrinted = null;
+  return blocks.map((block) => {
+    const kind = block.kind || "para";
+    const printed = block.printed;
+    const showPage = printed != null && printed !== lastPrinted;
+    if (printed != null) lastPrinted = printed;
+    const mark = showPage ? `p.${printed}` : "";
+    let inner = "";
+    let ask = false;
+    if (kind === "h3" || kind === "h4" || kind === "h5" || kind === "h6" || kind === "fixed") {
+      const tag = kind === "fixed" ? "h6" : kind;
+      inner = `<${tag}>${renderRich(stripHashes(block.md))}</${tag}>`;
+    } else if (kind === "table") {
+      ask = true;
+      const parts = splitTableMd(block.md);
+      const table = parts.table ? `<div class="read-table-wrap">${sanitizeTableHtml(parts.table)}</div>` : "";
+      inner = `${parts.before ? `<div>${renderRich(parts.before)}</div>` : ""}${table}`;
+    } else if (kind === "equation") {
+      const tex = String(block.md || "").replace(/^\$\$/, "").replace(/\$\$$/, "").trim();
+      inner = `<div class="read-equation">${renderTex(tex, true)}</div>`;
+    } else if (kind === "figure") {
+      inner = `<div class="read-figure">${renderRich(block.md)}</div>`;
+    } else {
+      if (kind === "para") ask = true;
+      const klass = kind === "footnote" || kind === "qr" || kind === "review_insert" ? "small" : "";
+      inner = `<div class="${klass}">${renderRich(block.md)}</div>`;
+    }
+    const askId = ask ? `ask-${block.id}` : "";
+    if (ask) app.ui.askText[String(block.id)] = askPrompt(meta, block);
+    return `
+      <div class="read-block">
+        <div class="page-mark mono">${escapeHtml(mark)}</div>
+        <div class="read-copy${ask ? " has-ask" : ""}">
+          ${ask ? `<button type="button" class="ask-btn" data-ask="${escapeHtml(String(block.id))}">问</button>` : ""}
+          ${inner}
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+function applyAskResult() {
+  const status = document.getElementById("learn-ask-status");
+  const box = document.getElementById("learn-ask-fallback");
+  if (status) {
+    status.hidden = !app.ui.askNotice;
+    status.textContent = app.ui.askNotice || "";
+  }
+  if (box) {
+    box.hidden = !app.ui.askFallback;
+    box.value = app.ui.askFallback || "";
+    if (app.ui.askFallback) {
+      box.focus();
+      box.select();
+    }
+  }
+}
+
+async function copyAsk(text) {
+  const write = navigator.clipboard && navigator.clipboard.writeText
+    ? navigator.clipboard.writeText(text)
+    : Promise.reject(new Error("no clipboard"));
+  let copied = false;
+  try {
+    await Promise.race([
+      write,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("clipboard timeout")), 800))
+    ]);
+    copied = true;
+  } catch (_) {
+    copied = false;
+  }
+  app.ui.askNotice = copied ? "已复制，粘贴给 Claude 或顾问" : "";
+  app.ui.askFallback = copied ? "" : text;
+  applyAskResult();
+}
+
+function previewStepHtml(meta) {
+  const questions = questionsForChunk(meta).filter((question) => question.verify?.status !== "doubt").slice(0, 3);
+  return `
+    <p>先看看这一块会怎么考，带着问题读。</p>
+    ${questions.map((question, index) => `
+      <article class="panel">
+        <p><strong>${index + 1}.</strong> ${escapeHtml(question.stem || "（题干缺失）")}</p>
+        ${question.options ? `<ul class="option-list">
+          ${Object.entries(question.options).map(([key, value]) => `<li><span class="mono">${escapeHtml(key)}.</span> ${escapeHtml(value)}</li>`).join("")}
+        </ul>` : ""}
+      </article>
+    `).join("")}
+  `;
+}
+
+function readStepHtml(meta) {
+  if (!canReadRepo()) {
+    return `<p>原文存在你的私有仓库里，需要先在设置页连接 GitHub。</p>
+      <div class="button-row"><button id="learn-go-settings" class="btn btn-secondary tap-target" type="button">去设置</button></div>`;
+  }
+  kickChunkBody(meta);
+  kickKatex();
+  const body = app.study.bodies[meta.id];
+  if (!body) {
+    const state = app.study.bodyState[meta.id];
+    if (state === "missing" || state === "error") return `<p>这一块的原文暂时没读到。</p>`;
+    return `<p class="small">正在读取原文…</p>`;
+  }
+  return `<div class="read-flow">${renderReadBlocks(meta, body)}</div>`;
+}
+
+function lectureStepHtml(meta) {
+  const lectures = lecturesForChunk(meta);
+  if (!lectures.length) {
+    const cards = cardsForChunk(meta);
+    return `
+      <p>这一块的精讲还在制作中</p>
+      ${cards.length ? `<h2 class="h2">要点</h2>${cards.map((card) => `
+        <article class="recall-card">
+          <p>${escapeHtml(card.q || "")}</p>
+          <button type="button" class="btn btn-secondary tap-target" data-point="${escapeHtml(card.id)}">点开看答案</button>
+          <p class="point-answer" data-point-answer="${escapeHtml(card.id)}" hidden>${escapeHtml(card.a || "")}</p>
+        </article>
+      `).join("")}` : ""}
+    `;
+  }
+  return lectures.map((item) => {
+    const href = lectureHref(item.url);
+    return `
+      <p><a id="learn-lecture-open" href="${escapeHtml(href)}">在新页面打开</a></p>
+      <iframe class="lecture-frame" title="${escapeHtml(item.title || "精讲")}" src="${escapeHtml(href)}"></iframe>
+    `;
+  }).join("");
+}
+
+function recallStepHtml(meta) {
+  const cards = cardsForChunk(meta);
+  if (!cards.length) return "";
+  const index = Math.min(app.ui.learnRecall || 0, cards.length - 1);
+  const card = cards[index];
+  return `
+    <article class="recall-card">
+      <p class="small">${index + 1} / ${cards.length}</p>
+      <p>${escapeHtml(card.q || "")}</p>
+      ${app.ui.learnReveal ? `<p>${escapeHtml(card.a || "")}</p><p class="small mono">${escapeHtml(card.anchor || "")}</p>` : `<button id="learn-reveal" class="btn btn-secondary tap-target" type="button">点开看答案</button>`}
+      <div class="button-row">
+        ${index > 0 ? `<button id="learn-recall-prev" class="btn btn-secondary tap-target" type="button">上一张</button>` : ""}
+        ${index < cards.length - 1 ? `<button id="learn-recall-next" class="btn btn-secondary tap-target" type="button">下一张</button>` : ""}
+      </div>
+    </article>
+  `;
+}
+
+function learnQuestionHtml(question) {
+  const attempt = getAttempt(question.id);
+  const lastTry = latestTry(question.id);
+  const verify = question.verify || {};
+  const verifyLabel = verify.status === "ok" ? "已核实" : verify.status === "fixed" ? "已按教材改正" : "存疑";
+  const verifyClass = verify.status === "ok" ? "status-ok" : verify.status === "fixed" ? "status-warn" : "status-bad";
+  const options = question.options ? Object.entries(question.options) : [];
+  const multi = isMultiSelect(question.type);
+  const hasAnswer = String(question.answer || "").trim().length > 0;
+  const explanation = String(question.explanation || "").trim();
+  const fixedHint = verify.status === "fixed"
+    ? ` <span class="small">来源答案 ${escapeHtml(String(question.source_answer ?? ""))} 有误，已按教材改正</span>`
+    : "";
+  return `
+    <article class="panel">
+      <p>${escapeHtml(question.stem || "（题干缺失）")}</p>
+      ${options.length ? `
+        <ul class="option-list">
+          ${options.map(([key, value]) => `
+            <li>
+              <button class="${optionButtonClass(key, question, lastTry, app.ui.learnChoice)}" data-learn-choice="${escapeHtml(key)}" type="button">
+                <span class="mono">${escapeHtml(key)}.</span>&nbsp;<span>${escapeHtml(value)}</span>
+              </button>
+            </li>`).join("")}
+        </ul>
+        ${multi ? `<div class="button-row"><button id="learn-submit" class="btn btn-primary tap-target" type="button">提交答案</button></div>` : ""}
+      ` : `<p class="small">该题暂无结构化选项，可直接看解析。</p>`}
+      ${lastTry ? `
+        <section class="panel">
+          <p><span class="status-pill ${lastTry.ok ? "status-ok" : "status-bad"}">${lastTry.ok ? "答对了" : "答错了"}</span></p>
+          ${hasAnswer ? `<p><strong>正确答案：</strong>${escapeHtml(String(question.answer))}${fixedHint}</p>` : `<p>答案存疑，见说明</p>`}
+          ${explanation ? `<p><strong>解析：</strong>${escapeHtml(explanation)}</p>` : ""}
+          ${verify.note ? `<p><strong>说明：</strong>${escapeHtml(verify.note)}</p>` : ""}
+          <p><strong>教材原文摘录：</strong>${escapeHtml(verify.excerpt || "（暂无）")}</p>
+          <p class="small mono">${escapeHtml(verify.anchor || question.anchor || "-")}</p>
+          ${anchorPrintedHtml(verify.anchor || question.anchor || "")}
+          <p><span class="verify-badge ${verifyClass}">${escapeHtml(verifyLabel)}${verify.status === "fixed" && verify.note ? `：${escapeHtml(verify.note)}` : ""}</span></p>
+        </section>
+      ` : ""}
+      ${lastTry && !lastTry.ok && verify.status !== "doubt" ? `
+        <section class="panel">
+          <p>错因：</p>
+          <div class="button-row">
+            ${["不会", "记混", "没读清题"].map((txt) => `<button class="btn ${attempt.err === txt ? "btn-primary" : "btn-secondary"} tap-target" data-learn-err="${escapeHtml(txt)}" type="button">${escapeHtml(txt)}</button>`).join("")}
+          </div>
+        </section>` : ""}
+      <section class="panel">
+        <label for="learn-note" class="label">我的解析（答案 + 依据 + 规律）</label>
+        <textarea id="learn-note" class="textarea" placeholder="写给下一次复习的自己">${escapeHtml(attempt.note || "")}</textarea>
+        <p class="small">失焦或停顿 1.5 秒自动保存。</p>
+      </section>
+    </article>
+  `;
+}
+
+function quizStepHtml(meta) {
+  const questions = questionsForChunk(meta);
+  if (!questions.length) return `<p>这一块没有真题，下一步完成即可。</p>`;
+  const normal = questions.filter((question) => question.verify?.status !== "doubt");
+  const doubts = questions.filter((question) => question.verify?.status === "doubt");
+  const current = questions.find((question) => question.id === app.ui.learnQid) || null;
+  if (app.ui.learnQuiz === "question" && current) {
+    return `
+      <div class="button-row"><button id="learn-back-list" class="btn btn-secondary tap-target" type="button">← 题目列表</button></div>
+      ${learnQuestionHtml(current)}
+    `;
+  }
+  const row = (question) => `
+    <li class="q-item">
+      <button class="q-btn" data-learn-qid="${escapeHtml(question.id)}" type="button">
+        <span class="q-copy">
+          <span class="q-stem">${escapeHtml(stemPreview(question.stem))}</span>
+          <span class="q-meta">${escapeHtml(String(question.year || "----"))} · ${escapeHtml(question.subject || "")} · ${escapeHtml(question.type || "")}</span>
+        </span>
+        <span class="${getQuestionStateClass(question.id)}">${escapeHtml(getQuestionState(question.id))}</span>
+      </button>
+    </li>`;
+  return `
+    <ul class="q-list">${normal.map(row).join("")}</ul>
+    ${doubts.length ? `
+      <details class="doubt-fold" ${app.ui.learnDoubtOpen ? "open" : ""}>
+        <summary class="doubt-summary">存疑（不计入复习）</summary>
+        <ul class="q-list">${doubts.map(row).join("")}</ul>
+      </details>
+    ` : ""}
+  `;
+}
+
+function doneStepHtml(meta) {
+  const score = chunkScore(meta);
+  const chunks = unitChunks([meta.unit]);
+  const next = nextChunkAfter(chunks, meta);
+  return `
+    <p id="learn-minutes">用时 ${learnMinutes(meta.id)} 分钟</p>
+    <p id="learn-score">做题 ${score.done} 道对 ${score.correct} 道</p>
+    <div class="button-row">
+      <button id="learn-finish" class="btn btn-primary tap-target" type="button">这一块学完了</button>
+      ${next ? `<button id="learn-finish-next" class="btn btn-secondary tap-target" type="button" data-next-chunk="${escapeHtml(next.id)}">学下一块</button>` : ""}
+    </div>
+  `;
+}
+
+function renderLearn() {
+  const root = document.getElementById("page-learn");
+  if (!root) return;
+  if (app.ui.tab !== "learn") {
+    if (root.innerHTML) root.innerHTML = "";
+    return;
+  }
+  if (!app.data) {
+    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+    return;
+  }
+  const chunkId = app.ui.routeChunkId || hashRoute().chunkId;
+  const weekUnits = app.data ? getWeekContext(shanghaiToday()).units : [];
+  weekUnits.forEach((unitId) => kickUnitIndex(unitId));
+  const meta = findChunkMeta(chunkId);
+  if (!meta) {
+    const waiting = weekUnits.some((unitId) => app.study.indexState[unitId] === "loading" || !app.study.indexState[unitId]);
+    root.innerHTML = waiting
+      ? `<p class="small">正在读取学习内容…</p>`
+      : `<p>原文存在你的私有仓库里，需要先在设置页连接 GitHub。</p>
+         <p>连接 GitHub 后才能看到学习内容</p>
+         <div class="button-row"><button id="learn-go-settings" class="btn btn-secondary tap-target" type="button">去设置</button></div>`;
+    const settingsBtn = document.getElementById("learn-go-settings");
+    if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
+    return;
+  }
+  if (canReadRepo()) kickChunkBody(meta);
+  if (app.ui.learnBoundChunk !== meta.id) {
+    app.ui.learnBoundChunk = meta.id;
+    app.ui.learnQid = "";
+    app.ui.learnChoice = "";
+    app.ui.learnQuiz = "list";
+    app.ui.learnRecall = 0;
+    app.ui.learnReveal = false;
+    app.ui.learnDoubtOpen = false;
+  }
+  ensureLearnTimer(meta.id);
+  const steps = buildLearnSteps(meta);
+  const stepId = currentLearnStep(meta.id, steps);
+  writeLearnMemory(meta.id, stepId);
+  app.ui.askText = {};
+  const stepIndex = Math.max(0, steps.findIndex((step) => step.id === stepId));
+  let body = "";
+  if (stepId === "preview") body = previewStepHtml(meta);
+  else if (stepId === "read") body = readStepHtml(meta);
+  else if (stepId === "lecture") body = lectureStepHtml(meta);
+  else if (stepId === "recall") body = recallStepHtml(meta);
+  else if (stepId === "quiz") body = quizStepHtml(meta);
+  else body = doneStepHtml(meta);
+  root.innerHTML = `
+    <div class="learn-top">
+      <div class="button-row"><button id="learn-back" class="btn btn-secondary tap-target" type="button">← 今天</button></div>
+      <h1 class="h1" id="learn-title">${escapeHtml(meta.title || meta.id)}</h1>
+      <p class="small" id="learn-source">${escapeHtml(bookName(meta.book))} · 印刷页 ${escapeHtml(printedRange(meta))}</p>
+    </div>
+    <ol class="learn-steps" id="learn-steps" data-step-count="${steps.length}">
+      ${steps.map((step) => `
+        <li>
+          <button type="button" class="step-jump${step.id === stepId ? " is-current" : ""}" data-step="${escapeHtml(step.id)}" aria-label="${escapeHtml(step.label)}"${step.id === stepId ? ` aria-current="step"` : ""}>
+            <span class="step-dot" aria-hidden="true"></span>
+            <span class="step-label">${escapeHtml(step.label)}</span>
+          </button>
+        </li>
+      `).join("")}
+    </ol>
+    <div id="learn-step-body">${body}</div>
+    <p id="learn-ask-status" class="small" ${app.ui.askNotice ? "" : "hidden"}>${escapeHtml(app.ui.askNotice || "")}</p>
+    <textarea id="learn-ask-fallback" class="ask-fallback textarea" readonly ${app.ui.askFallback ? "" : "hidden"}>${escapeHtml(app.ui.askFallback || "")}</textarea>
+    <div class="learn-bar">
+      <button id="learn-prev" class="btn btn-secondary tap-target" type="button" ${stepIndex === 0 ? "disabled" : ""}>上一步</button>
+      <button id="learn-next" class="btn btn-primary tap-target" type="button" ${stepIndex >= steps.length - 1 ? "disabled" : ""}>下一步</button>
+    </div>
+  `;
+  const goStep = (nextId) => {
+    app.ui.learnChoice = "";
+    app.ui.askNotice = "";
+    app.ui.askFallback = "";
+    writeLearnMemory(meta.id, nextId);
+    render();
+  };
+  document.getElementById("learn-back").addEventListener("click", () => navigateTo("today"));
+  const prev = document.getElementById("learn-prev");
+  const next = document.getElementById("learn-next");
+  if (prev) prev.addEventListener("click", () => { if (stepIndex > 0) goStep(steps[stepIndex - 1].id); });
+  if (next) next.addEventListener("click", () => { if (stepIndex < steps.length - 1) goStep(steps[stepIndex + 1].id); });
+  root.querySelectorAll("[data-step]").forEach((button) => {
+    button.addEventListener("click", () => goStep(button.dataset.step));
+  });
+  root.querySelectorAll("[data-ask]").forEach((button) => {
+    button.addEventListener("click", () => copyAsk(app.ui.askText[button.dataset.ask] || ""));
+  });
+  const settingsBtn = document.getElementById("learn-go-settings");
+  if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
+  root.querySelectorAll("[data-point]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const answer = root.querySelector(`[data-point-answer="${button.dataset.point}"]`);
+      if (answer) answer.hidden = false;
+      button.hidden = true;
+    });
+  });
+  const reveal = document.getElementById("learn-reveal");
+  if (reveal) reveal.addEventListener("click", () => { app.ui.learnReveal = true; render(); });
+  const recallPrev = document.getElementById("learn-recall-prev");
+  if (recallPrev) recallPrev.addEventListener("click", () => { app.ui.learnRecall -= 1; app.ui.learnReveal = false; render(); });
+  const recallNext = document.getElementById("learn-recall-next");
+  if (recallNext) recallNext.addEventListener("click", () => { app.ui.learnRecall += 1; app.ui.learnReveal = false; render(); });
+  const finish = document.getElementById("learn-finish");
+  if (finish) finish.addEventListener("click", () => { markChunkDone(meta); navigateTo("today"); });
+  const finishNext = document.getElementById("learn-finish-next");
+  if (finishNext) {
+    finishNext.addEventListener("click", () => {
+      const nextId = finishNext.dataset.nextChunk;
+      markChunkDone(meta);
+      app.ui.learnBoundChunk = "";
+      writeLearnMemory(nextId, "");
+      openLearn(nextId);
+    });
+  }
+  wireLearnQuiz(meta);
+}
+
+function wireLearnQuiz(meta) {
+  const root = document.getElementById("page-learn");
+  if (!root) return;
+  const fold = root.querySelector(".doubt-fold");
+  if (fold) fold.addEventListener("toggle", () => { app.ui.learnDoubtOpen = fold.open; });
+  root.querySelectorAll("[data-learn-qid]").forEach((button) => {
+    button.addEventListener("click", () => {
+      app.ui.learnQid = button.dataset.learnQid;
+      app.ui.learnChoice = "";
+      app.ui.learnQuiz = "question";
+      const question = questionsForChunk(meta).find((item) => item.id === app.ui.learnQid);
+      if (question && question.verify?.status === "doubt") app.ui.learnDoubtOpen = true;
+      render();
+    });
+  });
+  const back = document.getElementById("learn-back-list");
+  if (back) {
+    back.addEventListener("click", () => {
+      app.ui.learnQuiz = "list";
+      app.ui.learnChoice = "";
+      render();
+    });
+  }
+  const current = questionsForChunk(meta).find((question) => question.id === app.ui.learnQid);
+  if (!current) return;
+  root.querySelectorAll("[data-learn-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.learnChoice;
+      if (isMultiSelect(current.type)) {
+        const set = new Set(String(app.ui.learnChoice || "").split("").filter(Boolean));
+        if (set.has(key)) set.delete(key); else set.add(key);
+        app.ui.learnChoice = [...set].sort().join("");
+        render();
+      } else {
+        app.ui.learnChoice = "";
+        submitAnswer(current, key);
+      }
+    });
+  });
+  const submit = document.getElementById("learn-submit");
+  if (submit) {
+    submit.addEventListener("click", () => {
+      if (!app.ui.learnChoice) return;
+      const choice = app.ui.learnChoice;
+      app.ui.learnChoice = "";
+      submitAnswer(current, choice);
+    });
+  }
+  root.querySelectorAll("[data-learn-err]").forEach((button) => {
+    button.addEventListener("click", () => setPracticeErr(current.id, button.dataset.learnErr));
+  });
+  const noteEl = document.getElementById("learn-note");
+  if (!noteEl) return;
+  const saveNoteDebounced = () => {
+    clearTimeout(app.ui.noteTimer);
+    app.ui.noteTimer = setTimeout(() => {
+      savePracticeNote(current.id, noteEl.value.trim());
+    }, 1500);
+  };
+  noteEl.addEventListener("input", saveNoteDebounced);
+  noteEl.addEventListener("blur", () => savePracticeNote(current.id, noteEl.value.trim()));
+}
+
 function renderToday(today, weekCtx) {
   const root = document.getElementById("page-today");
   if (!app.data) {
@@ -3012,125 +4365,110 @@ function renderToday(today, weekCtx) {
     root.innerHTML = `<div class="app-error">${app.error}</div>`;
     return;
   }
-
-  const dueCards = reviewDueCount(today);
-  const eta = Math.round(dueCards * 0.6);
-  const weekUnits = weekCtx.units;
-  const weekRows = weekUnits.flatMap((u) => app.derived.unitRows.get(u) || []);
-  const nextRow = weekRows.find((row) => getSectionStatus(row.id) === 0);
-  const weekQuestions = app.data.questions.questions.filter((q) => weekUnits.includes(q.unit));
-  const pendingQuestions = weekQuestions.filter((q) => !latestTry(q.id)).length;
+  const weekUnits = weekCtx.units || [];
+  weekUnits.forEach((unitId) => kickUnitIndex(unitId));
+  const review = todayReviewView(today);
+  const chunks = unitChunks(weekUnits);
+  const indexReady = weekUnits.some((unitId) => app.study.indexes[unitId]);
+  const indexSettled = weekUnits.every((unitId) => {
+    const state = app.study.indexState[unitId];
+    return state === "ready" || state === "missing" || state === "error";
+  });
+  const doneToday = chunks.filter((chunk) => {
+    const rec = app.state.chunks && app.state.chunks[chunk.id];
+    return rec && rec.doneAt === today;
+  }).sort((a, b) => ((app.state.chunks[b.id] || {}).updatedAt || 0) - ((app.state.chunks[a.id] || {}).updatedAt || 0));
+  const firstOpen = chunks.find((chunk) => !chunkDone(chunk.id)) || null;
+  const shown = doneToday[0] || firstOpen;
+  const learnedCount = chunks.filter((chunk) => chunkDone(chunk.id)).length;
+  const remainMin = chunks.filter((chunk) => !chunkDone(chunk.id)).reduce((sum, chunk) => sum + (Number(chunk.minutes) || 0), 0);
   const currentWeek = weekCtx.week;
-  const weekCase = currentWeek?.case ? app.derived.rowById.get(currentWeek.case) : null;
-  const weekCaseDone = weekCase ? getSectionStatus(weekCase.id) >= 1 : false;
-  const doneRows = weekRows.filter((r) => getSectionStatus(r.id) >= 1).length;
-  const rowTotal = weekRows.length || 1;
-  const progressPct = Math.round((doneRows / rowTotal) * 100);
-  const nextLecture = nextRow ? lectureForRow(nextRow.id) : null;
   const weekDoc = currentWeek ? app.state.weeks[currentWeek.start] || {} : {};
-  const baselineBlock = weekCtx.phase === "pre" ? `
-    <section class="panel">
-      <p>这周找一套综合能力真题，不计时做一遍，只看题型。</p>
-      <label class="check-row" for="baseline-done">
-        <input id="baseline-done" type="checkbox" ${app.state.baselineDone ? "checked" : ""}>
-        <span>做完了</span>
-      </label>
-    </section>
+  const daysLeft = daysLeftInWeek(today, currentWeek);
+  const submitted = weekDoc.submittedAt ? "已交" : "未交";
+  const weekLine = indexReady
+    ? `${formatUnitNames(weekUnits)} · 已学 ${learnedCount}/${chunks.length} 块 · 剩约 ${remainMin} 分钟 · 本周还剩 ${daysLeft} 天 · ${submitted}`
+    : `${formatUnitNames(weekUnits)} · 本周还剩 ${daysLeft} 天 · ${submitted}`;
+  const answered = questionsAnsweredOn(today);
+  let foot = "";
+  if (review.done && doneToday.length) {
+    foot = `<p class="today-foot is-ok" id="today-complete">今天完成了 ✓ &nbsp; 复习 ${review.reviewed} 张 · 学了 ${doneToday.length} 块 · 做题 ${answered} 道</p>`;
+  } else if (review.done) {
+    foot = `<p class="today-foot" id="today-complete">复习完成，今天也算完成。时间够的话学一块。</p>`;
+  }
+  let reviewBody = "";
+  if (!review.done) {
+    const eta = Math.round(review.remaining * 0.6);
+    reviewBody = `
+      <p class="small" id="today-review-status">到期 ${review.remaining} 张 · 约 ${eta} 分钟</p>
+      <div class="button-row"><button id="today-go-review" class="btn btn-primary tap-target" type="button">开始复习</button></div>
+    `;
+  } else if (review.reviewed > 0) {
+    reviewBody = `<p class="today-check" id="today-review-status">✓ 复习完成（答对 ${review.stats.remember || 0} / 答错 ${review.stats.wrong || 0} / 没印象 ${review.stats.blank || 0}）</p>`;
+  } else {
+    reviewBody = `<p class="small" id="today-review-status">今天没有到期的卡片</p>`;
+  }
+  let chunkBody = "";
+  if (!indexReady && !indexSettled) {
+    chunkBody = `<p class="small">正在读取学习内容…</p>`;
+  } else if (!indexReady && !canReadRepo()) {
+    chunkBody = `
+      <p id="today-chunk-missing">连接 GitHub 后才能看到学习内容</p>
+      <div class="button-row"><button id="today-go-settings" class="btn btn-secondary tap-target" type="button">去设置</button></div>
+    `;
+  } else if (!indexReady) {
+    chunkBody = `<p id="today-chunk-missing">学习内容暂时没读到。</p>`;
+  } else if (!shown) {
+    chunkBody = `<p class="small">本周的块都学完了。</p>`;
+  } else if (doneToday.length) {
+    const next = nextChunkAfter(chunks, shown);
+    chunkBody = `
+      <p id="today-chunk-title">${escapeHtml(shown.title || shown.id)}</p>
+      <p class="small">${escapeHtml(chunkMetaLine(shown))}</p>
+      <p class="today-check" id="today-chunk-done">✓ 已学完</p>
+      ${next ? `<div class="button-row"><button id="today-learn-next" class="btn btn-secondary tap-target" type="button" data-chunk="${escapeHtml(next.id)}">再学一块：${escapeHtml(next.title || next.id)}</button></div>` : `<p class="small">本周的块都学完了。</p>`}
+    `;
+  } else {
+    chunkBody = `
+      <p id="today-chunk-title">${escapeHtml(shown.title || shown.id)}</p>
+      <p class="small">${escapeHtml(chunkMetaLine(shown))}</p>
+      <div class="button-row"><button id="today-start-learn" class="btn btn-primary tap-target" type="button" data-chunk="${escapeHtml(shown.id)}">开始学</button></div>
+    `;
+  }
+  const baseline = weekCtx.phase === "pre" ? `
+    <label class="check-row baseline-line" for="baseline-done">
+      <input id="baseline-done" type="checkbox" ${app.state.baselineDone ? "checked" : ""}>
+      <span class="small">这周找一套综合能力真题，不计时做一遍，只看题型。做完了</span>
+    </label>
   ` : "";
-
   root.innerHTML = `
-    <h1 class="h1">今日</h1>
-    ${baselineBlock}
-    <section class="panel">
-      <h2 class="h2">今日任务卡</h2>
-      <div class="task-list">
-        <div class="task-item">
-          <div class="task-head">
-            <strong>1. 复习</strong>
-            <span class="status-pill ${dueCards ? "status-warn" : "status-ok"}">${dueCards ? `到期 ${dueCards} 张` : "今日无到期卡片"}</span>
-          </div>
-          <p class="small">约 ${eta} 分钟</p>
-          <div class="button-row">
-            <button id="today-go-review" class="btn btn-primary tap-target">开始复习</button>
-          </div>
-        </div>
-
-        <div class="task-item">
-          <div class="task-head">
-            <strong>2. 学新内容</strong>
-            <span class="status-pill ${nextRow ? "" : "status-ok"}">${nextRow ? "待完成" : "已完成"}</span>
-          </div>
-          ${nextRow ? `
-            <p>${bookName(nextRow.book)} · ${nextRow.chapter_title || nextRow.part_title} · ${nextRow.title}</p>
-            <p class="small mono">印刷页 ${nextRow.printed_start}</p>
-            <div class="button-row">
-              <button id="today-mark-read" class="btn btn-secondary tap-target" type="button">读完了（标记学过）</button>
-              ${nextLecture ? `<button id="today-open-lecture" class="btn btn-secondary tap-target" type="button" data-lecture-url="${escapeHtml(nextLecture.url)}">看精讲（${escapeHtml(String(nextLecture.minutes))} 分钟 · 可听）</button>` : ""}
-            </div>
-          ` : `<p class="small">本周单元已没有“未学”节。</p>`}
-        </div>
-
-        ${renderUnitLectureBlock(weekUnits)}
-
-        <div class="task-item">
-          <div class="task-head">
-            <strong>3. 做题</strong>
-            <span class="status-pill ${pendingQuestions ? "" : "status-ok"}">${pendingQuestions} 题未做</span>
-          </div>
-          ${weekQuestions.length ? `
-            <p class="small">本周单元还没做过的真题：${pendingQuestions} 题。</p>
-            <div class="button-row"><button id="today-go-practice" class="btn btn-secondary tap-target">去做题</button></div>
-          ` : `
-            <p class="small">这个单元的真题还没整理，先读教材、做骨架卡。</p>
-          `}
-        </div>
-      </div>
-      <p class="small">忙的时候，只做第 1 步也算今天完成。</p>
+    <h1 class="h1">今天</h1>
+    <section class="today-board">
+      <article class="today-task">
+        <h2 class="today-kicker">① 复习</h2>
+        ${reviewBody}
+      </article>
+      <article class="today-task">
+        <h2 class="today-kicker">② 今天这一块</h2>
+        ${chunkBody}
+      </article>
     </section>
-
-    <section class="panel">
-      <h2 class="h2">本周概况</h2>
-      <p>${formatUnitNames(weekUnits)}</p>
-      <div class="progress"><span style="width:${progressPct}%"></span></div>
-      <p class="small">${doneRows}/${weekRows.length || 0} 节已学过</p>
-      ${weekCase ? `
-        <p>${weekCase.title} <span class="small mono">印刷页 ${weekCase.printed_start}</span></p>
-        <div class="button-row">
-          <button id="today-case-done" class="btn ${weekCaseDone ? "btn-secondary" : "btn-primary"} tap-target" ${weekCaseDone ? "disabled" : ""}>看完了（标记学过）</button>
-        </div>
-      ` : `<p class="small">本周不安排综合案例。</p>`}
-      <p class="small">本周作业状态：${weekDoc.submittedAt ? `已交（${weekDoc.submittedAt}）` : "未交"}</p>
-    </section>
+    ${baseline}
+    ${foot}
+    <p class="small today-week" id="today-week-line">${escapeHtml(weekLine)}</p>
   `;
-
   const baselineInput = document.getElementById("baseline-done");
   if (baselineInput) {
-    baselineInput.addEventListener("change", () => {
-      store.save("baselineDone", baselineInput.checked);
-    });
+    baselineInput.addEventListener("change", () => store.save("baselineDone", baselineInput.checked));
   }
   const reviewBtn = document.getElementById("today-go-review");
   if (reviewBtn) reviewBtn.addEventListener("click", () => navigateTo("review"));
-  const practiceBtn = document.getElementById("today-go-practice");
-  if (practiceBtn) practiceBtn.addEventListener("click", () => navigateTo("practice"));
-  const readBtn = document.getElementById("today-mark-read");
-  if (readBtn && nextRow) {
-    readBtn.addEventListener("click", () => {
-      setSectionStatus(nextRow.id, 1);
-      ensureSkeletonActivation(today);
-    });
-  }
-  const lectureBtn = document.getElementById("today-open-lecture");
-  if (lectureBtn) {
-    lectureBtn.addEventListener("click", () => openLecture(lectureBtn.getAttribute("data-lecture-url")));
-  }
-  root.querySelectorAll(".lecture-link").forEach((btn) => {
-    btn.addEventListener("click", () => openLecture(btn.getAttribute("data-lecture-url")));
-  });
-  const caseBtn = document.getElementById("today-case-done");
-  if (caseBtn && weekCase) {
-    caseBtn.addEventListener("click", () => setSectionStatus(weekCase.id, Math.max(1, getSectionStatus(weekCase.id))));
-  }
+  const settingsBtn = document.getElementById("today-go-settings");
+  if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
+  const startBtn = document.getElementById("today-start-learn");
+  if (startBtn) startBtn.addEventListener("click", () => openLearn(startBtn.dataset.chunk));
+  const nextBtn = document.getElementById("today-learn-next");
+  if (nextBtn) nextBtn.addEventListener("click", () => openLearn(nextBtn.dataset.chunk));
 }
 
 function practiceQuestionLists(unitId) {
@@ -3147,16 +4485,17 @@ function nextPracticeQuestion(current, normal, doubts) {
   return group[index + 1];
 }
 
-function optionButtonClass(key, question, lastTry) {
+function optionButtonClass(key, question, lastTry, pendingChoice) {
   const classes = ["option-btn", "tap-target"];
+  const picked = pendingChoice == null ? app.ui.practiceChoice : pendingChoice;
   const answer = String(question.answer || "").trim();
-  const showResult = !!lastTry && !app.ui.practiceChoice && /^[A-Z]+$/.test(answer);
+  const showResult = !!lastTry && !picked && /^[A-Z]+$/.test(answer);
   if (showResult) {
     const correct = new Set(answer.split(""));
     const chosen = new Set(String(lastTry.choice || "").split(""));
     if (correct.has(key)) classes.push("opt-ok");
     else if (chosen.has(key)) classes.push("opt-bad");
-  } else if (app.ui.practiceChoice.includes(key)) {
+  } else if (String(picked || "").includes(key)) {
     classes.push("on");
   }
   return classes.join(" ");
@@ -3640,7 +4979,11 @@ function renderMap() {
   groups.querySelectorAll("[data-open-unit]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.openUnit;
-      if (app.ui.openUnits.has(id)) app.ui.openUnits.delete(id); else app.ui.openUnits.add(id);
+      if (app.ui.openUnits.has(id)) app.ui.openUnits.delete(id);
+      else {
+        app.ui.openUnits.add(id);
+        kickUnitIndex(id);
+      }
       render();
     });
   });
@@ -3667,6 +5010,13 @@ function renderMap() {
       ensureSkeletonActivation(shanghaiToday());
     });
   });
+  groups.querySelectorAll("[data-learn-id]").forEach((btn) => {
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openLearn(btn.dataset.learnId);
+    });
+  });
 }
 
 function statusSegments(rows) {
@@ -3687,15 +5037,22 @@ function renderMapRow(row) {
   const lectureTag = lecture
     ? `<span class="tag lecture-tag" data-lecture-url="${escapeHtml(lecture.url)}">精讲</span>`
     : "";
+  const stats = rowChunkStats(row.id);
+  const chunkLabel = stats ? `<span class="map-chunk-count mono">${stats.done}/${stats.total} 块</span>` : "";
+  const learnBtn = stats && stats.nextId
+    ? `<button type="button" class="map-learn" data-learn-id="${escapeHtml(stats.nextId)}">学</button>`
+    : "";
   return `
-    <li>
+    <li class="map-row-line">
       <button type="button" class="map-row" data-row-lamp="${row.id}">
         <span class="lamp lamp-${status}" aria-hidden="true"></span>
         <span class="tag">${row.subject}</span>
         <span class="map-row-main">${chapter} · ${sectionName} · ${row.title}</span>
         ${lectureTag}
+        ${chunkLabel}
         <span class="map-row-page mono">印刷页 ${row.printed_start}</span>
       </button>
+      ${learnBtn}
     </li>
   `;
 }
@@ -3853,14 +5210,17 @@ function renderNav() {
 
 function renderPages() {
   const tab = app.ui.tab;
-  VALID_TABS.forEach((name) => {
+  VALID_TABS.concat(["learn"]).forEach((name) => {
     const el = document.getElementById(`page-${name}`);
     if (el) el.hidden = tab !== name;
   });
 }
 
 function render() {
-  app.ui.tab = sanitizeTab(location.hash);
+  const route = hashRoute();
+  app.ui.tab = route.tab;
+  app.ui.routeChunkId = route.chunkId;
+  document.body.classList.toggle("is-learn", route.tab === "learn");
   renderPages();
   renderNav();
   renderSettings();
@@ -3871,6 +5231,7 @@ function render() {
     if (countdown) countdown.innerHTML = `距考试 <span class="mono">--</span> 天`;
     renderSyncStatus();
     renderToday(today, { phase: "pre", week: null, weekLabel: "加载中", units: [] });
+    renderLearn();
     return;
   }
   const weekCtx = getWeekContext(today);
@@ -3881,16 +5242,21 @@ function render() {
   renderMap();
   renderWeek(today, weekCtx);
   renderPlan(today, weekCtx);
+  renderLearn();
+}
+
+function knownHash(hash) {
+  let key = String(hash || "").replace(/^#/, "");
+  try { key = decodeURIComponent(key); } catch (_) {}
+  return VALID_TABS.includes(key) || key.startsWith("learn-");
 }
 
 function wireRouting() {
   window.addEventListener("hashchange", () => {
-    const key = (location.hash || "").replace(/^#/, "");
-    if (!VALID_TABS.includes(key)) {
+    if (!knownHash(location.hash)) {
       location.hash = "#today";
       return;
     }
-    app.ui.tab = key;
     render();
   });
   const syncStatus = document.getElementById("sync-status");
@@ -3915,10 +5281,10 @@ async function boot() {
   loadSyncMeta();
   loadStateFromLocal();
   app.sync.phase = hasToken() ? "syncing" : "disconnected";
-  if (!location.hash || !VALID_TABS.includes(location.hash.slice(1))) {
+  if (!knownHash(location.hash)) {
     location.hash = "#today";
   }
-  app.ui.tab = sanitizeTab(location.hash);
+  app.ui.tab = hashRoute().tab;
   wireRouting();
   onChange(() => render());
   render();
