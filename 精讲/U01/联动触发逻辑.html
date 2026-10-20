@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>联动的“与”逻辑</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* 布局：单栏阅读（最大 720px），顶部固定一条"可听"播放条；正文按 Reconstruct 顺序：没有规定的楼 → 推导 → 落到原文 → 类比 → 想一想 */
+:root {
+  --bg: #eef0f2; --panel: #f8f9fa; --ink: #1d2329; --ink-2: #56606b; --line: #d3d8dd;
+  --accent: #c4271d; --accent-soft: #c4271d1a;
+  --lamp-read: #3d7fb8; --lamp-done: #d39a12; --ok: #2f9a5d; --bad: #c4271d;
+  --font-display: "Noto Serif SC", "Songti SC", serif;
+  --font-body: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #15191d; --panel: #1c2126; --ink: #e4e8ec; --ink-2: #98a2ad; --line: #2c333a;
+  --accent: #e5483c; --accent-soft: #e5483c22;
+  --lamp-read: #5b9bd5; --lamp-done: #e3ad2e; --ok: #45b878; --bad: #e5483c; color-scheme: dark; } }
+* { box-sizing: border-box; }
+html { padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px); }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.75 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.page { max-width: 720px; margin: 0 auto; padding-block: 0 64px; }
+.player { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg);
+  padding-block: 12px; border-bottom: 1px solid var(--line); display: grid; gap: 8px; }
+.player-row { display: flex; align-items: center; gap: 12px; }
+.play { min-width: 44px; height: 44px; border-radius: 22px; border: 0; background: var(--accent); color: #fff;
+  font: 600 15px var(--font-body); padding: 0 16px; cursor: pointer; }
+.play:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bar { flex: 1; height: 4px; background: var(--line); border-radius: 2px; position: relative; cursor: pointer; }
+.bar i { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 2px; width: 0; }
+.time { font: 13px var(--font-mono); color: var(--ink-2); font-variant-numeric: tabular-nums; min-width: 92px; text-align: right; }
+.now { font-size: 14px; color: var(--ink-2); min-height: 1.6em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.now b { color: var(--ink); font-weight: 600; margin-right: 6px; }
+.eyebrow { font: 500 12px var(--font-mono); letter-spacing: .06em; color: var(--ink-2); margin: 28px 0 4px; }
+h1 { font: 600 30px/1.3 var(--font-display); margin: 0 0 6px; text-wrap: balance; }
+.meta { color: var(--ink-2); font-size: 14px; margin: 0 0 8px; }
+h2 { font: 600 21px/1.4 var(--font-display); margin: 40px 0 10px; text-wrap: balance; display: flex; gap: 10px; align-items: baseline; }
+h2 .step { font: 500 13px var(--font-mono); color: var(--accent); }
+p { margin: 0 0 14px; }
+.scene { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; }
+.scene p:last-child { margin: 0; }
+.punch { font-weight: 600; border-left: 3px solid var(--accent); padding-left: 12px; margin: 18px 0; }
+figure { margin: 18px 0; }
+figure svg { width: 100%; height: auto; display: block; }
+figcaption { font-size: 13px; color: var(--ink-2); margin-top: 6px; }
+.tbl { overflow-x: auto; border-top: 1px solid var(--line); margin: 14px 0; }
+table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 15px; }
+th, td { text-align: left; vertical-align: top; padding: 10px 8px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; letter-spacing: .04em; color: var(--ink-2); font-weight: 600; }
+td .a { font: 12px var(--font-mono); color: var(--ink-2); display: block; margin-top: 2px; }
+.tag { display: inline-block; font-size: 12px; line-height: 20px; padding: 0 7px; border-radius: 10px; border: 1px solid; white-space: nowrap; }
+.tag.why { color: var(--lamp-read); border-color: var(--lamp-read); }
+.tag.rule { color: var(--lamp-done); border-color: var(--lamp-done); }
+.hl { background: var(--accent-soft); border-radius: 3px; padding: 0 3px; }
+.cmp { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin: 14px 0; }
+.cmp > div { border: 1px solid var(--line); border-radius: 6px; padding: 14px 16px; min-width: 0; }
+.cmp h3 { font-size: 15px; margin: 0 0 6px; }
+.cmp .yes h3 { color: var(--ok); } .cmp .no h3 { color: var(--bad); }
+.cmp p { font-size: 15px; margin: 0; }
+details { border-top: 1px solid var(--line); padding-block: 12px; }
+details:last-of-type { border-bottom: 1px solid var(--line); }
+summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; gap: 10px; }
+summary::-webkit-details-marker { display: none; }
+summary::before { content: "+"; font-family: var(--font-mono); color: var(--accent); width: 1em; flex: none; }
+details[open] summary::before { content: "−"; }
+details .ans { margin: 10px 0 0 1.6em; color: var(--ink); font-size: 16px; }
+details .ans .src { color: var(--ink-2); font-size: 13px; }
+.transcript { margin-top: 12px; }
+.line { display: grid; grid-template-columns: 2.4em minmax(0, 1fr); gap: 8px; padding: 6px 8px; border-radius: 4px; cursor: pointer; }
+.line .who { font: 600 13px/1.9 var(--font-body); color: var(--ink-2); }
+.line.on { background: var(--accent-soft); }
+.line.on .who { color: var(--accent); }
+.exam li { margin-bottom: 8px; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <div class="player" role="region" aria-label="播放讲解">
+    <div class="player-row">
+      <button class="play" id="play" type="button">▶ 听讲解</button>
+      <div class="bar" id="bar" aria-hidden="true"><i id="fill"></i></div>
+      <span class="time" id="time">0:00 / 3:43</span>
+    </div>
+    <div class="now" id="now">两人对谈，约 4 分钟。可以边听边看下面的图和表。</div>
+    <audio id="audio" src="联动触发逻辑.mp3" preload="metadata"></audio>
+  </div>
+
+  <p class="eyebrow">U01 火灾自动报警系统 · 精讲</p>
+  <h1>联动的“与”逻辑</h1>
+  <p class="meta">对应教材：实务下册 第十章 第二节 五、系统的控制（印刷页 522～527）· 阅读约 7 分钟</p>
+
+  <h2><span class="step">01</span>先想象一栋没有这条规定的楼</h2>
+  <div class="scene">
+    <p>这栋楼的规定只有一句：<b>任何一只探测器报警，联动设备马上动作。</b></p>
+    <p>某天夜里，三楼走道一只感烟探测器里钻进了小虫子，报警了。三秒后，走道上的防火卷帘落下来，排烟风机开始转，应急广播响起“请立即疏散”。值班员赶到现场，什么也没烧着。</p>
+    <p>这种事一个月来三次。物业烦了，把联动控制器从“自动”拨到“手动”。半年后真的着火了，系统报了警，但什么都没动。</p>
+  </div>
+  <p class="punch">问题出在哪？报警误了，代价是值班员白跑一趟；动作误了，代价是堵住疏散通道、打乱整栋楼的气流。<br>两件事的代价不一样，不该用同一个门槛。</p>
+
+  <h2><span class="step">02</span>推出规则：报警可以敏感，动作必须确认</h2>
+  <p>怎么确认？最直接的办法是：<b>要两个互相独立的装置同时报警</b>，设备才动作。一只探测器误报很常见，两只不相干的装置同时误报就少得多。</p>
+  <figure>
+    <svg viewBox="0 0 680 220" role="img" aria-label="两个独立的报警信号经“与”逻辑后，联动控制器在 3 秒内发出控制信号，驱动消防设备">
+      <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--ink-2)"/></marker></defs>
+      <g font-family="-apple-system, PingFang SC, sans-serif" font-size="14" fill="var(--ink)">
+        <rect x="10" y="30" width="150" height="50" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="85" y="60" text-anchor="middle">信号 1：探测器</text>
+        <rect x="10" y="130" width="150" height="50" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="85" y="152" text-anchor="middle">信号 2：另一只探测器</text>
+        <text x="85" y="170" text-anchor="middle" font-size="12" fill="var(--ink-2)">或 手动报警按钮</text>
+        <path d="M160 55 C210 55 210 95 240 100" fill="none" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <path d="M160 155 C210 155 210 115 240 110" fill="none" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <circle cx="275" cy="105" r="34" fill="var(--accent)"/>
+        <text x="275" y="111" text-anchor="middle" fill="#fff" font-size="18" font-weight="600">与</text>
+        <path d="M309 105 H370" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <rect x="372" y="75" width="130" height="60" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="437" y="101" text-anchor="middle">联动控制器</text>
+        <text x="437" y="121" text-anchor="middle" font-size="12" fill="var(--accent)">3s 内发出信号</text>
+        <path d="M502 105 H560" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar)"/>
+        <text x="566" y="80">卷帘</text><text x="566" y="102">排烟</text><text x="566" y="124">广播</text><text x="566" y="146">水泵…</text>
+      </g>
+    </svg>
+    <figcaption>总原则：需要联动的设备，触发信号用两个独立报警装置的“与”逻辑 <span class="a">[SWX:p128:b11291]</span>；确认后 3s 内发出联动信号 <span class="a">[SWX:p127:b11286]</span>。</figcaption>
+  </figure>
+  <p>规则推出来了，但具体到每种设备，还要回答两个问题：<b>凑哪两个信号</b>，以及<b>在什么范围内凑</b>。设备不同，答案不同，这就是这一节条文多的原因。</p>
+
+  <h2><span class="step">03</span>落到原文：按“哪两个信号、在哪个范围”记</h2>
+  <p><span class="tag why">有道理</span> 能从上面的逻辑推出来，理解了就不用死记。<span class="tag rule">规定值</span> 没有推导，只能记。</p>
+  <div class="tbl">
+    <table>
+      <thead><tr><th>动作</th><th>触发信号（“与”）</th><th>范围</th><th></th></tr></thead>
+      <tbody>
+        <tr><td>声光警报器、应急广播、应急照明启动</td><td>两只独立探测器，或一只探测器 + 一只手报<span class="a">SWX:p128:b11303 · p129:b11318</span></td><td>同一报警区域</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>加压送风口开启、送风机启动</td><td>两只独立探测器，或一只探测器 + 一只手报<span class="a">SWX:p130:b11334</span></td><td>送风口所在报警区域</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>排烟口、排烟窗、排烟阀开启</td><td><span class="hl">两只独立探测器，不认手报</span><span class="a">SWX:p130:b11338</span></td><td><span class="hl">同一防烟分区</span></td><td><span class="tag rule">记结论</span></td></tr>
+        <tr><td>排烟风机启动</td><td><span class="hl">排烟口已开启的动作信号</span> + 该分区任一探测器或手报<span class="a">SWX:p130:b11339</span></td><td>同一防烟分区</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>排烟风机停止</td><td>风机入口总管上 <span class="hl">280℃</span> 排烟防火阀关闭<span class="a">SWX:p130:b11340</span></td><td>—</td><td><span class="tag rule">规定值</span></td></tr>
+        <tr><td>电动挡烟垂壁降落</td><td>垂壁附近两只独立<span class="hl">感烟</span>探测器<span class="a">SWX:p130:b11341</span></td><td>同一防烟分区</td><td><span class="tag rule">记结论</span></td></tr>
+        <tr><td>湿式、干式系统启泵</td><td>报警阀压力开关动作 + 该报警阀防护区域内任一探测器或手报<span class="a">SWX:p131:b11351</span></td><td>报警阀防护区域</td><td><span class="tag why">有道理</span></td></tr>
+        <tr><td>预作用阀组开启</td><td>两只及以上独立<span class="hl">感烟</span>，或一只感烟 + 一只手报<span class="a">SWX:p131:b11358</span></td><td>同一报警区域</td><td><span class="tag rule">记结论</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>三个最常考的地方：</p>
+  <figure>
+    <svg viewBox="0 0 680 120" role="img" aria-label="排烟的顺序：两只探测器确认，先开排烟口，口开了再启动风机，280 度排烟防火阀关闭后风机停止">
+      <defs><marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="var(--ink-2)"/></marker></defs>
+      <g font-family="-apple-system, PingFang SC, sans-serif" font-size="13" fill="var(--ink)">
+        <rect x="6" y="30" width="140" height="56" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="76" y="54" text-anchor="middle">同一防烟分区</text><text x="76" y="74" text-anchor="middle">两只探测器</text>
+        <path d="M146 58 H184" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar2)"/>
+        <rect x="186" y="30" width="130" height="56" rx="6" fill="var(--panel)" stroke="var(--accent)"/>
+        <text x="251" y="54" text-anchor="middle" font-weight="600">① 先开排烟口</text><text x="251" y="74" text-anchor="middle" fill="var(--ink-2)">回传“已开启”</text>
+        <path d="M316 58 H354" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar2)"/>
+        <rect x="356" y="30" width="140" height="56" rx="6" fill="var(--panel)" stroke="var(--accent)"/>
+        <text x="426" y="54" text-anchor="middle" font-weight="600">② 再启排烟风机</text><text x="426" y="74" text-anchor="middle" fill="var(--ink-2)">+ 任一探测器/手报</text>
+        <path d="M496 58 H534" stroke="var(--ink-2)" stroke-width="1.5" marker-end="url(#ar2)"/>
+        <rect x="536" y="30" width="138" height="56" rx="6" fill="var(--panel)" stroke="var(--line)"/>
+        <text x="605" y="54" text-anchor="middle">③ 280℃ 阀关闭</text><text x="605" y="74" text-anchor="middle" fill="var(--ink-2)">风机停止</text>
+      </g>
+    </svg>
+    <figcaption>排烟这条线：先开口、后开机、高温关阀停机。</figcaption>
+  </figure>
+  <ol>
+    <li><b>排烟口不认手报。</b>警报、广播、送风都接受“探测器 + 手报”，唯独排烟口要两只探测器。教材没写理由；可以这样理解：排烟按防烟分区精确开，要的是“烟确实在这个分区”的证据，手报只能说明有人按了按钮。</li>
+    <li><b>排烟风机要等排烟口先开。</b>（推理，教材未明说）风口没开就转风机，等于对着关死的阀门抽，排不了烟还可能损坏设备。</li>
+    <li><b>压力开关可以绕过联动控制器。</b>压力开关直接连锁启泵，<span class="hl">不受联动控制器自动或手动状态的影响</span> <span class="a">[SWX:p131:b11352]</span>。因为压力开关动作，说明喷头已经因高温爆开在喷水，这已经是确认了的火。</li>
+  </ol>
+
+  <h2><span class="step">04</span>用电信设计来想：哪里像，哪里不像</h2>
+  <div class="cmp">
+    <div class="yes"><h3>像：告警 ≠ 倒换</h3><p>网管里单个端口告警只上报，几个独立指标同时越限才触发保护倒换，否则链路会来回抖动。消防的“报警可以敏感，动作必须确认”是同一个思路。</p></div>
+    <div class="no"><h3>不像：代价落在人身上</h3><p>倒换误动作影响的是业务；消防误动作影响的是人员疏散，拒动作影响的是人命。所以规范在排烟、挡烟垂壁这些设备上，确认条件比网管更具体，连“哪种探测器”“哪个范围”都规定了。</p></div>
+  </div>
+
+  <h2><span class="step">05</span>读完想一想</h2>
+  <p>先自己想，再点开看参考思路。</p>
+  <details><summary>如果所有联动都只要一只探测器报警，一年下来会出什么事？</summary>
+    <div class="ans">误报直接变成误动作。大家嫌系统烦，把联动打到手动，真着火时反而不动作。“与”逻辑是在“快”和“不乱动”之间做的取舍。</div></details>
+  <details><summary>为什么送风可以用“探测器 + 手报”，排烟口却不行？</summary>
+    <div class="ans">（推理）送风是给楼梯间、前室加压，范围是整个报警区域，有人报火就该先保住疏散通道；排烟要精确到防烟分区，开错分区会把烟往别处引，所以要更硬的证据。<span class="src">条文依据：SWX:p130:b11334、b11338</span></div></details>
+  <details><summary>联动控制器打在“手动”，湿式系统的喷头爆了，水泵会启动吗？</summary>
+    <div class="ans">会。压力开关直接连锁启泵，不受联动控制器手动/自动状态影响。<span class="src">SWX:p131:b11352</span></div></details>
+  <details><summary>动手：不看上表，默写“设备 / 触发信号 / 范围”三列</summary>
+    <div class="ans">写不出来的格子，就是下次复习的重点。学习台里本节的骨架卡 U01-K29～K34 正好对应这张表。</div></details>
+
+  <h2><span class="step">06</span>考试里怎么出现</h2>
+  <ul class="exam">
+    <li><b>实务选择题</b>：直接考某设备的触发条件，或把“报警区域”偷换成“防烟分区”。</li>
+    <li><b>综合检测题</b>：给检测结果判断对错，例如“触发 1 只手报后，排烟口联动开启”（错）。</li>
+    <li><b>案例题</b>：给一段联动测试记录，找出不符合规范的步骤。</li>
+  </ul>
+
+  <h2><span class="step">听</span>对谈文字稿</h2>
+  <p class="meta">点任意一句，从那里开始播放。</p>
+  <div class="transcript" id="transcript"></div>
+</main>
+<script>
+(function () {
+  const audio = document.getElementById("audio");
+  const play = document.getElementById("play");
+  const fill = document.getElementById("fill");
+  const time = document.getElementById("time");
+  const now = document.getElementById("now");
+  const bar = document.getElementById("bar");
+  const box = document.getElementById("transcript");
+  let lines = [], timing = [], cur = -1;
+  const fmt = (s) => { s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0"); };
+  Promise.all([
+    fetch("联动触发逻辑.dialogue.json").then((r) => r.json()),
+    fetch("联动触发逻辑.timing.json").then((r) => r.json())
+  ]).then(([d, t]) => {
+    lines = d.lines; timing = t.lines;
+    box.innerHTML = "";
+    lines.forEach(([who, text], i) => {
+      const el = document.createElement("div");
+      el.className = "line"; el.dataset.i = i;
+      const w = document.createElement("span"); w.className = "who"; w.textContent = who === "师" ? "老师" : "学员";
+      const p = document.createElement("span"); p.textContent = text;
+      el.append(w, p);
+      el.addEventListener("click", () => { audio.currentTime = timing[i].start + 0.05; audio.play(); });
+      box.appendChild(el);
+    });
+  }).catch(() => { box.textContent = "文字稿读取失败。"; });
+  play.addEventListener("click", () => { audio.paused ? audio.play() : audio.pause(); });
+  audio.addEventListener("play", () => { play.textContent = "❚❚ 暂停"; });
+  audio.addEventListener("pause", () => { play.textContent = "▶ 继续听"; });
+  bar.addEventListener("click", (e) => {
+    const r = bar.getBoundingClientRect();
+    if (audio.duration) audio.currentTime = (e.clientX - r.left) / r.width * audio.duration;
+  });
+  audio.addEventListener("timeupdate", () => {
+    const d = audio.duration || 223;
+    fill.style.width = (audio.currentTime / d * 100) + "%";
+    time.textContent = fmt(audio.currentTime) + " / " + fmt(d);
+    let i = -1;
+    for (let k = 0; k < timing.length; k++) if (timing[k].start <= audio.currentTime) i = k;
+    if (i !== cur && i >= 0 && lines[i]) {
+      cur = i;
+      box.querySelectorAll(".line.on").forEach((x) => x.classList.remove("on"));
+      const el = box.querySelector('[data-i="' + i + '"]');
+      if (el) el.classList.add("on");
+      now.innerHTML = "";
+      const b = document.createElement("b"); b.textContent = lines[i][0] === "师" ? "老师" : "学员";
+      now.append(b, document.createTextNode(lines[i][1]));
+    }
+  });
+})();
+</script>
+</body>
+</html>
