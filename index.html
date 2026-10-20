@@ -496,6 +496,62 @@ button.sync-status {
   padding: 12px;
 }
 
+.review-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+}
+
+.review-meta p {
+  margin: 0;
+}
+
+.review-undo {
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  padding: 0 2px;
+  min-height: 44px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.review-mark {
+  margin: 0 0 8px;
+  color: var(--bad);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.review-hint {
+  margin: 8px 0 0;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.review-actions .btn {
+  flex: 1 1 0;
+  width: 0;
+  min-width: 0;
+  height: 48px;
+  min-height: 48px;
+  padding: 8px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.2;
+}
+
 .map-toolbar {
   display: flex;
   gap: 8px;
@@ -923,6 +979,182 @@ function mergeStates(local, remote) {
     cards: mergeMaps(left.cards, right.cards),
     attempts: mergeMaps(left.attempts, right.attempts)
   };
+}
+
+function copyReviewCard(card) {
+  if (!card || typeof card !== "object" || Array.isArray(card)) return card;
+  return { ...card };
+}
+
+function emptyReviewStats() {
+  return { remember: 0, wrong: 0, blank: 0 };
+}
+
+function createReviewSession(today, dueIds) {
+  const order = [];
+  const seen = new Set();
+  for (const id of dueIds || []) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    order.push(id);
+    if (order.length >= 60) break;
+  }
+  return {
+    sessionDate: today,
+    order,
+    doneIds: [],
+    currentId: order[0] || null,
+    phase: "front",
+    lastUndo: null,
+    stats: emptyReviewStats()
+  };
+}
+
+function cloneReviewSession(session) {
+  const stats = session && session.stats ? session.stats : emptyReviewStats();
+  const undo = session && session.lastUndo;
+  return {
+    sessionDate: session.sessionDate,
+    order: (session.order || []).slice(),
+    doneIds: (session.doneIds || []).slice(),
+    currentId: session.currentId || null,
+    phase: session.phase || "front",
+    lastUndo: undo
+      ? {
+          cardId: undo.cardId,
+          prevState: copyReviewCard(undo.prevState),
+          wasDone: !!undo.wasDone,
+          stat: undo.stat || ""
+        }
+      : null,
+    stats: {
+      remember: stats.remember || 0,
+      wrong: stats.wrong || 0,
+      blank: stats.blank || 0
+    }
+  };
+}
+
+function listPendingSkip(order, doneIds, cards, today) {
+  const done = new Set(doneIds || []);
+  const skipped = [];
+  for (const id of order || []) {
+    if (done.has(id)) continue;
+    const card = cards && cards[id];
+    if (!card || card.cleared || (card.due && card.due > today)) {
+      skipped.push(id);
+      done.add(id);
+      continue;
+    }
+    return { currentId: id, skipped };
+  }
+  return { currentId: null, skipped };
+}
+
+function withSkipped(doneIds, skipped) {
+  const done = (doneIds || []).slice();
+  for (const id of skipped || []) {
+    if (!done.includes(id)) done.push(id);
+  }
+  return done;
+}
+
+function reconcileReviewSession(session, today, dueIds, cards) {
+  if (!session || session.sessionDate !== today || !Array.isArray(session.order) || session.order.length === 0) {
+    return createReviewSession(today, dueIds);
+  }
+  const next = cloneReviewSession(session);
+  const seen = new Set(next.order);
+  for (const id of dueIds || []) {
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    next.order.push(id);
+  }
+  if (!next.currentId) {
+    const found = listPendingSkip(next.order, next.doneIds, cards, today);
+    next.doneIds = withSkipped(next.doneIds, found.skipped);
+    next.currentId = found.currentId;
+    if (found.currentId) next.phase = "front";
+  }
+  return next;
+}
+
+function gradeReview(session, cards, today, action, gradeCard) {
+  if (!session || !session.currentId || typeof gradeCard !== "function") {
+    return { session, card: null };
+  }
+  const id = session.currentId;
+  const current = cards && cards[id];
+  if (!current) return { session, card: null };
+  const prevState = copyReviewCard(current);
+  const graded = gradeCard(current, action, today);
+  const next = cloneReviewSession(session);
+  next.stats[action] = (next.stats[action] || 0) + 1;
+  next.lastUndo = {
+    cardId: id,
+    prevState,
+    wasDone: next.doneIds.includes(id),
+    stat: action
+  };
+  if (action === "blank") {
+    next.phase = "revealed";
+    next.currentId = id;
+    return { session: next, card: graded };
+  }
+  if (!next.doneIds.includes(id)) next.doneIds.push(id);
+  const nextCards = { ...cards, [id]: graded };
+  const found = listPendingSkip(next.order, next.doneIds, nextCards, today);
+  next.doneIds = withSkipped(next.doneIds, found.skipped);
+  next.currentId = found.currentId;
+  next.phase = "front";
+  return { session: next, card: graded };
+}
+
+function revealReviewAnswer(session) {
+  if (!session || session.phase !== "front" || !session.currentId) return session;
+  const next = cloneReviewSession(session);
+  next.phase = "checking";
+  return next;
+}
+
+function advanceReview(session, cards, today) {
+  if (!session) return session;
+  const next = cloneReviewSession(session);
+  if (next.currentId && !next.doneIds.includes(next.currentId)) next.doneIds.push(next.currentId);
+  const found = listPendingSkip(next.order, next.doneIds, cards, today);
+  next.doneIds = withSkipped(next.doneIds, found.skipped);
+  next.currentId = found.currentId;
+  next.phase = "front";
+  return next;
+}
+
+function undoReview(session) {
+  if (!session || !session.lastUndo) return { session, card: null };
+  const undo = session.lastUndo;
+  const next = cloneReviewSession(session);
+  next.doneIds = next.doneIds.filter((id) => id !== undo.cardId);
+  if (undo.wasDone && !next.doneIds.includes(undo.cardId)) next.doneIds.push(undo.cardId);
+  if (undo.stat && next.stats[undo.stat]) next.stats[undo.stat] -= 1;
+  next.currentId = undo.cardId;
+  next.phase = "front";
+  next.lastUndo = null;
+  return { session: next, card: copyReviewCard(undo.prevState) };
+}
+
+function countReviewRemaining(session, today, cards) {
+  if (!session || session.sessionDate !== today || !Array.isArray(session.order) || session.order.length === 0) {
+    return null;
+  }
+  const done = new Set(session.doneIds || []);
+  let count = 0;
+  for (const id of session.order) {
+    if (done.has(id)) continue;
+    const card = cards && cards[id];
+    if (!card || card.cleared) continue;
+    if (card.due && card.due > today) continue;
+    count += 1;
+  }
+  return count;
 }
 </script>
 
@@ -1476,8 +1708,8 @@ const app = {
     practiceView: "list",
     practiceQid: "",
     practiceChoice: "",
-    reviewIndex: 0,
-    reviewShowAnswer: false,
+    review: null,
+    reviewArmedAt: 0,
     mapView: "unit",
     doubtOpen: false,
     openUnits: new Set(),
@@ -2664,7 +2896,7 @@ function renderToday(today, weekCtx) {
     return;
   }
 
-  const dueCards = getReviewQueue(today).length;
+  const dueCards = reviewDueCount(today);
   const eta = Math.round(dueCards * 0.6);
   const weekUnits = weekCtx.units;
   const weekRows = weekUnits.flatMap((u) => app.derived.unitRows.get(u) || []);
@@ -3031,73 +3263,170 @@ function reviewCardContent(card) {
   };
 }
 
+function reviewRichText(text) {
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
+function reviewDueCount(today) {
+  const dueIds = getReviewQueue(today).map((card) => card.id);
+  const session = app.ui.review;
+  if (session && session.sessionDate === today && Array.isArray(session.order) && session.order.length) {
+    app.ui.review = reconcileReviewSession(session, today, dueIds, app.state.cards);
+    const remaining = countReviewRemaining(app.ui.review, today, app.state.cards);
+    if (remaining != null) return remaining;
+  }
+  return dueIds.length;
+}
+
+function applyReviewGrade(card, action, today) {
+  if (action === "remember") {
+    let next = nextCardRemember(card, today);
+    if (shouldClearWrongCard(next, today)) {
+      next = { ...next, cleared: true, clearedAt: today };
+    }
+    return next;
+  }
+  return nextCardForget(card, today);
+}
+
+function reviewUndoHtml() {
+  if (!app.ui.review || !app.ui.review.lastUndo) return "";
+  return `<button id="review-undo" class="review-undo" type="button">撤销上一张</button>`;
+}
+
+function bindReviewButton(id, handler) {
+  const button = document.getElementById(id);
+  if (!button) return;
+  button.addEventListener("click", () => {
+    if (Date.now() < app.ui.reviewArmedAt) return;
+    const group = button.closest(".review-actions, .review-meta") || button;
+    group.querySelectorAll("button").forEach((el) => {
+      el.disabled = true;
+    });
+    handler();
+  });
+}
+
+function gradeCurrentReview(action) {
+  const session = app.ui.review;
+  const today = shanghaiToday();
+  if (!session || !session.currentId) return;
+  if (action === "blank" && session.phase !== "front") return;
+  if ((action === "remember" || action === "wrong") && session.phase !== "checking") return;
+  const id = session.currentId;
+  if (!app.state.cards[id]) return;
+  const result = gradeReview(session, app.state.cards, today, action, applyReviewGrade);
+  if (!result.card) return;
+  app.ui.review = result.session;
+  app.sync.sessionReviews += 1;
+  store.save(`cards/${id}`, result.card);
+  render();
+}
+
+function undoCurrentReview() {
+  const result = undoReview(app.ui.review);
+  if (!result.card || !result.session || !result.session.currentId) return;
+  const id = result.session.currentId;
+  app.ui.review = result.session;
+  if (app.sync.sessionReviews > 0) app.sync.sessionReviews -= 1;
+  store.save(`cards/${id}`, result.card);
+  render();
+}
+
 function renderReview(today) {
   const root = document.getElementById("page-review");
   if (!app.data) {
     root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
     return;
   }
-  const queue = getReviewQueue(today);
-  if (app.ui.reviewIndex >= queue.length) app.ui.reviewIndex = Math.max(0, queue.length - 1);
-  if (!queue.length) {
+  if (app.ui.tab !== "review") return;
+
+  const dueIds = getReviewQueue(today).map((card) => card.id);
+  const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards);
+  app.ui.review = session;
+  const undo = reviewUndoHtml();
+  const stats = session.stats || emptyReviewStats();
+
+  if (!session.currentId) {
     root.innerHTML = `
       <h1 class="h1">复习</h1>
       <section class="panel">
+        ${undo ? `<div class="review-meta"><span></span>${undo}</div>` : ""}
         <div class="empty">
-          <p>今天队列已完成。</p>
-          <p class="small">明天到期：${getTomorrowDueCount(today)} 张。</p>
+          <p>今天复习完了：答对 ${stats.remember} 张，答错 ${stats.wrong} 张，没印象 ${stats.blank} 张。明天到期 ${getTomorrowDueCount(today)} 张。</p>
         </div>
       </section>
     `;
+    bindReviewButton("review-undo", undoCurrentReview);
+    app.ui.reviewArmedAt = Date.now() + 300;
     return;
   }
-  const card = queue[app.ui.reviewIndex];
+
+  const stored = app.state.cards[session.currentId];
+  const card = stored ? { id: session.currentId, ...stored } : { id: session.currentId, src: "skeleton" };
   const content = reviewCardContent(card);
+  const showAnswer = session.phase === "checking" || session.phase === "revealed";
+  const index = session.order.indexOf(session.currentId);
+  const position = index >= 0 ? index + 1 : 1;
+  const answerHtml = showAnswer
+    ? `<section class="panel"><p>${reviewRichText(content.back)}</p><p class="small mono">${escapeHtml(content.anchor)}</p>${anchorPrintedHtml(content.anchor)}</section>`
+    : "";
+  const mark = session.phase === "revealed" ? `<p class="review-mark">已记为没印象，明天会再出现。</p>` : "";
+  let actions = "";
+  if (session.phase === "checking") {
+    actions = `
+      <p class="small review-hint">和你心里的答案一样吗？</p>
+      <div class="review-actions">
+        <button id="review-remember" class="btn btn-ok" type="button">答对了</button>
+        <button id="review-wrong" class="btn btn-bad" type="button">答错了</button>
+      </div>`;
+  } else if (session.phase === "revealed") {
+    actions = `
+      <div class="review-actions">
+        <button id="review-next" class="btn btn-primary" type="button">下一张</button>
+      </div>`;
+  } else {
+    actions = `
+      <p class="small review-hint">先在心里答一遍。</p>
+      <div class="review-actions">
+        <button id="review-blank" class="btn btn-bad" type="button">没印象</button>
+        <button id="review-show" class="btn btn-primary" type="button">想好了，看答案</button>
+      </div>`;
+  }
+
   root.innerHTML = `
     <h1 class="h1">复习</h1>
     <section class="panel">
-      <p class="small mono">第 ${app.ui.reviewIndex + 1} / ${queue.length} 张（最多 60）</p>
-      <article class="review-card">
-        <p>${content.front.replace(/\n/g, "<br>")}</p>
-        ${app.ui.reviewShowAnswer ? `<section class="panel"><p>${content.back.replace(/\n/g, "<br>")}</p><p class="small mono">${content.anchor}</p>${anchorPrintedHtml(content.anchor)}</section>` : ""}
-        <div class="button-row">
-          <button id="review-show-answer" class="btn btn-secondary tap-target">${app.ui.reviewShowAnswer ? "收起答案" : "看答案"}</button>
-        </div>
+      <div class="review-meta">
+        <p class="small mono">第 ${position} / ${session.order.length} 张</p>
+        ${undo}
+      </div>
+      <article class="review-card" data-phase="${session.phase}">
+        ${mark}
+        <p>${reviewRichText(content.front)}</p>
+        ${answerHtml}
+        ${actions}
       </article>
-      ${app.ui.reviewShowAnswer ? `
-      <div class="button-row" style="margin-top:8px;">
-        <button id="review-remember" class="btn btn-ok tap-target">记住了</button>
-        <button id="review-forget" class="btn btn-bad tap-target">没记住</button>
-      </div>` : ""}
     </section>
   `;
 
-  document.getElementById("review-show-answer").addEventListener("click", () => {
-    app.ui.reviewShowAnswer = !app.ui.reviewShowAnswer;
+  bindReviewButton("review-blank", () => gradeCurrentReview("blank"));
+  bindReviewButton("review-show", () => {
+    const current = app.ui.review;
+    if (!current || current.phase !== "front") return;
+    app.ui.review = revealReviewAnswer(current);
     render();
   });
-
-  const remBtn = document.getElementById("review-remember");
-  const forgetBtn = document.getElementById("review-forget");
-  if (remBtn && forgetBtn) {
-    remBtn.addEventListener("click", () => {
-      let next = nextCardRemember(card, today);
-      if (shouldClearWrongCard(next, today)) {
-        next = { ...next, cleared: true, clearedAt: today };
-      }
-      app.sync.sessionReviews += 1;
-      store.save(`cards/${card.id}`, next);
-      app.ui.reviewIndex += 1;
-      app.ui.reviewShowAnswer = false;
-    });
-    forgetBtn.addEventListener("click", () => {
-      const next = nextCardForget(card, today);
-      app.sync.sessionReviews += 1;
-      store.save(`cards/${card.id}`, next);
-      app.ui.reviewIndex += 1;
-      app.ui.reviewShowAnswer = false;
-    });
-  }
+  bindReviewButton("review-remember", () => gradeCurrentReview("remember"));
+  bindReviewButton("review-wrong", () => gradeCurrentReview("wrong"));
+  bindReviewButton("review-next", () => {
+    const current = app.ui.review;
+    if (!current || current.phase !== "revealed") return;
+    app.ui.review = advanceReview(current, app.state.cards, today);
+    render();
+  });
+  bindReviewButton("review-undo", undoCurrentReview);
+  app.ui.reviewArmedAt = Date.now() + 300;
 }
 
 function renderMap() {

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-v1";
+const CACHE_VERSION = "study-v2";
 
 const PRECACHE = [
   "./",
