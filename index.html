@@ -1262,6 +1262,83 @@ button.sync-status {
   padding-top: 8px;
 }
 
+.quiz-slot {
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 0 16px;
+}
+
+.quiz-card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 12px;
+  min-width: 0;
+}
+
+.quiz-card .option-btn {
+  align-items: flex-start;
+  height: auto;
+  white-space: normal;
+}
+
+.quiz-card .option-btn span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.option-btn:disabled {
+  opacity: 1;
+  cursor: default;
+}
+
+.quiz-fold {
+  display: flex;
+  width: 100%;
+  text-align: left;
+  align-items: center;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.quiz-result {
+  margin: 8px 0 0;
+}
+
+.quiz-result.ok {
+  color: var(--ok);
+}
+
+.quiz-result.bad {
+  color: var(--bad);
+}
+
+.cloze-blank {
+  display: inline-block;
+  min-width: 3em;
+  border-bottom: 1px solid var(--ink);
+  margin: 0 0.15em;
+  vertical-align: baseline;
+}
+
+mark.src-hit,
+.read-block.src-hit {
+  background: color-mix(in srgb, var(--warn) 42%, transparent);
+  color: inherit;
+}
+
+.read-block {
+  scroll-margin-top: 12px;
+  scroll-margin-bottom: 96px;
+}
+
+.retell-label {
+  display: block;
+  margin-bottom: 8px;
+}
+
 .ask-fallback {
   width: 100%;
   min-height: 120px;
@@ -1445,7 +1522,9 @@ function mergeStates(local, remote) {
     weeks: mergeMaps(left.weeks, right.weeks),
     cards: mergeMaps(left.cards, right.cards),
     attempts: mergeMaps(left.attempts, right.attempts),
-    chunks: mergeMaps(left.chunks, right.chunks)
+    chunks: mergeMaps(left.chunks, right.chunks),
+    kaokao: mergeMaps(left.kaokao, right.kaokao),
+    kaokaoRetell: mergeMaps(left.kaokaoRetell, right.kaokaoRetell)
   };
 }
 
@@ -1644,7 +1723,9 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
       weeks: {},
       cards: {},
       attempts: {},
-      chunks: {}
+      chunks: {},
+      kaokao: {},
+      kaokaoRetell: {}
     };
   }
 
@@ -1754,6 +1835,15 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
     for (const unit of Object.keys(attempts).sort()) {
       files[`${PROGRESS_PREFIX}attempts/${unit}.json`] = stableStringify(attempts[unit]);
     }
+    const kaokaoItems = groupByUnit(src.kaokao);
+    const kaokaoRetell = groupByUnit(src.kaokaoRetell);
+    const kaokaoUnits = new Set([...Object.keys(kaokaoItems), ...Object.keys(kaokaoRetell)]);
+    for (const unit of [...kaokaoUnits].sort()) {
+      files[`${PROGRESS_PREFIX}kaokao/${unit}.json`] = stableStringify({
+        items: kaokaoItems[unit] || {},
+        retell: kaokaoRetell[unit] || {}
+      });
+    }
     return files;
   }
 
@@ -1773,7 +1863,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
   }
 
   function unitFromPath(filePath) {
-    const match = /^进度\/(?:cards|attempts)\/([^/]+)\.json$/.exec(filePath || "");
+    const match = /^进度\/(?:cards|attempts|kaokao)\/([^/]+)\.json$/.exec(filePath || "");
     return match ? match[1] : "";
   }
 
@@ -1810,6 +1900,10 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
         absorbRecords(remote.cards, json, unitFromPath(filePath));
       } else if (filePath.startsWith(`${PROGRESS_PREFIX}attempts/`)) {
         absorbRecords(remote.attempts, json, unitFromPath(filePath));
+      } else if (filePath.startsWith(`${PROGRESS_PREFIX}kaokao/`)) {
+        const unit = unitFromPath(filePath);
+        absorbRecords(remote.kaokao, json.items, unit);
+        absorbRecords(remote.kaokaoRetell, json.retell, unit);
       }
     }
     return remote;
@@ -2034,11 +2128,23 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-20.9";
+const APP_VERSION = "2026-10-21.1";
 let swControllerReload = false;
 const INTERVALS = [1, 3, 7, 14, 30, 60];
 
+function studyTodayOverride() {
+  try {
+    if (typeof mockRepoOn !== "function" || !mockRepoOn()) return "";
+    const value = new URLSearchParams(location.search).get("today") || "";
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+  } catch (_) {
+    return "";
+  }
+}
+
 function shanghaiToday(date = new Date()) {
+  const override = studyTodayOverride();
+  if (override) return override;
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Shanghai",
     year: "numeric",
@@ -2259,6 +2365,17 @@ const app = {
     learnReveal: false,
     learnBoundChunk: "",
     learnPlace: null,
+    learnWhy: 0,
+    learnWhyReveal: false,
+    quizCursor: {},
+    quizOpen: {},
+    kaokaoShown: {},
+    kaokaoFocus: null,
+    retellTimer: null,
+    reviewHint: null,
+    reviewSourceNote: "",
+    reviewSourceFor: "",
+    highlightToken: 0,
     katexState: ""
   },
   study: {
@@ -2266,7 +2383,9 @@ const app = {
     bodies: {},
     imageUrls: {},
     indexState: {},
-    bodyState: {}
+    bodyState: {},
+    kaokao: {},
+    kaokaoState: {}
   },
   lecturePrefix: "",
   derived: {
@@ -2290,7 +2409,9 @@ function createDefaultState() {
     cards: {},
     attempts: {},
     weeks: {},
-    chunks: {}
+    chunks: {},
+    kaokao: {},
+    kaokaoRetell: {}
   };
 }
 
@@ -2349,6 +2470,12 @@ function unitForCardId(cardId) {
     const question = app.derived.questionById.get(qid);
     if (question && question.unit) return question.unit;
   }
+  if (state && state.src === "kaokao") {
+    const fromKid = String(state.kid || "").match(/U\d+/);
+    if (fromKid) return fromKid[0];
+  }
+  const fromId = String(cardId || "").match(/U\d+/);
+  if (fromId) return fromId[0];
   return "unknown";
 }
 
@@ -2377,7 +2504,9 @@ function coerceState(input, options) {
     cards: {},
     attempts: {},
     weeks: {},
-    chunks: {}
+    chunks: {},
+    kaokao: {},
+    kaokaoRetell: {}
   };
   const sections = src.sections && typeof src.sections === "object" && !Array.isArray(src.sections) ? src.sections : {};
   const sectionsAt = src.sectionsAt && typeof src.sectionsAt === "object" && !Array.isArray(src.sectionsAt) ? src.sectionsAt : {};
@@ -2396,6 +2525,8 @@ function coerceState(input, options) {
   copyRecords(src.attempts, state.attempts);
   copyRecords(src.weeks, state.weeks);
   copyRecords(src.chunks, state.chunks);
+  copyRecords(src.kaokao, state.kaokao);
+  copyRecords(src.kaokaoRetell, state.kaokaoRetell);
   return state;
 }
 
@@ -2464,6 +2595,12 @@ function setNestedState(path, value, options) {
   } else if (kind === "chunks" && id) {
     if (!app.state.chunks) app.state.chunks = {};
     app.state.chunks[id] = stampSavedRecord(value, options, now);
+  } else if (kind === "kaokao" && id) {
+    if (!app.state.kaokao) app.state.kaokao = {};
+    app.state.kaokao[id] = stampSavedRecord(value, options, now);
+  } else if (kind === "kaokaoRetell" && id) {
+    if (!app.state.kaokaoRetell) app.state.kaokaoRetell = {};
+    app.state.kaokaoRetell[id] = stampSavedRecord(value, options, now);
   } else if (path === "startedAt") {
     app.state.startedAt = value;
   } else if (path === "baselineDone") {
@@ -2490,7 +2627,7 @@ function save(path, value, options) {
       app.sync.debounce = setTimeout(() => requestPush("debounce"), 20000);
     }
   }
-  emitChange();
+  if (!(options && options.silent)) emitChange();
   renderSyncStatus();
 }
 
@@ -2581,6 +2718,24 @@ function formatStamp(ms) {
   return `${p.y}-${p.m}-${p.d} ${p.h}:${p.min}`;
 }
 
+function shanghaiIso(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(date);
+  const get = (type) => {
+    const found = parts.find((part) => part.type === type);
+    return found ? found.value : "00";
+  };
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}:${get("second")}+08:00`;
+}
+
 function lastSyncLabel() {
   if (!app.sync.lastSyncAt) return "上次同步：还没有";
   return `上次同步：${formatStamp(app.sync.lastSyncAt)}`;
@@ -2631,7 +2786,31 @@ function annotateUnits(state) {
     if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
     attempts[id] = { ...rec, unit: unitForQuestionId(id) };
   }
-  return { ...source, cards, attempts };
+  const kaokao = {};
+  for (const [id, rec] of Object.entries(source.kaokao || {})) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
+    const matched = String(id).match(/U\d+/);
+    const unit = rec.unit && /^U\d+$/.test(rec.unit) ? rec.unit : (matched ? matched[0] : "unknown");
+    kaokao[id] = { ...rec, unit };
+  }
+  const kaokaoRetell = {};
+  for (const [id, rec] of Object.entries(source.kaokaoRetell || {})) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
+    kaokaoRetell[id] = { ...rec, unit: unitForRetellId(id, rec) };
+  }
+  return { ...source, cards, attempts, kaokao, kaokaoRetell };
+}
+
+function unitForRetellId(chunkId, rec) {
+  if (rec && typeof rec.unit === "string" && /^U\d+$/.test(rec.unit)) return rec.unit;
+  const meta = findChunkMeta(chunkId);
+  if (meta && meta.unit) return meta.unit;
+  const docs = app.study && app.study.kaokao ? app.study.kaokao : {};
+  for (const [unitId, doc] of Object.entries(docs)) {
+    const items = doc && Array.isArray(doc.items) ? doc.items : [];
+    if (items.some((item) => item && item.chunk === chunkId)) return (doc && doc.unit) || unitId;
+  }
+  return "unknown";
 }
 
 function getSync(cfg) {
@@ -2742,6 +2921,13 @@ function flushEditors() {
   if (learnNoteValue != null) {
     const old = getAttempt(app.ui.learnQid);
     if ((old.note || "") !== learnNoteValue) savePracticeNote(app.ui.learnQid, learnNoteValue);
+  }
+  const retellEl = document.getElementById("learn-retell");
+  if (retellEl && app.ui.routeChunkId) {
+    clearTimeout(app.ui.retellTimer);
+    app.ui.retellTimer = null;
+    const meta = findChunkMeta(app.ui.routeChunkId);
+    saveKaokaoRetell(app.ui.routeChunkId, retellEl.value, meta && meta.unit, { silent: true });
   }
   if (weekValues && app.data) {
     clearTimeout(app.ui.weekTimer);
@@ -2906,7 +3092,9 @@ function exportableState() {
     weeks: state.weeks,
     cards: state.cards,
     attempts: state.attempts,
-    chunks: state.chunks
+    chunks: state.chunks,
+    kaokao: state.kaokao,
+    kaokaoRetell: state.kaokaoRetell
   };
 }
 
@@ -3392,11 +3580,13 @@ function getReviewQueue(today) {
     .map(([id, card]) => ({ id, ...card }))
     .filter((card) => !card.cleared && card.due && card.due <= today);
   const wrong = all.filter((c) => c.src === "wrong");
-  const skeleton = all.filter((c) => c.src !== "wrong");
+  const kaokao = all.filter((c) => c.src === "kaokao");
+  const skeleton = all.filter((c) => c.src !== "wrong" && c.src !== "kaokao");
   const sorter = (a, b) => `${a.due}-${a.created || ""}`.localeCompare(`${b.due}-${b.created || ""}`);
   wrong.sort(sorter);
+  kaokao.sort(sorter);
   skeleton.sort(sorter);
-  return [...wrong, ...skeleton].slice(0, 60);
+  return [...wrong, ...kaokao, ...skeleton].slice(0, 60);
 }
 
 function getTomorrowDueCount(today) {
@@ -3629,6 +3819,17 @@ async function fetchStudyResponse(repoPath) {
 }
 
 function ingestStudyText(repoPath, text) {
+  const kaokaoMatch = /^教材\/([^/]+)\/kaokao\.json$/.exec(repoPath || "");
+  if (kaokaoMatch) {
+    try {
+      const data = JSON.parse(text);
+      app.study.kaokao[kaokaoMatch[1]] = data && typeof data === "object" ? data : { items: [] };
+      app.study.kaokaoState[kaokaoMatch[1]] = "ready";
+    } catch (_) {
+      app.study.kaokaoState[kaokaoMatch[1]] = "error";
+    }
+    return;
+  }
   const indexMatch = /^教材\/([^/]+)\/index\.json$/.exec(repoPath || "");
   if (indexMatch) {
     try {
@@ -3714,6 +3915,32 @@ async function loadStudyBlobUrl(repoPath, filename) {
   const clone = res.clone();
   await cacheStudyResponse(repoPath, clone);
   return remember(res);
+}
+
+function kickKaokao(unitId) {
+  if (!unitId || !canReadRepo()) return;
+  if (app.study.kaokao[unitId]) return;
+  const state = app.study.kaokaoState[unitId];
+  if (state === "loading" || state === "ready" || state === "missing" || state === "error") return;
+  app.study.kaokaoState[unitId] = "loading";
+  loadStudyText(`教材/${unitId}/kaokao.json`).then((text) => {
+    if (app.study.kaokao[unitId]) app.study.kaokaoState[unitId] = "ready";
+    else app.study.kaokaoState[unitId] = text ? "error" : "missing";
+    render();
+  });
+}
+
+function ensureKaokaoLoaded(today) {
+  const units = new Set();
+  if (app.data && today) {
+    for (const unitId of getWeekContext(today).units || []) units.add(unitId);
+  }
+  for (const card of Object.values((app.state && app.state.cards) || {})) {
+    if (!card || card.src !== "kaokao") continue;
+    const matched = String(card.kid || "").match(/U\d+/);
+    if (matched) units.add(matched[0]);
+  }
+  units.forEach((unitId) => kickKaokao(unitId));
 }
 
 function kickUnitIndex(unitId) {
@@ -4036,8 +4263,10 @@ function buildLearnSteps(meta) {
   const steps = [];
   if (normal.length) steps.push({ id: "preview", label: "先看题" });
   steps.push({ id: "read", label: "原文" });
+  if (whyItemsForChunk(meta).length) steps.push({ id: "why", label: "想一想为什么" });
   steps.push({ id: "lecture", label: "精讲" });
   if (cards.length) steps.push({ id: "recall", label: "想一想" });
+  if (kaokaoItemsForChunk(meta).length) steps.push({ id: "retell", label: "复述" });
   steps.push({ id: "quiz", label: "做题" });
   steps.push({ id: "done", label: "完成" });
   return steps;
@@ -4155,14 +4384,486 @@ function askPrompt(meta, block) {
   return `我在学注册消防工程师《${bookTitle(meta && meta.book)}》印刷页 ${printed}。这段原文：「${plainExcerpt(block && block.md)}」。请先讲清楚为什么需要这条规定（从没有它会出什么问题讲起），再讲考试怎么考。`;
 }
 
+function anchorBlockId(anchor) {
+  const matched = String(anchor || "").match(/b(\d+)\s*$/);
+  return matched ? Number(matched[1]) : null;
+}
+
+function kaokaoDocs() {
+  return app.study && app.study.kaokao ? app.study.kaokao : {};
+}
+
+function kaokaoItemsForChunk(meta) {
+  if (!meta) return [];
+  const doc = kaokaoDocs()[meta.unit];
+  const items = doc && Array.isArray(doc.items) ? doc.items : [];
+  return items.filter((item) => item && item.chunk === meta.id && item.recog && Array.isArray(item.recog.options));
+}
+
+function whyItemsForChunk(meta) {
+  return kaokaoItemsForChunk(meta).filter((item) => item.why && item.why.q);
+}
+
+function kaokaoItemById(itemId) {
+  for (const doc of Object.values(kaokaoDocs())) {
+    const items = doc && Array.isArray(doc.items) ? doc.items : [];
+    const found = items.find((item) => item && item.id === itemId);
+    if (found) return found;
+  }
+  return null;
+}
+
+function latestKaokaoTry(itemId, level) {
+  const rec = app.state.kaokao && app.state.kaokao[itemId];
+  const tries = rec && Array.isArray(rec.tries) ? rec.tries : [];
+  for (let i = tries.length - 1; i >= 0; i -= 1) {
+    if (!level || tries[i].level === level) return tries[i];
+  }
+  return null;
+}
+
+function plainQuizHeading(block) {
+  return String(block && block.md || "")
+    .replace(/^#{1,6}\s*/, "")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function planReadQuizCards(blocks, items) {
+  const list = Array.isArray(blocks) ? blocks : [];
+  const indexById = new Map();
+  list.forEach((block, index) => {
+    const id = Number(block && block.id);
+    if (Number.isFinite(id)) indexById.set(id, index);
+  });
+  const pending = (items || []).map((item) => {
+    const blockId = anchorBlockId(item.anchor);
+    const index = indexById.has(blockId) ? indexById.get(blockId) : list.length;
+    return { item, index };
+  }).sort((a, b) => a.index - b.index || String(a.item.id).localeCompare(String(b.item.id)));
+  const cards = [];
+  let paras = 0;
+  let cursor = 0;
+  const take = (beforeIndex, limit) => {
+    const taken = [];
+    while (cursor < pending.length && taken.length < limit && pending[cursor].index < beforeIndex) {
+      taken.push(pending[cursor].item);
+      cursor += 1;
+    }
+    return taken;
+  };
+  for (let i = 0; i < list.length; i += 1) {
+    const block = list[i];
+    const heading = block && (block.kind === "h6" || block.kind === "bold");
+    if (heading && paras >= 2) {
+      const taken = take(i, 3);
+      if (taken.length) {
+        cards.push({ before: i, heading: plainQuizHeading(block), items: taken });
+        paras = 0;
+      }
+    }
+    if (block && block.kind === "para") paras += 1;
+  }
+  while (cursor < pending.length) {
+    const taken = [];
+    while (cursor < pending.length && taken.length < 3) {
+      taken.push(pending[cursor].item);
+      cursor += 1;
+    }
+    if (taken.length) cards.push({ before: list.length, heading: "末尾", items: taken });
+  }
+  return cards.map((card) => ({
+    ...card,
+    key: `${card.before}:${card.items[0] ? card.items[0].id : "end"}`
+  }));
+}
+
+function plannedQuizCard(meta, key) {
+  const body = app.study.bodies[meta.id];
+  const blocks = body && Array.isArray(body.blocks) ? body.blocks : [];
+  return planReadQuizCards(blocks, kaokaoItemsForChunk(meta)).find((card) => card.key === key) || null;
+}
+
+function kkOptionClass(index, item, tryItem) {
+  const classes = ["option-btn", "tap-target"];
+  if (tryItem) {
+    const answer = Number(item.recog && item.recog.answer);
+    if (index === answer) classes.push("opt-ok");
+    else if (Number(tryItem.choice) === index) classes.push("opt-bad");
+  }
+  return classes.join(" ");
+}
+
+function quizCardHtml(meta, card) {
+  const items = card.items || [];
+  if (!items.length) return "";
+  const answeredCount = items.filter((item) => latestKaokaoTry(item.id, "recog")).length;
+  const correct = items.filter((item) => {
+    const tryItem = latestKaokaoTry(item.id, "recog");
+    return tryItem && tryItem.ok;
+  }).length;
+  const allDone = answeredCount === items.length;
+  const cursorId = app.ui.quizCursor && app.ui.quizCursor[card.key];
+  const opened = !!(app.ui.quizOpen && app.ui.quizOpen[card.key]);
+  const attrs = `data-kk-before="${escapeHtml(card.heading)}" data-kk-count="${items.length}" data-kk-ids="${escapeHtml(items.map((item) => item.id).join(","))}"`;
+  if (allDone && !opened && !cursorId) {
+    return `<div class="quiz-slot" ${attrs}><button type="button" class="quiz-fold tap-target" data-kk-open="${escapeHtml(card.key)}">本节小测 ${correct}/${items.length} ✓</button></div>`;
+  }
+  let item = items.find((entry) => entry.id === cursorId);
+  if (!item) item = items.find((entry) => !latestKaokaoTry(entry.id, "recog")) || items[0];
+  const tryItem = latestKaokaoTry(item.id, "recog");
+  if (!tryItem) {
+    if (!app.ui.kaokaoShown) app.ui.kaokaoShown = {};
+    if (!app.ui.kaokaoShown[item.id]) app.ui.kaokaoShown[item.id] = Date.now();
+  }
+  const options = item.recog.options || [];
+  const answerText = options[Number(item.recog.answer)] || "";
+  const result = tryItem ? `
+    <p class="quiz-result ${tryItem.ok ? "ok" : "bad"}">${tryItem.ok ? "✓ 对了" : `✗ 正确是：${escapeHtml(answerText)}`}</p>
+    <p class="small">${escapeHtml(item.recog.why || "")}</p>
+    <div class="button-row">
+      <button type="button" class="btn btn-secondary tap-target" data-kk-src="${escapeHtml(item.id)}">看原文</button>
+      <button type="button" class="btn btn-primary tap-target" data-kk-next="${escapeHtml(card.key)}">下一题</button>
+    </div>` : "";
+  return `<div class="quiz-slot" ${attrs}>
+    <article class="quiz-card">
+      <p class="small">本节小测</p>
+      <p>${escapeHtml(item.recog.stem || "")}</p>
+      <ul class="option-list">
+        ${options.map((text, index) => `
+          <li>
+            <button type="button" class="${kkOptionClass(index, item, tryItem)}" data-kk-choice="${index}" data-kk-item="${escapeHtml(item.id)}" data-kk-key="${escapeHtml(card.key)}" ${tryItem ? "disabled" : ""}>
+              <span class="mono">${escapeHtml(String.fromCharCode(65 + index))}.</span>&nbsp;<span>${escapeHtml(text)}</span>
+            </button>
+          </li>`).join("")}
+      </ul>
+      ${result}
+    </article>
+  </div>`;
+}
+
+function recordKaokaoTry(item, tryItem) {
+  const prev = (app.state.kaokao && app.state.kaokao[item.id]) || {};
+  const tries = [...(prev.tries || []), tryItem];
+  const unit = (String(item.id).match(/U\d+/) || [])[0] || prev.unit || "";
+  store.save(`kaokao/${item.id}`, { tries, unit });
+  if (tryItem.level !== "recog") return;
+  const today = shanghaiToday();
+  const cardId = `KK-${item.id}`;
+  if (app.state.cards[cardId]) return;
+  store.save(`cards/${cardId}`, {
+    box: 0,
+    due: addDaysYmd(today, 1),
+    streak: 0,
+    streakStart: null,
+    cleared: false,
+    src: "kaokao",
+    kid: item.id,
+    created: today,
+    unit
+  });
+}
+
+function answerQuiz(meta, key, itemId, choiceIndex) {
+  const item = kaokaoItemsForChunk(meta).find((entry) => entry.id === itemId);
+  if (!item || latestKaokaoTry(itemId, "recog")) return;
+  if (!Number.isInteger(choiceIndex)) return;
+  if (!app.ui.quizCursor) app.ui.quizCursor = {};
+  app.ui.quizCursor[key] = itemId;
+  const shown = app.ui.kaokaoShown && app.ui.kaokaoShown[itemId];
+  recordKaokaoTry(item, {
+    at: shanghaiIso(),
+    level: "recog",
+    choice: choiceIndex,
+    ok: choiceIndex === Number(item.recog.answer),
+    ms: Math.max(0, Date.now() - (shown || Date.now()))
+  });
+}
+
+function advanceQuiz(meta, key) {
+  const card = plannedQuizCard(meta, key);
+  if (!card) return;
+  const items = card.items;
+  const cursorId = app.ui.quizCursor && app.ui.quizCursor[key];
+  const index = items.findIndex((item) => item.id === cursorId);
+  if (!app.ui.quizCursor) app.ui.quizCursor = {};
+  if (!app.ui.quizOpen) app.ui.quizOpen = {};
+  if (index >= 0 && index < items.length - 1) {
+    app.ui.quizCursor[key] = items[index + 1].id;
+    app.ui.quizOpen[key] = true;
+  } else {
+    app.ui.quizOpen[key] = false;
+    app.ui.quizCursor[key] = "";
+  }
+  render();
+}
+
+function compactText(text) {
+  return String(text || "").replace(/\s+/g, "");
+}
+
+function highlightBlock(block, src) {
+  if (!block) return;
+  const needle = compactText(src);
+  let marked = false;
+  if (needle) {
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    const nodes = [];
+    let raw = "";
+    while (walker.nextNode()) {
+      nodes.push({ node: walker.currentNode, start: raw.length });
+      raw += walker.currentNode.textContent || "";
+    }
+    const map = [];
+    let compact = "";
+    for (let i = 0; i < raw.length; i += 1) {
+      if (/\s/.test(raw[i])) continue;
+      map.push(i);
+      compact += raw[i];
+    }
+    const at = compact.indexOf(needle);
+    if (at >= 0 && map[at] != null && map[at + needle.length - 1] != null) {
+      const rawStart = map[at];
+      const rawEnd = map[at + needle.length - 1] + 1;
+      const slices = [];
+      for (const entry of nodes) {
+        const nodeEnd = entry.start + (entry.node.textContent || "").length;
+        const from = Math.max(rawStart, entry.start);
+        const to = Math.min(rawEnd, nodeEnd);
+        if (from < to) slices.push({ node: entry.node, from: from - entry.start, to: to - entry.start });
+      }
+      for (let s = slices.length - 1; s >= 0; s -= 1) {
+        const slice = slices[s];
+        const text = slice.node.textContent || "";
+        const mark = document.createElement("mark");
+        mark.className = "src-hit";
+        mark.textContent = text.slice(slice.from, slice.to);
+        const frag = document.createDocumentFragment();
+        if (slice.from > 0) frag.appendChild(document.createTextNode(text.slice(0, slice.from)));
+        frag.appendChild(mark);
+        if (slice.to < text.length) frag.appendChild(document.createTextNode(text.slice(slice.to)));
+        if (slice.node.parentNode) slice.node.parentNode.replaceChild(frag, slice.node);
+      }
+      marked = slices.length > 0;
+    }
+  }
+  if (!marked) block.classList.add("src-hit");
+  block.scrollIntoView({ behavior: "smooth", block: "center" });
+  const token = (app.ui.highlightToken || 0) + 1;
+  app.ui.highlightToken = token;
+  setTimeout(() => {
+    if (app.ui.highlightToken !== token) return;
+    document.querySelectorAll(".src-hit").forEach((el) => el.classList.remove("src-hit"));
+  }, 2000);
+}
+
+function whyBasisText(item) {
+  return item && item.why && item.why.basis === "教材" ? "教材原文" : "推理，教材未明说";
+}
+
+function whyStepHtml(meta) {
+  const items = whyItemsForChunk(meta);
+  if (!items.length) return "";
+  const index = Math.min(Math.max(app.ui.learnWhy || 0, 0), items.length - 1);
+  const item = items[index];
+  const saved = latestKaokaoTry(item.id, "why");
+  const revealed = !!(app.ui.learnWhyReveal || saved);
+  return `
+    <p id="why-lead">先自己想，再看精讲里的讲解。</p>
+    <article class="recall-card" id="why-card" data-why-total="${items.length}" data-why-index="${index + 1}">
+      <p class="small" id="why-count">${index + 1} / ${items.length}</p>
+      <p id="why-q">${escapeHtml(item.why.q || "")}</p>
+      ${revealed ? "" : `<p class="small">先在心里推一下，再点开</p><button id="why-show" class="btn btn-primary tap-target" type="button">看答案</button>`}
+      ${revealed ? `
+        <p id="why-a">${escapeHtml(item.why.a || "")}</p>
+        <p class="small" id="why-basis">${escapeHtml(whyBasisText(item))}</p>
+        <button id="why-src" class="btn btn-secondary tap-target" type="button">看原文</button>
+        ${saved ? `<p id="why-noted">已记下：${saved.ok ? "我想到了" : "没想到"}</p>` : `
+          <div class="review-actions">
+            <button id="why-got" class="btn btn-ok" type="button">我想到了</button>
+            <button id="why-miss" class="btn btn-bad" type="button">没想到</button>
+          </div>`}
+        ${saved && index < items.length - 1 ? `<div class="button-row"><button id="why-next" class="btn btn-primary tap-target" type="button">下一题</button></div>` : ""}
+      ` : ""}
+    </article>
+  `;
+}
+
+function answerWhy(meta, ok) {
+  const items = whyItemsForChunk(meta);
+  if (!items.length) return;
+  const index = Math.min(Math.max(app.ui.learnWhy || 0, 0), items.length - 1);
+  const item = items[index];
+  if (!item || latestKaokaoTry(item.id, "why")) return;
+  recordKaokaoTry(item, {
+    at: shanghaiIso(),
+    level: "why",
+    ok: !!ok,
+    choice: ok ? "想到了" : "没想到"
+  });
+}
+
+function retellStepHtml(meta) {
+  const rec = app.state.kaokaoRetell && app.state.kaokaoRetell[meta.id];
+  const text = rec && rec.text ? rec.text : "";
+  return `
+    <label class="retell-label" for="learn-retell">不看上面，用两三句话说出这一块讲了什么。</label>
+    <textarea id="learn-retell" class="textarea">${escapeHtml(text)}</textarea>
+    <p class="small">这段话会在批改功能上线后得到反馈。</p>
+  `;
+}
+
+function saveKaokaoRetell(chunkId, text, unit, options) {
+  if (!chunkId) return;
+  const prev = (app.state.kaokaoRetell && app.state.kaokaoRetell[chunkId]) || {};
+  const nextText = String(text ?? "");
+  if ((prev.text || "") === nextText && prev.at) return;
+  const silent = !options || options.silent !== false;
+  store.save(`kaokaoRetell/${chunkId}`, {
+    text: nextText,
+    at: prev.at || shanghaiIso(),
+    unit: unit || prev.unit || ""
+  }, silent ? { silent: true } : undefined);
+}
+
+function kaokaoSummary(meta) {
+  const items = kaokaoItemsForChunk(meta);
+  if (!items.length) return "";
+  let correct = 0;
+  let skipped = 0;
+  for (const item of items) {
+    const tryItem = latestKaokaoTry(item.id, "recog");
+    if (!tryItem) skipped += 1;
+    else if (tryItem.ok) correct += 1;
+  }
+  const whys = whyItemsForChunk(meta);
+  let thought = 0;
+  for (const item of whys) {
+    const tryItem = latestKaokaoTry(item.id, "why");
+    if (tryItem && tryItem.ok) thought += 1;
+  }
+  const retell = app.state.kaokaoRetell && app.state.kaokaoRetell[meta.id];
+  const said = retell && String(retell.text || "").trim() ? "已复述" : "未复述";
+  const whyPart = whys.length ? ` · 为什么 ${thought}/${whys.length} 想到了` : "";
+  return `小测 ${correct}/${items.length} 对（跳过 ${skipped}）${whyPart} · ${said}`;
+}
+
+function clozeHtml(text) {
+  return escapeHtml(text).replace(/_{3,}/g, '<span class="cloze-blank" aria-label="填空">　　</span>');
+}
+
+function fillCloze(text, answers) {
+  let index = 0;
+  const list = Array.isArray(answers) ? answers : [];
+  return String(text || "").replace(/_{3,}/g, () => {
+    const value = list[index] != null ? String(list[index]) : "";
+    index += 1;
+    return value;
+  });
+}
+
+function openItemSource(meta, item) {
+  if (!item) return;
+  app.ui.kaokaoFocus = {
+    chunkId: meta.id,
+    blockId: anchorBlockId(item.anchor),
+    src: item.src || ""
+  };
+  writeLearnMemory(meta.id, "read");
+  render();
+}
+
+function applyKaokaoFocus(meta) {
+  const focus = app.ui.kaokaoFocus;
+  if (!focus || focus.chunkId !== meta.id) return;
+  const block = document.getElementById(`block-${focus.blockId}`);
+  if (!block) return;
+  highlightBlock(block, focus.src);
+  app.ui.kaokaoFocus = null;
+}
+
+function wireKaokao(meta) {
+  const root = document.getElementById("page-learn");
+  if (!root) return;
+  root.querySelectorAll("[data-kk-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      answerQuiz(meta, button.dataset.kkKey, button.dataset.kkItem, Number(button.dataset.kkChoice));
+    });
+  });
+  root.querySelectorAll("[data-kk-next]").forEach((button) => {
+    button.addEventListener("click", () => advanceQuiz(meta, button.dataset.kkNext));
+  });
+  root.querySelectorAll("[data-kk-src]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = kaokaoItemsForChunk(meta).find((entry) => entry.id === button.dataset.kkSrc);
+      if (!item) return;
+      highlightBlock(document.getElementById(`block-${anchorBlockId(item.anchor)}`), item.src);
+    });
+  });
+  root.querySelectorAll("[data-kk-open]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.kkOpen;
+      const card = plannedQuizCard(meta, key);
+      if (!app.ui.quizOpen) app.ui.quizOpen = {};
+      if (!app.ui.quizCursor) app.ui.quizCursor = {};
+      app.ui.quizOpen[key] = true;
+      if (card && card.items[0]) app.ui.quizCursor[key] = card.items[0].id;
+      render();
+    });
+  });
+  const whyShow = document.getElementById("why-show");
+  if (whyShow) whyShow.addEventListener("click", () => { app.ui.learnWhyReveal = true; render(); });
+  const whyGot = document.getElementById("why-got");
+  if (whyGot) whyGot.addEventListener("click", () => answerWhy(meta, true));
+  const whyMiss = document.getElementById("why-miss");
+  if (whyMiss) whyMiss.addEventListener("click", () => answerWhy(meta, false));
+  const whyNext = document.getElementById("why-next");
+  if (whyNext) whyNext.addEventListener("click", () => {
+    app.ui.learnWhy = (app.ui.learnWhy || 0) + 1;
+    app.ui.learnWhyReveal = false;
+    render();
+  });
+  const whySrc = document.getElementById("why-src");
+  if (whySrc) whySrc.addEventListener("click", () => {
+    const items = whyItemsForChunk(meta);
+    const index = Math.min(Math.max(app.ui.learnWhy || 0, 0), Math.max(0, items.length - 1));
+    openItemSource(meta, items[index]);
+  });
+  const retell = document.getElementById("learn-retell");
+  if (!retell) return;
+  const saveNow = () => saveKaokaoRetell(meta.id, retell.value, meta.unit, { silent: true });
+  retell.addEventListener("input", () => {
+    clearTimeout(app.ui.retellTimer);
+    app.ui.retellTimer = setTimeout(saveNow, 1500);
+  });
+  retell.addEventListener("blur", () => {
+    const text = retell.value;
+    clearTimeout(app.ui.retellTimer);
+    app.ui.retellTimer = setTimeout(() => {
+      saveKaokaoRetell(meta.id, text, meta.unit, { silent: true });
+    }, 0);
+  });
+}
+
 function stripHashes(md) {
   return String(md || "").replace(/^#{1,6}\s*/, "");
 }
 
 function renderReadBlocks(meta, body) {
   const blocks = body && Array.isArray(body.blocks) ? body.blocks : [];
+  const quizCards = planReadQuizCards(blocks, kaokaoItemsForChunk(meta));
+  const quizByIndex = new Map();
+  for (const card of quizCards) {
+    const list = quizByIndex.get(card.before) || [];
+    list.push(card);
+    quizByIndex.set(card.before, list);
+  }
   let lastPrinted = null;
-  return blocks.map((block) => {
+  const parts = [];
+  blocks.forEach((block, index) => {
+    for (const card of quizByIndex.get(index) || []) parts.push(quizCardHtml(meta, card));
     const kind = block.kind || "para";
     const printed = block.printed;
     const showPage = printed != null && printed !== lastPrinted;
@@ -4175,9 +4876,9 @@ function renderReadBlocks(meta, body) {
       inner = `<${tag}>${renderRich(stripHashes(block.md))}</${tag}>`;
     } else if (kind === "table") {
       ask = true;
-      const parts = splitTableMd(block.md);
-      const table = parts.table ? `<div class="read-table-wrap">${sanitizeTableHtml(parts.table)}</div>` : "";
-      inner = `${parts.before ? `<div>${renderRich(parts.before)}</div>` : ""}${table}`;
+      const tableParts = splitTableMd(block.md);
+      const table = tableParts.table ? `<div class="read-table-wrap">${sanitizeTableHtml(tableParts.table)}</div>` : "";
+      inner = `${tableParts.before ? `<div>${renderRich(tableParts.before)}</div>` : ""}${table}`;
     } else if (kind === "equation") {
       const tex = String(block.md || "").replace(/^\$\$/, "").replace(/\$\$$/, "").trim();
       inner = `<div class="read-equation">${renderTex(tex, true)}</div>`;
@@ -4188,18 +4889,19 @@ function renderReadBlocks(meta, body) {
       const klass = kind === "footnote" || kind === "qr" || kind === "review_insert" ? "small" : "";
       inner = `<div class="${klass}">${renderRich(block.md)}</div>`;
     }
-    const askId = ask ? `ask-${block.id}` : "";
     if (ask) app.ui.askText[String(block.id)] = askPrompt(meta, block);
-    return `
-      <div class="read-block">
+    parts.push(`
+      <div class="read-block" id="block-${escapeHtml(String(block.id))}">
         <div class="page-mark mono">${escapeHtml(mark)}</div>
         <div class="read-copy${ask ? " has-ask" : ""}">
           ${ask ? `<button type="button" class="ask-btn" data-ask="${escapeHtml(String(block.id))}">问</button>` : ""}
           ${inner}
         </div>
       </div>
-    `;
-  }).join("");
+    `);
+  });
+  for (const card of quizByIndex.get(blocks.length) || []) parts.push(quizCardHtml(meta, card));
+  return parts.join("");
 }
 
 function applyAskResult() {
@@ -4409,6 +5111,7 @@ function doneStepHtml(meta) {
     ${reviewed ? `<p class="learn-review-note" id="learn-review-note">已于 ${escapeHtml(rec.doneAt)} 学完，这次是复习。</p>` : ""}
     <p id="learn-minutes">用时 ${learnMinutes(meta.id)} 分钟</p>
     <p id="learn-score">做题 ${score.done} 道对 ${score.correct} 道</p>
+    ${kaokaoSummary(meta) ? `<p id="learn-kaokao-line">${escapeHtml(kaokaoSummary(meta))}</p>` : ""}
     <div class="button-row">
       <button id="learn-finish" class="btn btn-primary tap-target" type="button">${reviewed ? "再学一遍完成" : "这一块学完了"}</button>
       ${next ? `<button id="learn-finish-next" class="btn btn-secondary tap-target" type="button" data-next-chunk="${escapeHtml(next.id)}">学下一块</button>` : ""}
@@ -4428,8 +5131,12 @@ function renderLearn() {
     return;
   }
   const chunkId = app.ui.routeChunkId || hashRoute().chunkId;
-  const weekUnits = app.data ? getWeekContext(shanghaiToday()).units : [];
-  weekUnits.forEach((unitId) => kickUnitIndex(unitId));
+  const today = shanghaiToday();
+  const weekUnits = app.data ? getWeekContext(today).units : [];
+  weekUnits.forEach((unitId) => {
+    kickUnitIndex(unitId);
+    kickKaokao(unitId);
+  });
   const meta = findChunkMeta(chunkId);
   if (!meta) {
     const waiting = weekUnits.some((unitId) => app.study.indexState[unitId] === "loading" || !app.study.indexState[unitId]);
@@ -4442,7 +5149,10 @@ function renderLearn() {
     if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
     return;
   }
-  if (canReadRepo()) kickChunkBody(meta);
+  if (canReadRepo()) {
+    kickChunkBody(meta);
+    kickKaokao(meta.unit);
+  }
   if (app.ui.learnBoundChunk !== meta.id) {
     app.ui.learnBoundChunk = meta.id;
     app.ui.learnQid = "";
@@ -4451,9 +5161,25 @@ function renderLearn() {
     app.ui.learnRecall = 0;
     app.ui.learnReveal = false;
     app.ui.learnDoubtOpen = false;
+    app.ui.learnWhy = 0;
+    app.ui.learnWhyReveal = false;
+    app.ui.quizCursor = {};
+    app.ui.quizOpen = {};
+    app.ui.kaokaoShown = {};
   }
   ensureLearnTimer(meta.id);
   const steps = buildLearnSteps(meta);
+  const memory = app.ui.learnPlace && app.ui.learnPlace.chunkId === meta.id
+    ? app.ui.learnPlace
+    : readLearnMemory();
+  const preferred = memory && memory.chunkId === meta.id ? memory.stepId : "";
+  const kaokaoState = app.study.kaokaoState[meta.unit];
+  const kaokaoPending = canReadRepo() && !app.study.kaokao[meta.unit]
+    && kaokaoState !== "missing" && kaokaoState !== "error";
+  if (kaokaoPending && (preferred === "why" || preferred === "retell") && !steps.some((step) => step.id === preferred)) {
+    root.innerHTML = `<p class="small">正在读取可考句…</p>`;
+    return;
+  }
   const stepId = currentLearnStep(meta.id, steps);
   writeLearnMemory(meta.id, stepId);
   app.ui.askText = {};
@@ -4461,8 +5187,10 @@ function renderLearn() {
   let body = "";
   if (stepId === "preview") body = previewStepHtml(meta);
   else if (stepId === "read") body = readStepHtml(meta);
+  else if (stepId === "why") body = whyStepHtml(meta);
   else if (stepId === "lecture") body = lectureStepHtml(meta);
   else if (stepId === "recall") body = recallStepHtml(meta);
+  else if (stepId === "retell") body = retellStepHtml(meta);
   else if (stepId === "quiz") body = quizStepHtml(meta);
   else body = doneStepHtml(meta);
   root.innerHTML = `
@@ -4490,6 +5218,12 @@ function renderLearn() {
     </div>
   `;
   const goStep = (nextId) => {
+    const retell = document.getElementById("learn-retell");
+    if (retell) {
+      clearTimeout(app.ui.retellTimer);
+      app.ui.retellTimer = null;
+      saveKaokaoRetell(meta.id, retell.value, meta.unit, { silent: true });
+    }
     app.ui.learnChoice = "";
     app.ui.askNotice = "";
     app.ui.askFallback = "";
@@ -4535,6 +5269,8 @@ function renderLearn() {
     });
   }
   wireLearnQuiz(meta);
+  wireKaokao(meta);
+  if (stepId === "read") applyKaokaoFocus(meta);
 }
 
 function wireLearnQuiz(meta) {
@@ -5040,9 +5776,14 @@ function gradeCurrentReview(action) {
   if (!app.state.cards[id]) return;
   const result = gradeReview(session, app.state.cards, today, action, applyReviewGrade);
   if (!result.card) return;
+  let cardToSave = result.card;
+  if (app.ui.reviewHint && app.ui.reviewHint.cardId === id && app.ui.reviewHint.used) {
+    cardToSave = { ...result.card, hint: true };
+  }
+  if (action !== "blank") app.ui.reviewHint = null;
   app.ui.review = result.session;
   app.sync.sessionReviews += 1;
-  store.save(`cards/${id}`, result.card);
+  store.save(`cards/${id}`, cardToSave);
   render();
 }
 
@@ -5051,10 +5792,40 @@ function undoCurrentReview() {
   if (!result.card || !result.session || !result.session.currentId) return;
   const id = result.session.currentId;
   app.ui.review = result.session;
+  app.ui.reviewHint = null;
   if (app.sync.sessionReviews > 0) app.sync.sessionReviews -= 1;
   const keepIntroStamp = !!(result.card && result.card.intro);
   store.save(`cards/${id}`, result.card, keepIntroStamp ? { keepUpdatedAt: true } : undefined);
   render();
+}
+
+function openKaokaoFromReview(item) {
+  const cardId = app.ui.review && app.ui.review.currentId ? app.ui.review.currentId : "";
+  if (!item || !item.chunk) {
+    app.ui.reviewSourceNote = item && item.src ? item.src : "这张可考句暂时没读到。";
+    app.ui.reviewSourceFor = cardId;
+    render();
+    return;
+  }
+  const meta = findChunkMeta(item.chunk);
+  if (!meta) {
+    const unit = (String(item.id || "").match(/U\d+/) || [])[0] || "";
+    if (unit) kickUnitIndex(unit);
+    const state = unit && app.study.indexState[unit];
+    if (!state || state === "loading") return;
+    app.ui.reviewSourceNote = item.src || "";
+    app.ui.reviewSourceFor = cardId;
+    render();
+    return;
+  }
+  app.ui.reviewSourceNote = "";
+  app.ui.kaokaoFocus = {
+    chunkId: item.chunk,
+    blockId: anchorBlockId(item.anchor),
+    src: item.src || ""
+  };
+  writeLearnMemory(item.chunk, "read");
+  openLearn(item.chunk);
 }
 
 function renderReview(today) {
@@ -5064,6 +5835,7 @@ function renderReview(today) {
     return;
   }
   if (app.ui.tab !== "review") return;
+  ensureKaokaoLoaded(today);
 
   const dueIds = getReviewQueue(today).map((card) => card.id);
   const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards);
@@ -5086,15 +5858,48 @@ function renderReview(today) {
     return;
   }
 
+  if (app.ui.reviewSourceFor && app.ui.reviewSourceFor !== session.currentId) {
+    app.ui.reviewSourceNote = "";
+    app.ui.reviewSourceFor = "";
+  }
   const stored = app.state.cards[session.currentId];
   const card = stored ? { id: session.currentId, ...stored } : { id: session.currentId, src: "skeleton" };
-  const content = reviewCardContent(card);
+  const kkItem = card.src === "kaokao" ? kaokaoItemById(card.kid) : null;
+  const content = card.src === "kaokao" ? null : reviewCardContent(card);
   const showAnswer = session.phase === "checking" || session.phase === "revealed";
   const index = session.order.indexOf(session.currentId);
   const position = index >= 0 ? index + 1 : 1;
-  const answerHtml = showAnswer
-    ? `<section class="panel"><p>${reviewRichText(content.back)}</p><p class="small mono">${escapeHtml(content.anchor)}</p>${anchorPrintedHtml(content.anchor)}</section>`
-    : "";
+  const hintUsed = !!(app.ui.reviewHint && app.ui.reviewHint.cardId === card.id && app.ui.reviewHint.used);
+  let frontHtml = "";
+  if (card.src === "kaokao") {
+    if (!kkItem) {
+      const unit = (String(card.kid || "").match(/U\d+/) || [])[0] || "";
+      const state = unit && app.study.kaokaoState[unit];
+      frontHtml = `<p>${state === "missing" || state === "error" ? "这张可考句暂时没读到。" : "正在读取可考句…"}</p>`;
+    } else {
+      frontHtml = `<p id="review-cloze">${clozeHtml(kkItem.cloze && kkItem.cloze.text)}</p>`;
+      if (hintUsed) frontHtml += `<p class="small" id="review-hint-text">${escapeHtml((kkItem.cloze && kkItem.cloze.hint) || "")}</p>`;
+      else if (session.phase === "front") frontHtml += `<div class="button-row"><button id="review-hint" class="btn btn-secondary tap-target" type="button">提示</button></div>`;
+    }
+  } else {
+    frontHtml = `<p>${reviewRichText(content.front)}</p>`;
+  }
+  let answerHtml = "";
+  if (showAnswer && card.src === "kaokao") {
+    if (kkItem) {
+      const filled = fillCloze(kkItem.cloze && kkItem.cloze.text, kkItem.cloze && kkItem.cloze.answers);
+      answerHtml = `<section class="panel" id="review-kaokao-answer">
+        <p>${escapeHtml(filled)}</p>
+        <p class="small">${escapeHtml((kkItem.recog && kkItem.recog.why) || "")}</p>
+        <button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>
+        ${app.ui.reviewSourceNote ? `<p id="review-source-note">${escapeHtml(app.ui.reviewSourceNote)}</p>` : ""}
+      </section>`;
+    } else if (app.ui.reviewSourceNote) {
+      answerHtml = `<section class="panel"><p id="review-source-note">${escapeHtml(app.ui.reviewSourceNote)}</p></section>`;
+    }
+  } else if (showAnswer) {
+    answerHtml = `<section class="panel"><p>${reviewRichText(content.back)}</p><p class="small mono">${escapeHtml(content.anchor)}</p>${anchorPrintedHtml(content.anchor)}</section>`;
+  }
   const mark = session.phase === "revealed" ? `<p class="review-mark">已记为没印象，明天会再出现。</p>` : "";
   let actions = "";
   if (session.phase === "checking") {
@@ -5127,13 +5932,21 @@ function renderReview(today) {
       </div>
       <article class="review-card" data-phase="${session.phase}">
         ${mark}
-        <p>${reviewRichText(content.front)}</p>
+        ${frontHtml}
         ${answerHtml}
         ${actions}
       </article>
     </section>
   `;
 
+  bindReviewButton("review-hint", () => {
+    app.ui.reviewHint = { cardId: session.currentId, used: true };
+    render();
+  });
+  bindReviewButton("review-source", () => {
+    const current = app.state.cards[session.currentId];
+    openKaokaoFromReview(current ? kaokaoItemById(current.kid) : null);
+  });
   bindReviewButton("review-blank", () => gradeCurrentReview("blank"));
   bindReviewButton("review-show", () => {
     const current = app.ui.review;
