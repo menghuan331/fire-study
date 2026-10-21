@@ -27,6 +27,9 @@
   --ok: #2f9a5d;
   --warn: #b7791f;
   --bad: #c4271d;
+  --fg: #1d2329;
+  --muted: #56606b;
+  --rx-n: #3d4148;
   --font-display: "Noto Serif SC", "Songti SC", serif;
   --font-body: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -49,6 +52,9 @@
     --ok: #45b878;
     --warn: #e3ad2e;
     --bad: #e5483c;
+    --fg: #e4e8ec;
+    --muted: #98a2ad;
+    --rx-n: #c9ccd2;
     color-scheme: dark;
   }
 }
@@ -68,6 +74,9 @@
   --ok: #45b878;
   --warn: #e3ad2e;
   --bad: #e5483c;
+  --fg: #e4e8ec;
+  --muted: #98a2ad;
+  --rx-n: #c9ccd2;
   color-scheme: dark;
 }
 
@@ -502,6 +511,17 @@ button.sync-status {
 .review-card {
   border: 1px solid var(--line);
   padding: 12px;
+}
+
+.review-src {
+  display: inline-block;
+  margin: 0 0 8px;
+  padding: 2px 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
 }
 
 .review-meta {
@@ -1165,8 +1185,13 @@ button.sync-status {
   min-width: 0;
 }
 
-.read-copy.has-ask {
+.read-copy.has-doubt {
   padding-right: 52px;
+}
+
+.read-copy.is-doubt {
+  box-shadow: inset 3px 0 0 var(--warn);
+  padding-left: 10px;
 }
 
 .read-flow h3,
@@ -1187,18 +1212,182 @@ button.sync-status {
   margin: 0;
 }
 
-.ask-btn {
+.doubt-btn {
   position: absolute;
   top: 0;
   right: 0;
+  width: 44px;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 8px;
-  border: 1px solid var(--line);
+  padding: 0;
+  border: 0;
   background: transparent;
-  color: var(--ink-2);
-  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.35;
+  font-size: 18px;
+  line-height: 1;
   cursor: pointer;
+}
+
+.doubt-btn:hover,
+.doubt-btn:active,
+.doubt-btn.is-on {
+  opacity: 1;
+  color: var(--fg);
+}
+
+.doubt-btn.is-on {
+  color: var(--warn);
+}
+
+.rhythm-switch {
+  display: flex;
+  width: 100%;
+  max-width: 280px;
+  margin: 0 0 16px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.rhythm-opt {
+  flex: 1 1 0;
+  min-height: 44px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.rhythm-opt + .rhythm-opt {
+  border-left: 1px solid var(--line);
+}
+
+.rhythm-opt.is-on {
+  background: var(--fg);
+  color: var(--panel);
+}
+
+.rx-line {
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.rx-line + .rx-line {
+  margin-top: 0.35em;
+}
+
+.rx-line.rx-li + .rx-line.rx-li {
+  margin-top: 0.2em;
+}
+
+.rx-li {
+  position: relative;
+  padding-left: 1.2em;
+}
+
+.rx-li::before {
+  content: "";
+  position: absolute;
+  left: 0.15em;
+  top: 0.72em;
+  width: 0.35em;
+  height: 0.35em;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.rx-k {
+  font-weight: 650;
+  font-size: 1.07em;
+  color: var(--fg);
+}
+
+.rx-n {
+  font-size: 0.96em;
+  color: var(--rx-n);
+}
+
+.rx-w {
+  font-size: 0.86em;
+  color: var(--muted);
+}
+
+.doubt-box {
+  margin-top: 8px;
+}
+
+.doubt-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+.doubt-hint,
+.doubt-still {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.doubt-answer {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.doubt-answer-kicker {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.doubt-answer-text {
+  margin: 0;
+}
+
+.doubt-quote,
+.review-quote {
+  margin: 8px 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+  font-size: 0.92em;
+}
+
+.review-quote p {
+  margin: 0;
+}
+
+.doubt-jump-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.doubt-jump-list .text-link,
+.today-doubt-jump .text-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+.today-doubt-jump {
+  margin: 8px 0 0;
+}
+
+.today-doubt-jump .text-link {
+  color: var(--warn);
 }
 
 .read-table-wrap {
@@ -1296,11 +1485,49 @@ button.sync-status {
   width: 100%;
   text-align: left;
   align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--ink);
   padding: 8px 12px;
   cursor: pointer;
+}
+
+.quiz-fold-action {
+  margin-left: auto;
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+.quiz-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.quiz-card-top .small {
+  margin: 0;
+}
+
+.quiz-collapse {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  min-height: 44px;
+  padding: 0 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.quiz-review-item + .quiz-review-item {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
 }
 
 .quiz-result {
@@ -1524,7 +1751,8 @@ function mergeStates(local, remote) {
     attempts: mergeMaps(left.attempts, right.attempts),
     chunks: mergeMaps(left.chunks, right.chunks),
     kaokao: mergeMaps(left.kaokao, right.kaokao),
-    kaokaoRetell: mergeMaps(left.kaokaoRetell, right.kaokaoRetell)
+    kaokaoRetell: mergeMaps(left.kaokaoRetell, right.kaokaoRetell),
+    doubts: mergeMaps(left.doubts, right.doubts)
   };
 }
 
@@ -1725,7 +1953,8 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
       attempts: {},
       chunks: {},
       kaokao: {},
-      kaokaoRetell: {}
+      kaokaoRetell: {},
+      doubts: {}
     };
   }
 
@@ -1844,6 +2073,12 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
         retell: kaokaoRetell[unit] || {}
       });
     }
+    const doubts = groupByUnit(src.doubts);
+    for (const unit of Object.keys(doubts).sort()) {
+      files[`${PROGRESS_PREFIX}doubts/${unit}.json`] = stableStringify({
+        items: doubts[unit] || {}
+      });
+    }
     return files;
   }
 
@@ -1863,7 +2098,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
   }
 
   function unitFromPath(filePath) {
-    const match = /^进度\/(?:cards|attempts|kaokao)\/([^/]+)\.json$/.exec(filePath || "");
+    const match = /^进度\/(?:cards|attempts|kaokao|doubts)\/([^/]+)\.json$/.exec(filePath || "");
     return match ? match[1] : "";
   }
 
@@ -1904,6 +2139,8 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
         const unit = unitFromPath(filePath);
         absorbRecords(remote.kaokao, json.items, unit);
         absorbRecords(remote.kaokaoRetell, json.retell, unit);
+      } else if (filePath.startsWith(`${PROGRESS_PREFIX}doubts/`)) {
+        absorbRecords(remote.doubts, json.items, unitFromPath(filePath));
       }
     }
     return remote;
@@ -2128,7 +2365,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-21.1";
+const APP_VERSION = "2026-10-22.1";
 let swControllerReload = false;
 const INTERVALS = [1, 3, 7, 14, 30, 60];
 
@@ -2368,7 +2605,10 @@ const app = {
     learnWhy: 0,
     learnWhyReveal: false,
     quizCursor: {},
-    quizOpen: {},
+    quizCollapsed: {},
+    quizReview: {},
+    doubtCancel: "",
+    doubtTimers: {},
     kaokaoShown: {},
     kaokaoFocus: null,
     retellTimer: null,
@@ -2385,7 +2625,9 @@ const app = {
     indexState: {},
     bodyState: {},
     kaokao: {},
-    kaokaoState: {}
+    kaokaoState: {},
+    rhythm: {},
+    rhythmState: {}
   },
   lecturePrefix: "",
   derived: {
@@ -2411,7 +2653,8 @@ function createDefaultState() {
     weeks: {},
     chunks: {},
     kaokao: {},
-    kaokaoRetell: {}
+    kaokaoRetell: {},
+    doubts: {}
   };
 }
 
@@ -2506,7 +2749,8 @@ function coerceState(input, options) {
     weeks: {},
     chunks: {},
     kaokao: {},
-    kaokaoRetell: {}
+    kaokaoRetell: {},
+    doubts: {}
   };
   const sections = src.sections && typeof src.sections === "object" && !Array.isArray(src.sections) ? src.sections : {};
   const sectionsAt = src.sectionsAt && typeof src.sectionsAt === "object" && !Array.isArray(src.sectionsAt) ? src.sectionsAt : {};
@@ -2527,6 +2771,7 @@ function coerceState(input, options) {
   copyRecords(src.chunks, state.chunks);
   copyRecords(src.kaokao, state.kaokao);
   copyRecords(src.kaokaoRetell, state.kaokaoRetell);
+  copyRecords(src.doubts, state.doubts);
   return state;
 }
 
@@ -2601,6 +2846,9 @@ function setNestedState(path, value, options) {
   } else if (kind === "kaokaoRetell" && id) {
     if (!app.state.kaokaoRetell) app.state.kaokaoRetell = {};
     app.state.kaokaoRetell[id] = stampSavedRecord(value, options, now);
+  } else if (kind === "doubts" && id) {
+    if (!app.state.doubts) app.state.doubts = {};
+    app.state.doubts[id] = stampSavedRecord(value, options, now);
   } else if (path === "startedAt") {
     app.state.startedAt = value;
   } else if (path === "baselineDone") {
@@ -2798,7 +3046,20 @@ function annotateUnits(state) {
     if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
     kaokaoRetell[id] = { ...rec, unit: unitForRetellId(id, rec) };
   }
-  return { ...source, cards, attempts, kaokao, kaokaoRetell };
+  const doubts = {};
+  for (const [id, rec] of Object.entries(source.doubts || {})) {
+    if (!rec || typeof rec !== "object" || Array.isArray(rec)) continue;
+    doubts[id] = { ...rec, unit: unitForDoubt(id, rec) };
+  }
+  return { ...source, cards, attempts, kaokao, kaokaoRetell, doubts };
+}
+
+function unitForDoubt(id, rec) {
+  if (rec && typeof rec.unit === "string" && /^U\d+$/.test(rec.unit)) return rec.unit;
+  const chunkId = rec && rec.chunk ? rec.chunk : String(id || "").split(":")[0];
+  const meta = findChunkMeta(chunkId);
+  if (meta && meta.unit) return meta.unit;
+  return "unknown";
 }
 
 function unitForRetellId(chunkId, rec) {
@@ -2929,6 +3190,7 @@ function flushEditors() {
     const meta = findChunkMeta(app.ui.routeChunkId);
     saveKaokaoRetell(app.ui.routeChunkId, retellEl.value, meta && meta.unit, { silent: true });
   }
+  flushDoubtInputs();
   if (weekValues && app.data) {
     clearTimeout(app.ui.weekTimer);
     app.ui.weekTimer = null;
@@ -3714,26 +3976,6 @@ function openLecture(url) {
   if (href) location.href = href;
 }
 
-function renderUnitLectureBlock(unitIds) {
-  const items = lecturesForUnits(unitIds);
-  if (!items.length) return "";
-  return `
-    <div class="lecture-block">
-      <p class="lecture-title">本单元精讲</p>
-      <ul class="lecture-list">
-        ${items.map((item) => `
-          <li>
-            <button type="button" class="lecture-link tap-target" data-lecture-url="${escapeHtml(item.url)}">
-              <span>${escapeHtml(item.title)}</span>
-              <span class="small">${escapeHtml(String(item.minutes))} 分钟 · 可听 ${escapeHtml(String(item.audioMinutes))} 分钟</span>
-            </button>
-          </li>
-        `).join("")}
-      </ul>
-    </div>
-  `;
-}
-
 function renderStatusBar(today, weekCtx) {
   document.getElementById("status-center").textContent = weekCtx.weekLabel;
   const days = Math.max(0, diffDaysYmd(today, EXAM_DATE));
@@ -3819,6 +4061,17 @@ async function fetchStudyResponse(repoPath) {
 }
 
 function ingestStudyText(repoPath, text) {
+  const rhythmMatch = /^教材\/([^/]+)\/rhythm\.json$/.exec(repoPath || "");
+  if (rhythmMatch) {
+    try {
+      const data = JSON.parse(text);
+      app.study.rhythm[rhythmMatch[1]] = data && typeof data === "object" ? data : { blocks: {} };
+      app.study.rhythmState[rhythmMatch[1]] = "ready";
+    } catch (_) {
+      app.study.rhythmState[rhythmMatch[1]] = "error";
+    }
+    return;
+  }
   const kaokaoMatch = /^教材\/([^/]+)\/kaokao\.json$/.exec(repoPath || "");
   if (kaokaoMatch) {
     try {
@@ -3915,6 +4168,19 @@ async function loadStudyBlobUrl(repoPath, filename) {
   const clone = res.clone();
   await cacheStudyResponse(repoPath, clone);
   return remember(res);
+}
+
+function kickRhythm(unitId) {
+  if (!unitId || !canReadRepo()) return;
+  if (app.study.rhythm[unitId]) return;
+  const state = app.study.rhythmState[unitId];
+  if (state === "loading" || state === "ready" || state === "missing" || state === "error") return;
+  app.study.rhythmState[unitId] = "loading";
+  loadStudyText(`教材/${unitId}/rhythm.json`).then((text) => {
+    if (app.study.rhythm[unitId]) app.study.rhythmState[unitId] = "ready";
+    else app.study.rhythmState[unitId] = text ? "error" : "missing";
+    render();
+  });
 }
 
 function kickKaokao(unitId) {
@@ -4138,7 +4404,6 @@ function chunkMetaLine(meta) {
     `${Number(meta.minutes) || 0} 分钟`,
     `${questions} 题`
   ];
-  if (Array.isArray(meta.jiang) && meta.jiang.length) parts.push("有精讲");
   return parts.filter(Boolean).join(" · ");
 }
 
@@ -4264,7 +4529,6 @@ function buildLearnSteps(meta) {
   if (normal.length) steps.push({ id: "preview", label: "先看题" });
   steps.push({ id: "read", label: "原文" });
   if (whyItemsForChunk(meta).length) steps.push({ id: "why", label: "想一想为什么" });
-  steps.push({ id: "lecture", label: "精讲" });
   if (cards.length) steps.push({ id: "recall", label: "想一想" });
   if (kaokaoItemsForChunk(meta).length) steps.push({ id: "retell", label: "复述" });
   steps.push({ id: "quiz", label: "做题" });
@@ -4308,7 +4572,7 @@ function renderPlain(text) {
   return escapeHtml(text).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\n/g, "<br>");
 }
 
-function renderRich(md) {
+function renderRich(md, inline) {
   const source = String(md || "");
   const re = /\$\$([\s\S]+?)\$\$|!\[([^\]]*)\]\(<([^>]+)>\)|!\[([^\]]*)\]\(([^)]+)\)|\$([^$\n]+?)\$/g;
   let last = 0;
@@ -4316,14 +4580,89 @@ function renderRich(md) {
   const parts = [];
   while ((match = re.exec(source))) {
     parts.push(renderPlain(source.slice(last, match.index)));
-    if (match[1] != null) parts.push(`<div class="read-equation">${renderTex(match[1].trim(), true)}</div>`);
-    else if (match[3] != null) parts.push(imageHtml(match[3], match[2]));
+    if (match[1] != null) {
+      const eq = renderTex(match[1].trim(), true);
+      parts.push(inline ? `<span class="read-equation">${eq}</span>` : `<div class="read-equation">${eq}</div>`);
+    } else if (match[3] != null) parts.push(imageHtml(match[3], match[2]));
     else if (match[5] != null) parts.push(imageHtml(match[5], match[4]));
     else if (match[6] != null) parts.push(renderTex(match[6].trim(), false));
     last = match.index + match[0].length;
   }
   parts.push(renderPlain(source.slice(last)));
   return parts.join("");
+}
+
+function rhythmMode() {
+  try {
+    return localStorage.getItem("study-rhythm-mode") === "plain" ? "plain" : "focus";
+  } catch (_) {
+    return "focus";
+  }
+}
+
+function setRhythmMode(mode) {
+  try {
+    localStorage.setItem("study-rhythm-mode", mode === "plain" ? "plain" : "focus");
+  } catch (_) {}
+}
+
+function rhythmMarkupFor(meta, block) {
+  if (!meta || !block || (block.kind || "para") !== "para") return "";
+  if (rhythmMode() === "plain") return "";
+  const doc = app.study.rhythm && app.study.rhythm[meta.unit];
+  const blocks = doc && doc.blocks;
+  if (!blocks) return "";
+  const markup = blocks[String(block.id)];
+  return typeof markup === "string" ? markup : "";
+}
+
+function chunkUsesRhythm(meta, body) {
+  if (!meta || !body || !Array.isArray(body.blocks)) return false;
+  const doc = app.study.rhythm && app.study.rhythm[meta.unit];
+  const blocks = doc && doc.blocks;
+  if (!blocks) return false;
+  return body.blocks.some((block) => (block.kind || "para") === "para" && typeof blocks[String(block.id)] === "string");
+}
+
+function renderRhythmLine(line) {
+  let text = String(line || "");
+  let item = false;
+  if (text.startsWith("· ")) {
+    item = true;
+    text = text.slice(2);
+  }
+  const parts = [];
+  const re = /\{\{([\s\S]*?)\}\}|\(\(([\s\S]*?)\)\)/g;
+  let last = 0;
+  let match;
+  while ((match = re.exec(text))) {
+    if (match.index > last) parts.push({ kind: "n", text: text.slice(last, match.index) });
+    if (match[1] != null) parts.push({ kind: "k", text: match[1] });
+    else parts.push({ kind: "w", text: match[2] || "" });
+    last = match.index + match[0].length;
+  }
+  if (last < text.length) parts.push({ kind: "n", text: text.slice(last) });
+  const inner = parts.filter((part) => part.text).map((part) => {
+    const html = renderRich(part.text, true);
+    if (part.kind === "k") return `<strong class="rx-k">${html}</strong>`;
+    if (part.kind === "w") return `<span class="rx-w">${html}</span>`;
+    return `<span class="rx-n">${html}</span>`;
+  }).join("");
+  return `<div class="rx-line${item ? " rx-li" : ""}">${inner}</div>`;
+}
+
+function renderRhythmMarkup(markup) {
+  return String(markup || "").replace(/\r\n/g, "\n").split("\n").map((line) => renderRhythmLine(line)).join("");
+}
+
+function rhythmSwitchHtml(meta, body) {
+  if (!chunkUsesRhythm(meta, body)) return "";
+  const plain = rhythmMode() === "plain";
+  return `
+    <div class="rhythm-switch" role="group" aria-label="排版">
+      <button type="button" class="rhythm-opt tap-target${plain ? "" : " is-on"}" data-rhythm="focus" aria-pressed="${plain ? "false" : "true"}">重点排版</button>
+      <button type="button" class="rhythm-opt tap-target${plain ? " is-on" : ""}" data-rhythm="plain" aria-pressed="${plain ? "true" : "false"}">原样</button>
+    </div>`;
 }
 
 function sanitizeTableHtml(html) {
@@ -4379,9 +4718,78 @@ function plainExcerpt(md) {
     .slice(0, 600);
 }
 
-function askPrompt(meta, block) {
-  const printed = block && block.printed != null ? block.printed : (meta && meta.printedFrom);
-  return `我在学注册消防工程师《${bookTitle(meta && meta.book)}》印刷页 ${printed}。这段原文：「${plainExcerpt(block && block.md)}」。请先讲清楚为什么需要这条规定（从没有它会出什么问题讲起），再讲考试怎么考。`;
+function doubtKey(chunkId, blockId) {
+  return `${chunkId}:${blockId}`;
+}
+
+function activeDoubt(chunkId, blockId) {
+  const rec = app.state.doubts && app.state.doubts[doubtKey(chunkId, blockId)];
+  if (!rec || rec.removed) return null;
+  return rec;
+}
+
+function limitSentences(text, count) {
+  const src = String(text || "").trim();
+  if (!src) return "";
+  const parts = src.match(/[^。！？!?]+[。！？!?]?/g) || [src];
+  return parts.slice(0, count).join("").trim();
+}
+
+function writeDoubt(meta, blockId, patch, options) {
+  const id = doubtKey(meta.id, blockId);
+  const prev = (app.state.doubts && app.state.doubts[id]) || {};
+  const next = {
+    chunk: meta.id,
+    block: blockId,
+    unit: meta.unit,
+    note: prev.note || "",
+    at: prev.at || shanghaiIso()
+  };
+  if (prev.answer) next.answer = prev.answer;
+  if (prev.resolved) next.resolved = prev.resolved;
+  if (prev.removed) next.removed = true;
+  const incoming = { ...(patch || {}) };
+  if (incoming.note == null) delete incoming.note;
+  Object.assign(next, incoming);
+  next.chunk = meta.id;
+  next.block = blockId;
+  next.unit = meta.unit || prev.unit || "";
+  if (!next.at) next.at = shanghaiIso();
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "removed") && !patch.removed) delete next.removed;
+  if (patch && Object.prototype.hasOwnProperty.call(patch, "resolved") && !patch.resolved) delete next.resolved;
+  store.save(`doubts/${id}`, next, options);
+}
+
+function saveDoubtNote(meta, blockId, note, options) {
+  if (!meta || !activeDoubt(meta.id, blockId)) return;
+  const text = String(note ?? "");
+  const prev = activeDoubt(meta.id, blockId);
+  if ((prev.note || "") === text) return;
+  writeDoubt(meta, blockId, { note: text }, options || { silent: true });
+}
+
+function flushDoubtInputs() {
+  const chunkId = app.ui.routeChunkId || (hashRoute().chunkId || "");
+  if (!chunkId) return;
+  const meta = findChunkMeta(chunkId);
+  if (!meta) return;
+  document.querySelectorAll("[data-doubt-note]").forEach((input) => {
+    const blockId = input.dataset.doubtNote;
+    if (app.ui.doubtTimers) clearTimeout(app.ui.doubtTimers[doubtKey(meta.id, blockId)]);
+    saveDoubtNote(meta, blockId, input.value, { silent: true });
+  });
+}
+
+function markdownPlain(md) {
+  return String(md || "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
+    .replace(/\$\$([\s\S]*?)\$\$/g, "$1")
+    .replace(/\$([^$\n]+)\$/g, "$1")
+    .replace(/\\~/g, "~")
+    .replace(/[#*_`>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function anchorBlockId(anchor) {
@@ -4495,6 +4903,39 @@ function kkOptionClass(index, item, tryItem) {
   return classes.join(" ");
 }
 
+function quizView(card, allDone) {
+  if (app.ui.quizReview && app.ui.quizReview[card.key]) return "review";
+  if (app.ui.quizCollapsed && app.ui.quizCollapsed[card.key]) return "fold";
+  if (allDone) {
+    const cursorId = app.ui.quizCursor && app.ui.quizCursor[card.key];
+    if (!cursorId) return "fold";
+  }
+  return "answer";
+}
+
+function quizFoldHtml(card, label, action, attrs) {
+  return `<div class="quiz-slot" ${attrs}><button type="button" class="quiz-fold tap-target" data-kk-open="${escapeHtml(card.key)}"><span class="quiz-fold-label">${label}</span>${action ? `<span class="quiz-fold-action">${action}</span>` : ""}</button></div>`;
+}
+
+function quizReviewItemHtml(item) {
+  const tryItem = latestKaokaoTry(item.id, "recog");
+  const options = (item.recog && item.recog.options) || [];
+  return `
+    <div class="quiz-review-item">
+      <p>${escapeHtml(item.recog.stem || "")}</p>
+      <ul class="option-list">
+        ${options.map((text, index) => `
+          <li>
+            <button type="button" class="${kkOptionClass(index, item, tryItem)}" disabled>
+              <span class="mono">${escapeHtml(String.fromCharCode(65 + index))}.</span>&nbsp;<span>${escapeHtml(text)}</span>
+            </button>
+          </li>`).join("")}
+      </ul>
+      <p class="small">${escapeHtml(item.recog.why || "")}</p>
+      <button type="button" class="btn btn-secondary tap-target" data-kk-src="${escapeHtml(item.id)}">看原文</button>
+    </div>`;
+}
+
 function quizCardHtml(meta, card) {
   const items = card.items || [];
   if (!items.length) return "";
@@ -4504,12 +4945,26 @@ function quizCardHtml(meta, card) {
     return tryItem && tryItem.ok;
   }).length;
   const allDone = answeredCount === items.length;
-  const cursorId = app.ui.quizCursor && app.ui.quizCursor[card.key];
-  const opened = !!(app.ui.quizOpen && app.ui.quizOpen[card.key]);
-  const attrs = `data-kk-before="${escapeHtml(card.heading)}" data-kk-count="${items.length}" data-kk-ids="${escapeHtml(items.map((item) => item.id).join(","))}"`;
-  if (allDone && !opened && !cursorId) {
-    return `<div class="quiz-slot" ${attrs}><button type="button" class="quiz-fold tap-target" data-kk-open="${escapeHtml(card.key)}">本节小测 ${correct}/${items.length} ✓</button></div>`;
+  const attrs = `data-kk-before="${escapeHtml(card.heading)}" data-kk-count="${items.length}" data-kk-ids="${escapeHtml(items.map((item) => item.id).join(","))}" data-kk-view="${quizView(card, allDone)}"`;
+  const view = quizView(card, allDone);
+  if (view === "fold" && allDone) {
+    return quizFoldHtml(card, `本节小测 ${correct}/${items.length} ✓`, "回看 ▾", attrs);
   }
+  if (view === "fold") {
+    return quizFoldHtml(card, `本节小测 ${answeredCount}/${items.length} · 继续 ▾`, "", attrs);
+  }
+  if (view === "review") {
+    return `<div class="quiz-slot" ${attrs}>
+      <article class="quiz-card quiz-review">
+        <div class="quiz-card-top">
+          <p class="small">本节小测</p>
+          <button type="button" class="quiz-collapse tap-target" data-kk-collapse="${escapeHtml(card.key)}">收起 ▴</button>
+        </div>
+        ${items.map((item) => quizReviewItemHtml(item)).join("")}
+      </article>
+    </div>`;
+  }
+  const cursorId = app.ui.quizCursor && app.ui.quizCursor[card.key];
   let item = items.find((entry) => entry.id === cursorId);
   if (!item) item = items.find((entry) => !latestKaokaoTry(entry.id, "recog")) || items[0];
   const tryItem = latestKaokaoTry(item.id, "recog");
@@ -4528,7 +4983,10 @@ function quizCardHtml(meta, card) {
     </div>` : "";
   return `<div class="quiz-slot" ${attrs}>
     <article class="quiz-card">
-      <p class="small">本节小测</p>
+      <div class="quiz-card-top">
+        <p class="small">本节小测</p>
+        <button type="button" class="quiz-collapse tap-target" data-kk-collapse="${escapeHtml(card.key)}">收起 ▴</button>
+      </div>
       <p>${escapeHtml(item.recog.stem || "")}</p>
       <ul class="option-list">
         ${options.map((text, index) => `
@@ -4588,12 +5046,14 @@ function advanceQuiz(meta, key) {
   const cursorId = app.ui.quizCursor && app.ui.quizCursor[key];
   const index = items.findIndex((item) => item.id === cursorId);
   if (!app.ui.quizCursor) app.ui.quizCursor = {};
-  if (!app.ui.quizOpen) app.ui.quizOpen = {};
+  if (!app.ui.quizCollapsed) app.ui.quizCollapsed = {};
+  if (!app.ui.quizReview) app.ui.quizReview = {};
   if (index >= 0 && index < items.length - 1) {
     app.ui.quizCursor[key] = items[index + 1].id;
-    app.ui.quizOpen[key] = true;
+    app.ui.quizCollapsed[key] = false;
   } else {
-    app.ui.quizOpen[key] = false;
+    app.ui.quizReview[key] = false;
+    app.ui.quizCollapsed[key] = true;
     app.ui.quizCursor[key] = "";
   }
   render();
@@ -4603,12 +5063,45 @@ function compactText(text) {
   return String(text || "").replace(/\s+/g, "");
 }
 
+function unwrapHitMarks(root) {
+  if (!root) return;
+  root.querySelectorAll("mark.src-hit").forEach((el) => {
+    const parent = el.parentNode;
+    if (!parent) return;
+    while (el.firstChild) parent.insertBefore(el.firstChild, el);
+    parent.removeChild(el);
+    if (parent.normalize) parent.normalize();
+  });
+  if (root.classList) root.classList.remove("src-hit");
+}
+
+function wrapRange(node, from, to) {
+  const range = document.createRange();
+  range.setStart(node, from);
+  range.setEnd(node, to);
+  const mark = document.createElement("mark");
+  mark.className = "src-hit";
+  try {
+    range.surroundContents(mark);
+  } catch (_) {
+    mark.appendChild(range.extractContents());
+    range.insertNode(mark);
+  }
+}
+
 function highlightBlock(block, src) {
   if (!block) return;
+  unwrapHitMarks(block);
   const needle = compactText(src);
   let marked = false;
   if (needle) {
-    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const parent = node.parentElement;
+        if (parent && parent.closest("button, .doubt-box, .page-mark")) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
     const nodes = [];
     let raw = "";
     while (walker.nextNode()) {
@@ -4634,16 +5127,7 @@ function highlightBlock(block, src) {
         if (from < to) slices.push({ node: entry.node, from: from - entry.start, to: to - entry.start });
       }
       for (let s = slices.length - 1; s >= 0; s -= 1) {
-        const slice = slices[s];
-        const text = slice.node.textContent || "";
-        const mark = document.createElement("mark");
-        mark.className = "src-hit";
-        mark.textContent = text.slice(slice.from, slice.to);
-        const frag = document.createDocumentFragment();
-        if (slice.from > 0) frag.appendChild(document.createTextNode(text.slice(0, slice.from)));
-        frag.appendChild(mark);
-        if (slice.to < text.length) frag.appendChild(document.createTextNode(text.slice(slice.to)));
-        if (slice.node.parentNode) slice.node.parentNode.replaceChild(frag, slice.node);
+        wrapRange(slices[s].node, slices[s].from, slices[s].to);
       }
       marked = slices.length > 0;
     }
@@ -4654,6 +5138,13 @@ function highlightBlock(block, src) {
   app.ui.highlightToken = token;
   setTimeout(() => {
     if (app.ui.highlightToken !== token) return;
+    document.querySelectorAll("mark.src-hit").forEach((el) => {
+      const parent = el.parentNode;
+      if (!parent) return;
+      while (el.firstChild) parent.insertBefore(el.firstChild, el);
+      parent.removeChild(el);
+      if (parent.normalize) parent.normalize();
+    });
     document.querySelectorAll(".src-hit").forEach((el) => el.classList.remove("src-hit"));
   }, 2000);
 }
@@ -4670,7 +5161,7 @@ function whyStepHtml(meta) {
   const saved = latestKaokaoTry(item.id, "why");
   const revealed = !!(app.ui.learnWhyReveal || saved);
   return `
-    <p id="why-lead">先自己想，再看精讲里的讲解。</p>
+    <p id="why-lead">先自己想，再看答案。</p>
     <article class="recall-card" id="why-card" data-why-total="${items.length}" data-why-index="${index + 1}">
       <p class="small" id="why-count">${index + 1} / ${items.length}</p>
       <p id="why-q">${escapeHtml(item.why.q || "")}</p>
@@ -4806,10 +5297,31 @@ function wireKaokao(meta) {
     button.addEventListener("click", () => {
       const key = button.dataset.kkOpen;
       const card = plannedQuizCard(meta, key);
-      if (!app.ui.quizOpen) app.ui.quizOpen = {};
+      if (!app.ui.quizCollapsed) app.ui.quizCollapsed = {};
+      if (!app.ui.quizReview) app.ui.quizReview = {};
       if (!app.ui.quizCursor) app.ui.quizCursor = {};
-      app.ui.quizOpen[key] = true;
-      if (card && card.items[0]) app.ui.quizCursor[key] = card.items[0].id;
+      const items = card && card.items ? card.items : [];
+      const allDone = items.length > 0 && items.every((item) => latestKaokaoTry(item.id, "recog"));
+      app.ui.quizCollapsed[key] = false;
+      app.ui.quizReview[key] = allDone;
+      if (!allDone) {
+        const cursorId = app.ui.quizCursor[key];
+        const current = items.find((item) => item.id === cursorId);
+        if (!current || latestKaokaoTry(current.id, "recog")) {
+          const next = items.find((item) => !latestKaokaoTry(item.id, "recog"));
+          if (next) app.ui.quizCursor[key] = next.id;
+        }
+      }
+      render();
+    });
+  });
+  root.querySelectorAll("[data-kk-collapse]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const key = button.dataset.kkCollapse;
+      if (!app.ui.quizCollapsed) app.ui.quizCollapsed = {};
+      if (!app.ui.quizReview) app.ui.quizReview = {};
+      app.ui.quizReview[key] = false;
+      app.ui.quizCollapsed[key] = true;
       render();
     });
   });
@@ -4851,6 +5363,39 @@ function stripHashes(md) {
   return String(md || "").replace(/^#{1,6}\s*/, "");
 }
 
+function doubtPanelHtml(meta, block) {
+  const id = doubtKey(meta.id, block.id);
+  const rec = activeDoubt(meta.id, block.id);
+  if (!rec) return "";
+  const showCancel = app.ui.doubtCancel === id;
+  let answerHtml = "";
+  if (rec.resolved === "still") {
+    answerHtml = `<p class="small doubt-still">已记为还是不懂，下次再解答</p>`;
+  } else if (rec.answer) {
+    const text = limitSentences(rec.answer.text || "", 3);
+    const quote = rec.answer.quote ? `<blockquote class="doubt-quote">${escapeHtml(rec.answer.quote)}</blockquote>` : "";
+    const actions = rec.resolved === "got"
+      ? `<p class="small">已记下：懂了</p>`
+      : `<div class="button-row">
+          <button type="button" class="btn btn-ok tap-target" data-doubt-got="${escapeHtml(id)}">懂了</button>
+          <button type="button" class="btn btn-secondary tap-target" data-doubt-still="${escapeHtml(id)}">还是不懂</button>
+        </div>`;
+    answerHtml = `<section class="doubt-answer" id="doubt-answer-${escapeHtml(String(block.id))}">
+      <p class="doubt-answer-kicker">解答</p>
+      ${text ? `<p class="doubt-answer-text">${escapeHtml(text)}</p>` : ""}
+      ${quote}
+      ${actions}
+    </section>`;
+  }
+  return `
+    <div class="doubt-box">
+      ${showCancel ? `<button type="button" class="btn btn-secondary tap-target" data-doubt-cancel="${escapeHtml(id)}">取消标记</button>` : ""}
+      <input class="doubt-input" data-doubt-note="${escapeHtml(String(block.id))}" type="text" value="${escapeHtml(rec.note || "")}" placeholder="哪里不懂？一句话就行，可不填">
+      <p class="doubt-hint">已记下。解答会出现在这段下面，不用现在追。</p>
+      ${answerHtml}
+    </div>`;
+}
+
 function renderReadBlocks(meta, body) {
   const blocks = body && Array.isArray(body.blocks) ? body.blocks : [];
   const quizCards = planReadQuizCards(blocks, kaokaoItemsForChunk(meta));
@@ -4870,12 +5415,13 @@ function renderReadBlocks(meta, body) {
     if (printed != null) lastPrinted = printed;
     const mark = showPage ? `p.${printed}` : "";
     let inner = "";
-    let ask = false;
+    let doubt = false;
+    const rhythm = rhythmMarkupFor(meta, block);
     if (kind === "h3" || kind === "h4" || kind === "h5" || kind === "h6" || kind === "fixed") {
       const tag = kind === "fixed" ? "h6" : kind;
       inner = `<${tag}>${renderRich(stripHashes(block.md))}</${tag}>`;
     } else if (kind === "table") {
-      ask = true;
+      doubt = true;
       const tableParts = splitTableMd(block.md);
       const table = tableParts.table ? `<div class="read-table-wrap">${sanitizeTableHtml(tableParts.table)}</div>` : "";
       inner = `${tableParts.before ? `<div>${renderRich(tableParts.before)}</div>` : ""}${table}`;
@@ -4884,60 +5430,28 @@ function renderReadBlocks(meta, body) {
       inner = `<div class="read-equation">${renderTex(tex, true)}</div>`;
     } else if (kind === "figure") {
       inner = `<div class="read-figure">${renderRich(block.md)}</div>`;
+    } else if (rhythm) {
+      doubt = true;
+      inner = renderRhythmMarkup(rhythm);
     } else {
-      if (kind === "para") ask = true;
+      if (kind === "para") doubt = true;
       const klass = kind === "footnote" || kind === "qr" || kind === "review_insert" ? "small" : "";
       inner = `<div class="${klass}">${renderRich(block.md)}</div>`;
     }
-    if (ask) app.ui.askText[String(block.id)] = askPrompt(meta, block);
+    const doubtOn = !!(doubt && activeDoubt(meta.id, block.id));
     parts.push(`
       <div class="read-block" id="block-${escapeHtml(String(block.id))}">
         <div class="page-mark mono">${escapeHtml(mark)}</div>
-        <div class="read-copy${ask ? " has-ask" : ""}">
-          ${ask ? `<button type="button" class="ask-btn" data-ask="${escapeHtml(String(block.id))}">问</button>` : ""}
+        <div class="read-copy${doubt ? " has-doubt" : ""}${doubtOn ? " is-doubt" : ""}">
+          ${doubt ? `<button type="button" class="doubt-btn${doubtOn ? " is-on" : ""}" data-doubt="${escapeHtml(String(block.id))}" aria-label="没看懂" aria-pressed="${doubtOn ? "true" : "false"}">？</button>` : ""}
           ${inner}
+          ${doubt ? doubtPanelHtml(meta, block) : ""}
         </div>
       </div>
     `);
   });
   for (const card of quizByIndex.get(blocks.length) || []) parts.push(quizCardHtml(meta, card));
   return parts.join("");
-}
-
-function applyAskResult() {
-  const status = document.getElementById("learn-ask-status");
-  const box = document.getElementById("learn-ask-fallback");
-  if (status) {
-    status.hidden = !app.ui.askNotice;
-    status.textContent = app.ui.askNotice || "";
-  }
-  if (box) {
-    box.hidden = !app.ui.askFallback;
-    box.value = app.ui.askFallback || "";
-    if (app.ui.askFallback) {
-      box.focus();
-      box.select();
-    }
-  }
-}
-
-async function copyAsk(text) {
-  const write = navigator.clipboard && navigator.clipboard.writeText
-    ? navigator.clipboard.writeText(text)
-    : Promise.reject(new Error("no clipboard"));
-  let copied = false;
-  try {
-    await Promise.race([
-      write,
-      new Promise((_, reject) => setTimeout(() => reject(new Error("clipboard timeout")), 800))
-    ]);
-    copied = true;
-  } catch (_) {
-    copied = false;
-  }
-  app.ui.askNotice = copied ? "已复制，粘贴给 Claude 或顾问" : "";
-  app.ui.askFallback = copied ? "" : text;
-  applyAskResult();
 }
 
 function previewStepHtml(meta) {
@@ -4961,6 +5475,7 @@ function readStepHtml(meta) {
       <div class="button-row"><button id="learn-go-settings" class="btn btn-secondary tap-target" type="button">去设置</button></div>`;
   }
   kickChunkBody(meta);
+  kickRhythm(meta.unit);
   kickKatex();
   const body = app.study.bodies[meta.id];
   if (!body) {
@@ -4968,7 +5483,7 @@ function readStepHtml(meta) {
     if (state === "missing" || state === "error") return `<p>这一块的原文暂时没读到。</p>`;
     return `<p class="small">正在读取原文…</p>`;
   }
-  return `<div class="read-flow">${renderReadBlocks(meta, body)}</div>`;
+  return `${rhythmSwitchHtml(meta, body)}<div class="read-flow" data-layout="${rhythmMode()}">${renderReadBlocks(meta, body)}</div>`;
 }
 
 function lectureStepHtml(meta) {
@@ -5101,17 +5616,69 @@ function quizStepHtml(meta) {
   `;
 }
 
+function pendingDoubtAnswers() {
+  const list = [];
+  for (const [id, rec] of Object.entries((app.state && app.state.doubts) || {})) {
+    if (!rec || rec.removed || rec.resolved || !rec.answer) continue;
+    if (!rec.answer.text && !rec.answer.quote) continue;
+    list.push({ id, ...rec });
+  }
+  list.sort((a, b) => (Number(a.updatedAt) || 0) - (Number(b.updatedAt) || 0));
+  return list;
+}
+
+function openDoubtAnswer(rec) {
+  if (!rec || !rec.chunk) return;
+  app.ui.kaokaoFocus = {
+    chunkId: rec.chunk,
+    blockId: rec.block,
+    src: ""
+  };
+  writeLearnMemory(rec.chunk, "read");
+  openLearn(rec.chunk);
+}
+
+function chunkDoubtItems(chunkId) {
+  const list = [];
+  for (const [id, rec] of Object.entries((app.state && app.state.doubts) || {})) {
+    if (!rec || rec.removed || rec.chunk !== chunkId) continue;
+    list.push({ id, ...rec });
+  }
+  return list;
+}
+
+function doubtJumpLabel(meta, rec) {
+  const note = String(rec.note || "").trim();
+  if (note) return note;
+  const body = meta && app.study.bodies[meta.id];
+  const block = body && (body.blocks || []).find((item) => String(item.id) === String(rec.block));
+  if (block) {
+    const text = markdownPlain(block.md);
+    if (text) return text.length > 28 ? `${text.slice(0, 28)}…` : text;
+  }
+  return `段 ${rec.block}`;
+}
+
 function doneStepHtml(meta) {
   const score = chunkScore(meta);
   const chunks = unitChunks([meta.unit]);
   const next = nextChunkAfter(chunks, meta);
   const rec = app.state.chunks && app.state.chunks[meta.id];
   const reviewed = rec && rec.doneAt;
+  const marked = chunkDoubtItems(meta.id);
+  const doubtLine = marked.length ? `
+    <div id="learn-doubt-line">
+      <p>没看懂 ${marked.length} 处，已记下</p>
+      <ul class="doubt-jump-list">
+        ${marked.map((item) => `<li><button type="button" class="text-link tap-target" data-doubt-jump="${escapeHtml(String(item.block))}">${escapeHtml(doubtJumpLabel(meta, item))}</button></li>`).join("")}
+      </ul>
+    </div>` : "";
   return `
     ${reviewed ? `<p class="learn-review-note" id="learn-review-note">已于 ${escapeHtml(rec.doneAt)} 学完，这次是复习。</p>` : ""}
     <p id="learn-minutes">用时 ${learnMinutes(meta.id)} 分钟</p>
     <p id="learn-score">做题 ${score.done} 道对 ${score.correct} 道</p>
     ${kaokaoSummary(meta) ? `<p id="learn-kaokao-line">${escapeHtml(kaokaoSummary(meta))}</p>` : ""}
+    ${doubtLine}
     <div class="button-row">
       <button id="learn-finish" class="btn btn-primary tap-target" type="button">${reviewed ? "再学一遍完成" : "这一块学完了"}</button>
       ${next ? `<button id="learn-finish-next" class="btn btn-secondary tap-target" type="button" data-next-chunk="${escapeHtml(next.id)}">学下一块</button>` : ""}
@@ -5122,6 +5689,7 @@ function doneStepHtml(meta) {
 function renderLearn() {
   const root = document.getElementById("page-learn");
   if (!root) return;
+  flushDoubtInputs();
   if (app.ui.tab !== "learn") {
     if (root.innerHTML) root.innerHTML = "";
     return;
@@ -5136,6 +5704,7 @@ function renderLearn() {
   weekUnits.forEach((unitId) => {
     kickUnitIndex(unitId);
     kickKaokao(unitId);
+    kickRhythm(unitId);
   });
   const meta = findChunkMeta(chunkId);
   if (!meta) {
@@ -5152,6 +5721,7 @@ function renderLearn() {
   if (canReadRepo()) {
     kickChunkBody(meta);
     kickKaokao(meta.unit);
+    kickRhythm(meta.unit);
   }
   if (app.ui.learnBoundChunk !== meta.id) {
     app.ui.learnBoundChunk = meta.id;
@@ -5164,8 +5734,10 @@ function renderLearn() {
     app.ui.learnWhy = 0;
     app.ui.learnWhyReveal = false;
     app.ui.quizCursor = {};
-    app.ui.quizOpen = {};
+    app.ui.quizCollapsed = {};
+    app.ui.quizReview = {};
     app.ui.kaokaoShown = {};
+    app.ui.doubtCancel = "";
   }
   ensureLearnTimer(meta.id);
   const steps = buildLearnSteps(meta);
@@ -5182,13 +5754,11 @@ function renderLearn() {
   }
   const stepId = currentLearnStep(meta.id, steps);
   writeLearnMemory(meta.id, stepId);
-  app.ui.askText = {};
   const stepIndex = Math.max(0, steps.findIndex((step) => step.id === stepId));
   let body = "";
   if (stepId === "preview") body = previewStepHtml(meta);
   else if (stepId === "read") body = readStepHtml(meta);
   else if (stepId === "why") body = whyStepHtml(meta);
-  else if (stepId === "lecture") body = lectureStepHtml(meta);
   else if (stepId === "recall") body = recallStepHtml(meta);
   else if (stepId === "retell") body = retellStepHtml(meta);
   else if (stepId === "quiz") body = quizStepHtml(meta);
@@ -5210,8 +5780,6 @@ function renderLearn() {
       `).join("")}
     </ol>
     <div id="learn-step-body">${body}</div>
-    <p id="learn-ask-status" class="small" ${app.ui.askNotice ? "" : "hidden"}>${escapeHtml(app.ui.askNotice || "")}</p>
-    <textarea id="learn-ask-fallback" class="ask-fallback textarea" readonly ${app.ui.askFallback ? "" : "hidden"}>${escapeHtml(app.ui.askFallback || "")}</textarea>
     <div class="learn-bar">
       <button id="learn-prev" class="btn btn-secondary tap-target" type="button" ${stepIndex === 0 ? "disabled" : ""}>上一步</button>
       <button id="learn-next" class="btn btn-primary tap-target" type="button" ${stepIndex >= steps.length - 1 ? "disabled" : ""}>下一步</button>
@@ -5224,9 +5792,8 @@ function renderLearn() {
       app.ui.retellTimer = null;
       saveKaokaoRetell(meta.id, retell.value, meta.unit, { silent: true });
     }
+    flushDoubtInputs();
     app.ui.learnChoice = "";
-    app.ui.askNotice = "";
-    app.ui.askFallback = "";
     writeLearnMemory(meta.id, nextId);
     render();
   };
@@ -5238,8 +5805,15 @@ function renderLearn() {
   root.querySelectorAll("[data-step]").forEach((button) => {
     button.addEventListener("click", () => goStep(button.dataset.step));
   });
-  root.querySelectorAll("[data-ask]").forEach((button) => {
-    button.addEventListener("click", () => copyAsk(app.ui.askText[button.dataset.ask] || ""));
+  root.querySelectorAll("[data-doubt-jump]").forEach((button) => {
+    button.addEventListener("click", () => {
+      app.ui.kaokaoFocus = {
+        chunkId: meta.id,
+        blockId: button.dataset.doubtJump,
+        src: ""
+      };
+      goStep("read");
+    });
   });
   const settingsBtn = document.getElementById("learn-go-settings");
   if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
@@ -5270,7 +5844,77 @@ function renderLearn() {
   }
   wireLearnQuiz(meta);
   wireKaokao(meta);
+  wireDoubts(meta);
   if (stepId === "read") applyKaokaoFocus(meta);
+}
+
+function wireDoubts(meta) {
+  const root = document.getElementById("page-learn");
+  if (!root || !meta) return;
+  root.querySelectorAll("[data-rhythm]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const next = button.dataset.rhythm === "plain" ? "plain" : "focus";
+      if (next === rhythmMode()) return;
+      flushDoubtInputs();
+      setRhythmMode(next);
+      render();
+    });
+  });
+  root.querySelectorAll("[data-doubt]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const blockId = button.dataset.doubt;
+      const id = doubtKey(meta.id, blockId);
+      const input = root.querySelector(`[data-doubt-note="${blockId}"]`);
+      if (input) saveDoubtNote(meta, blockId, input.value, { silent: true });
+      if (!activeDoubt(meta.id, blockId)) {
+        const prev = (app.state.doubts && app.state.doubts[id]) || {};
+        app.ui.doubtCancel = "";
+        const patch = {
+          note: input ? input.value : (prev.note || ""),
+          removed: false
+        };
+        if (prev.removed) {
+          patch.at = shanghaiIso();
+          patch.resolved = "";
+        }
+        writeDoubt(meta, blockId, patch);
+        return;
+      }
+      app.ui.doubtCancel = id;
+      render();
+    });
+  });
+  root.querySelectorAll("[data-doubt-cancel]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const blockId = button.dataset.doubtCancel.slice(meta.id.length + 1);
+      const input = root.querySelector(`[data-doubt-note="${blockId}"]`);
+      app.ui.doubtCancel = "";
+      writeDoubt(meta, blockId, { note: input ? input.value : undefined, removed: true });
+    });
+  });
+  root.querySelectorAll("[data-doubt-got], [data-doubt-still]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const id = button.dataset.doubtGot || button.dataset.doubtStill;
+      const blockId = id.slice(meta.id.length + 1);
+      const input = root.querySelector(`[data-doubt-note="${blockId}"]`);
+      if (input) saveDoubtNote(meta, blockId, input.value, { silent: true });
+      writeDoubt(meta, blockId, { resolved: button.dataset.doubtGot ? "got" : "still" });
+    });
+  });
+  root.querySelectorAll("[data-doubt-note]").forEach((input) => {
+    const blockId = input.dataset.doubtNote;
+    const id = doubtKey(meta.id, blockId);
+    const saveNow = () => saveDoubtNote(meta, blockId, input.value, { silent: true });
+    input.addEventListener("input", () => {
+      if (!app.ui.doubtTimers) app.ui.doubtTimers = {};
+      clearTimeout(app.ui.doubtTimers[id]);
+      app.ui.doubtTimers[id] = setTimeout(saveNow, 1500);
+    });
+    input.addEventListener("blur", () => {
+      if (app.ui.doubtTimers) clearTimeout(app.ui.doubtTimers[id]);
+      saveNow();
+    });
+  });
 }
 
 function wireLearnQuiz(meta) {
@@ -5377,6 +6021,7 @@ function renderToday(today, weekCtx) {
   } else if (review.done) {
     foot = `<p class="today-foot" id="today-complete">复习完成，今天也算完成。时间够的话学一块。</p>`;
   }
+  const pendingDoubts = pendingDoubtAnswers();
   let reviewBody = "";
   if (!review.done) {
     const eta = Math.round(review.remaining * 0.6);
@@ -5429,6 +6074,7 @@ function renderToday(today, weekCtx) {
       <article class="today-task">
         <h2 class="today-kicker">① 复习</h2>
         ${reviewBody}
+        ${pendingDoubts.length ? `<p class="today-doubt-jump"><button id="today-doubt-answer" class="text-link tap-target" type="button">有 ${pendingDoubts.length} 条解答待看</button></p>` : ""}
       </article>
       <article class="today-task" id="today-chunk-card">
         <h2 class="today-kicker">② 今天这一块</h2>
@@ -5446,6 +6092,10 @@ function renderToday(today, weekCtx) {
   }
   const reviewBtn = document.getElementById("today-go-review");
   if (reviewBtn) reviewBtn.addEventListener("click", () => navigateTo("review"));
+  const doubtBtn = document.getElementById("today-doubt-answer");
+  if (doubtBtn && pendingDoubts[0]) {
+    doubtBtn.addEventListener("click", () => openDoubtAnswer(pendingDoubts[0]));
+  }
   const settingsBtn = document.getElementById("today-go-settings");
   if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
   const startBtn = document.getElementById("today-start-learn");
@@ -5799,6 +6449,90 @@ function undoCurrentReview() {
   render();
 }
 
+function chunkForCardId(cardId) {
+  for (const index of Object.values(app.study.indexes || {})) {
+    for (const chunk of (index && index.chunks) || []) {
+      if (chunk && Array.isArray(chunk.cards) && chunk.cards.includes(cardId)) return chunk;
+    }
+  }
+  return null;
+}
+
+function skeletonUnit(cardId) {
+  const base = app.derived.cardById.get(cardId);
+  if (base && base.unit) return base.unit;
+  const matched = String(cardId || "").match(/U\d+/);
+  return matched ? matched[0] : "";
+}
+
+function anchorParagraph(meta, anchor) {
+  if (!meta) return { status: "loading" };
+  const state = app.study.bodyState[meta.id];
+  const body = app.study.bodies[meta.id];
+  if (!body) {
+    if (state === "missing" || state === "error") return { status: "missing" };
+    return { status: "loading" };
+  }
+  const blockId = anchorBlockId(anchor);
+  const block = (body.blocks || []).find((item) => Number(item.id) === Number(blockId));
+  if (!block) return { status: "missing" };
+  const text = markdownPlain(block.md);
+  if (!text) return { status: "missing" };
+  return { status: "ready", text, blockId };
+}
+
+function prepareSkeletonSource(cardId) {
+  const unit = skeletonUnit(cardId);
+  if (unit) kickUnitIndex(unit);
+  const meta = chunkForCardId(cardId);
+  if (meta && canReadRepo()) kickChunkBody(meta);
+  return meta;
+}
+
+function skeletonAnswerExtra(cardId, base) {
+  const why = base && base.why ? String(base.why) : "";
+  const whyBasis = base && base.whyBasis;
+  const whyHtml = why
+    ? `<p id="review-why">为什么：${escapeHtml(why)}${whyBasis === "推理" ? ` <span class="small">推理，教材未明说</span>` : ""}</p>`
+    : "";
+  const meta = prepareSkeletonSource(cardId);
+  const indexState = app.study.indexState[skeletonUnit(cardId)];
+  let quoteHtml = "";
+  if (!meta && indexState !== "missing" && indexState !== "error" && indexState !== "ready") {
+    quoteHtml = `<p class="small" id="review-source-quote">正在读取原句…</p>`;
+  } else if (meta) {
+    const para = anchorParagraph(meta, base && base.anchor);
+    if (para.status === "ready") {
+      quoteHtml = `<div class="review-quote" id="review-source-quote"><p class="small">教材原句</p><p>${escapeHtml(para.text)}</p></div>`;
+    } else if (para.status === "loading") {
+      quoteHtml = `<p class="small" id="review-source-quote">正在读取原句…</p>`;
+    }
+  }
+  return `${whyHtml}${quoteHtml}<button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>`;
+}
+
+function openSkeletonFromReview(cardId) {
+  const meta = prepareSkeletonSource(cardId);
+  const base = app.derived.cardById.get(cardId);
+  if (!meta) {
+    const unit = skeletonUnit(cardId);
+    const state = unit && app.study.indexState[unit];
+    if (!state || state === "loading") return;
+    app.ui.reviewSourceNote = "原文暂时没读到。";
+    app.ui.reviewSourceFor = cardId;
+    render();
+    return;
+  }
+  app.ui.reviewSourceNote = "";
+  app.ui.kaokaoFocus = {
+    chunkId: meta.id,
+    blockId: anchorBlockId(base && base.anchor),
+    src: ""
+  };
+  writeLearnMemory(meta.id, "read");
+  openLearn(meta.id);
+}
+
 function openKaokaoFromReview(item) {
   const cardId = app.ui.review && app.ui.review.currentId ? app.ui.review.currentId : "";
   if (!item || !item.chunk) {
@@ -5870,6 +6604,12 @@ function renderReview(today) {
   const index = session.order.indexOf(session.currentId);
   const position = index >= 0 ? index + 1 : 1;
   const hintUsed = !!(app.ui.reviewHint && app.ui.reviewHint.cardId === card.id && app.ui.reviewHint.used);
+  if (card.src !== "kaokao" && card.src !== "wrong") prepareSkeletonSource(card.id);
+  const srcTag = card.src === "kaokao"
+    ? `<p class="review-src" id="review-src-tag">小测里的句子</p>`
+    : card.src === "wrong"
+      ? ""
+      : `<p class="review-src" id="review-src-tag">教材要点</p>`;
   let frontHtml = "";
   if (card.src === "kaokao") {
     if (!kkItem) {
@@ -5889,6 +6629,7 @@ function renderReview(today) {
     if (kkItem) {
       const filled = fillCloze(kkItem.cloze && kkItem.cloze.text, kkItem.cloze && kkItem.cloze.answers);
       answerHtml = `<section class="panel" id="review-kaokao-answer">
+        <p id="review-kaokao-src">原句：${escapeHtml(kkItem.src || "")}</p>
         <p>${escapeHtml(filled)}</p>
         <p class="small">${escapeHtml((kkItem.recog && kkItem.recog.why) || "")}</p>
         <button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>
@@ -5897,8 +6638,16 @@ function renderReview(today) {
     } else if (app.ui.reviewSourceNote) {
       answerHtml = `<section class="panel"><p id="review-source-note">${escapeHtml(app.ui.reviewSourceNote)}</p></section>`;
     }
+  } else if (showAnswer && card.src !== "wrong") {
+    const base = app.derived.cardById.get(card.id);
+    answerHtml = `<section class="panel" id="review-skeleton-answer">
+      <p>${reviewRichText(content.back)}</p>
+      ${anchorPrintedHtml(content.anchor)}
+      ${skeletonAnswerExtra(card.id, base)}
+      ${app.ui.reviewSourceNote ? `<p id="review-source-note">${escapeHtml(app.ui.reviewSourceNote)}</p>` : ""}
+    </section>`;
   } else if (showAnswer) {
-    answerHtml = `<section class="panel"><p>${reviewRichText(content.back)}</p><p class="small mono">${escapeHtml(content.anchor)}</p>${anchorPrintedHtml(content.anchor)}</section>`;
+    answerHtml = `<section class="panel"><p>${reviewRichText(content.back)}</p>${anchorPrintedHtml(content.anchor)}</section>`;
   }
   const mark = session.phase === "revealed" ? `<p class="review-mark">已记为没印象，明天会再出现。</p>` : "";
   let actions = "";
@@ -5930,7 +6679,8 @@ function renderReview(today) {
         <p class="small mono">第 ${position} / ${session.order.length} 张</p>
         ${undo}
       </div>
-      <article class="review-card" data-phase="${session.phase}">
+      <article class="review-card" data-phase="${session.phase}" data-src="${escapeHtml(card.src || "skeleton")}">
+        ${srcTag}
         ${mark}
         ${frontHtml}
         ${answerHtml}
@@ -5945,7 +6695,11 @@ function renderReview(today) {
   });
   bindReviewButton("review-source", () => {
     const current = app.state.cards[session.currentId];
-    openKaokaoFromReview(current ? kaokaoItemById(current.kid) : null);
+    if (current && current.src === "kaokao") {
+      openKaokaoFromReview(kaokaoItemById(current.kid));
+      return;
+    }
+    openSkeletonFromReview(session.currentId);
   });
   bindReviewButton("review-blank", () => gradeCurrentReview("blank"));
   bindReviewButton("review-show", () => {
