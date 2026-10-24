@@ -2365,7 +2365,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-22.1";
+const APP_VERSION = "2026-10-24.1";
 let swControllerReload = false;
 const INTERVALS = [1, 3, 7, 14, 30, 60];
 
@@ -4523,7 +4523,8 @@ function learnMinutes(chunkId) {
 }
 
 function buildLearnSteps(meta) {
-  const normal = questionsForChunk(meta).filter((question) => question.verify?.status !== "doubt");
+  const questions = questionsForChunk(meta);
+  const normal = questions.filter((question) => question.verify?.status !== "doubt");
   const cards = cardsForChunk(meta);
   const steps = [];
   if (normal.length) steps.push({ id: "preview", label: "先看题" });
@@ -4531,7 +4532,7 @@ function buildLearnSteps(meta) {
   if (whyItemsForChunk(meta).length) steps.push({ id: "why", label: "想一想为什么" });
   if (cards.length) steps.push({ id: "recall", label: "想一想" });
   if (kaokaoItemsForChunk(meta).length) steps.push({ id: "retell", label: "复述" });
-  steps.push({ id: "quiz", label: "做题" });
+  if (questions.length) steps.push({ id: "quiz", label: "做题" });
   steps.push({ id: "done", label: "完成" });
   return steps;
 }
@@ -4606,22 +4607,27 @@ function setRhythmMode(mode) {
   } catch (_) {}
 }
 
+function rhythmBlocksFor(meta) {
+  const doc = meta && app.study.rhythm && app.study.rhythm[meta.unit];
+  // 只认 schemaVersion 2 的「块id:段id」。旧裸段号会串书，缺键或旧数据都回退本块原文。
+  if (!doc || doc.schemaVersion !== 2 || !doc.blocks) return null;
+  return doc.blocks;
+}
+
 function rhythmMarkupFor(meta, block) {
   if (!meta || !block || (block.kind || "para") !== "para") return "";
   if (rhythmMode() === "plain") return "";
-  const doc = app.study.rhythm && app.study.rhythm[meta.unit];
-  const blocks = doc && doc.blocks;
+  const blocks = rhythmBlocksFor(meta);
   if (!blocks) return "";
-  const markup = blocks[String(block.id)];
+  const markup = blocks[meta.id + ":" + block.id];
   return typeof markup === "string" ? markup : "";
 }
 
 function chunkUsesRhythm(meta, body) {
   if (!meta || !body || !Array.isArray(body.blocks)) return false;
-  const doc = app.study.rhythm && app.study.rhythm[meta.unit];
-  const blocks = doc && doc.blocks;
+  const blocks = rhythmBlocksFor(meta);
   if (!blocks) return false;
-  return body.blocks.some((block) => (block.kind || "para") === "para" && typeof blocks[String(block.id)] === "string");
+  return body.blocks.some((block) => (block.kind || "para") === "para" && typeof blocks[meta.id + ":" + block.id] === "string");
 }
 
 function renderRhythmLine(line) {
@@ -5585,7 +5591,7 @@ function learnQuestionHtml(question) {
 
 function quizStepHtml(meta) {
   const questions = questionsForChunk(meta);
-  if (!questions.length) return `<p>这一块没有真题，下一步完成即可。</p>`;
+  if (!questions.length) return `<p>本块暂无真题，请在原文中完成随文练习。</p>`;
   const normal = questions.filter((question) => question.verify?.status !== "doubt");
   const doubts = questions.filter((question) => question.verify?.status === "doubt");
   const current = questions.find((question) => question.id === app.ui.learnQid) || null;
