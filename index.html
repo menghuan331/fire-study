@@ -7,6 +7,7 @@
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="modules/qa/panel.css">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#c4271d">
 <style>
@@ -1590,6 +1591,19 @@ body.is-learn .app-shell {
 }
 
 @media (max-width: 600px) {
+  .read-block {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .page-mark {
+    padding-top: 0;
+  }
+
+  .read-copy.has-doubt .doubt-box {
+    margin-right: -52px;
+  }
+
   .learn-steps .step-label {
     display: none;
   }
@@ -1644,6 +1658,36 @@ body.is-learn .app-shell {
 </div>
 
 <script id="pure">
+// Keep the legacy synchronous sync adapter usable before optional UI modules load.
+// qa.turns use the same deterministic record rule as modules/qa/state.js.
+function mergeQaState(leftValue, rightValue) {
+  const isObject = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+  const object = (value) => isObject(value) ? value : {};
+  const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+  const number = (value) => typeof value === "number" && Number.isFinite(value) ? value : 0;
+  const stable = (value) => {
+    if (Array.isArray(value)) return `[${value.map((item) => stable(item) ?? "null").join(",")}]`;
+    if (isObject(value)) return `{${Object.keys(value).sort().filter((key) => value[key] !== undefined)
+      .map((key) => `${JSON.stringify(key)}:${stable(value[key])}`).join(",")}}`;
+    return JSON.stringify(value);
+  };
+  const newer = (left, right) => {
+    if (!left) return right;
+    if (!right) return left;
+    const delta = number(left.updatedAt) - number(right.updatedAt);
+    return delta ? (delta > 0 ? left : right) : (stable(left) >= stable(right) ? left : right);
+  };
+  const copy = (value) => JSON.parse(JSON.stringify(value));
+  const left = object(leftValue), right = object(rightValue);
+  const a = object(left.turns), b = object(right.turns);
+  const turns = Object.fromEntries([...new Set([...Object.keys(a), ...Object.keys(b)])].sort().flatMap((id) => {
+    const winner = newer(own(a, id) && isObject(a[id]) ? a[id] : undefined, own(b, id) && isObject(b[id]) ? b[id] : undefined);
+    return winner ? [[id, { ...copy(winner), requestId: id, updatedAt: number(winner.updatedAt) }]] : [];
+  }));
+  const draft = newer(isObject(left.draft) ? left.draft : undefined, isObject(right.draft) ? right.draft : undefined);
+  return { version: 1, turns, ...(draft ? { draft: { ...copy(draft), updatedAt: number(draft.updatedAt) } } : {}) };
+}
+
 function mergeStates(local, remote) {
   function asRecord(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -1672,6 +1716,14 @@ function mergeStates(local, remote) {
       } else if (bv != null) {
         out[key] = copyRec(bv);
       }
+    }
+    return out;
+  }
+
+  function mergeDoubts(a, b) {
+    const out = mergeMaps(a, b);
+    for (const id of Object.keys(out)) {
+      if (a?.[id]?.qa || b?.[id]?.qa) out[id].qa = mergeQaState(a?.[id]?.qa, b?.[id]?.qa);
     }
     return out;
   }
@@ -1752,7 +1804,7 @@ function mergeStates(local, remote) {
     chunks: mergeMaps(left.chunks, right.chunks),
     kaokao: mergeMaps(left.kaokao, right.kaokao),
     kaokaoRetell: mergeMaps(left.kaokaoRetell, right.kaokaoRetell),
-    doubts: mergeMaps(left.doubts, right.doubts)
+    doubts: mergeDoubts(left.doubts, right.doubts)
   };
 }
 
@@ -2365,7 +2417,11 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-24.1";
+const APP_VERSION = "2026-10-25.1";
+const QA_CONFIG_KEY = "study-qa-config-v1";
+let qaApi = null;
+let qaLoadPromise = null;
+const qaPanels = new Map();
 let swControllerReload = false;
 const INTERVALS = [1, 3, 7, 14, 30, 60];
 
@@ -2860,8 +2916,18 @@ function setNestedState(path, value, options) {
 function save(path, value, options) {
   if (isUnchanged(path, value)) return;
   countAttemptDelta(path, value);
-  setNestedState(path, value, options);
-  saveStateToLocal();
+  if (options?.requirePersistence && path.startsWith("doubts/") && path.length > 7) {
+    const id = path.slice(7);
+    const nextState = { ...app.state, doubts: { ...app.state.doubts,
+      [id]: stampSavedRecord(value, options, Date.now()) } };
+    // The QA module must know that the question is durable before it sends it.
+    // A failed write leaves the previous in-memory state and input intact.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+    app.state = nextState;
+  } else {
+    setNestedState(path, value, options);
+    saveStateToLocal();
+  }
   if (!hasToken()) {
     app.sync.phase = "disconnected";
     app.sync.errorText = "";
@@ -2919,6 +2985,143 @@ function saveGithubConfig(cfg) {
     localStorage.setItem(GITHUB_CONFIG_KEY, JSON.stringify(next));
   } catch (_) {}
   return next;
+}
+
+function loadQaConfig() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(QA_CONFIG_KEY) || "{}");
+    return { endpoint: typeof parsed.endpoint === "string" ? parsed.endpoint : "",
+      accessToken: typeof parsed.accessToken === "string" ? parsed.accessToken : "" };
+  } catch (_) { return { endpoint: "", accessToken: "" }; }
+}
+
+function destroyQaPanels() {
+  for (const panel of qaPanels.values()) panel.handle.destroy();
+  qaPanels.clear();
+}
+
+function loadQaModule() {
+  if (qaLoadPromise) return qaLoadPromise;
+  qaLoadPromise = import("./modules/qa/index.js").then((api) => {
+    qaApi = api;
+    flushDoubtInputs();
+    render();
+    return api;
+  }).catch(() => {
+    // Reading and existing progress remain usable when the optional module is unavailable.
+    return null;
+  });
+  return qaLoadPromise;
+}
+
+function qaSettingsHtml() {
+  const cfg = loadQaConfig();
+  return `<section class="panel">
+    <h2 class="h2">即时答疑</h2>
+    <p class="small">连接答疑服务后，可以在教材段落旁提问和追问。问题与回答随学习进度保存。</p>
+    <form id="qa-settings-form">
+      <div class="field"><label class="label" for="qa-endpoint">服务地址</label>
+        <input id="qa-endpoint" class="text-input" type="url" autocomplete="off" spellcheck="false" value="${escapeHtml(cfg.endpoint)}" placeholder="https://你的服务/v1/qa/answer"></div>
+      <div class="field"><label class="label" for="qa-access-token">答疑访问凭证</label>
+        <input id="qa-access-token" class="text-input" type="password" autocomplete="off" spellcheck="false" placeholder="${cfg.accessToken ? "已保存；留空保持原凭证" : "填写答疑服务的访问凭证"}"></div>
+      <div class="button-row"><button class="btn btn-primary tap-target" type="submit">保存答疑设置</button>
+        ${cfg.accessToken ? '<button id="qa-token-clear" class="btn btn-secondary tap-target" type="button">清除答疑凭证</button>' : ""}</div>
+      <p id="qa-settings-message" class="small" role="status">${cfg.endpoint ? "已保存服务地址，实际可用性会在提问时检查。" : "服务尚未配置，仍可先保存问题。"}</p>
+    </form>
+  </section>`;
+}
+
+function wireQaSettings() {
+  const form = document.getElementById("qa-settings-form");
+  if (!form) return;
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const message = document.getElementById("qa-settings-message");
+    const endpoint = document.getElementById("qa-endpoint").value.trim();
+    const typed = document.getElementById("qa-access-token").value.trim();
+    try {
+      if (endpoint) {
+        const url = new URL(endpoint);
+        const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+        if ((url.protocol !== "https:" && !(local && url.protocol === "http:")) || url.username || url.password || url.hash || url.search)
+          throw new Error("请使用 HTTPS 答疑服务地址；本机调试可使用 localhost。地址不要包含凭证或查询参数。");
+      }
+      if (/^(gh[pousr]_|github_pat_)/i.test(typed)) throw new Error("这里需要答疑专用凭证，请勿填入 GitHub 令牌。");
+      const next = { endpoint, accessToken: typed || loadQaConfig().accessToken };
+      localStorage.setItem(QA_CONFIG_KEY, JSON.stringify(next));
+      destroyQaPanels();
+      document.getElementById("qa-access-token").value = "";
+      renderSettings();
+      document.getElementById("qa-settings-message").textContent = "答疑设置已保存在这台设备上。";
+    } catch (error) {
+      message.textContent = error instanceof TypeError ? "服务地址格式不正确，请检查后重试。" : (error.message || "设置未保存，请重试。");
+    }
+  });
+  document.getElementById("qa-token-clear")?.addEventListener("click", () => {
+    const cfg = loadQaConfig();
+    try { localStorage.setItem(QA_CONFIG_KEY, JSON.stringify({ ...cfg, accessToken: "" })); }
+    catch (_) { document.getElementById("qa-settings-message").textContent = "清除未成功，请重试。"; return; }
+    destroyQaPanels();
+    renderSettings();
+  });
+}
+
+function studyQaContext(meta, blockId) {
+  const blocks = app.study.bodies[meta.id]?.blocks || [];
+  const index = blocks.findIndex((block) => String(block.id) === String(blockId));
+  if (index < 0) return null;
+  const positions = new Set([index]);
+  if (index > 0) positions.add(index - 1);
+  if (index + 1 < blocks.length) positions.add(index + 1);
+  for (let i = index - 1; i >= 0; i -= 1) {
+    if (/^h[3-6]$/.test(blocks[i].kind)) { positions.add(i); break; }
+  }
+  const context = [...positions].sort((a, b) => a - b).map((i) => blocks[i])
+    .filter((block) => block.kind !== "figure" && Number.isFinite(Number(block.page)))
+    .map((block) => ({ anchor: `${meta.book}:p${block.page}:b${block.id}`, kind: block.kind || "para",
+      text: markdownPlain(String(block.md || "").replace(/<\/t[dh]>/gi, " | ").replace(/<\/tr>/gi, "\n")) }))
+    .filter((part) => part.text);
+  return { unit: meta.unit, chunkId: meta.id, blockId: String(blockId), book: meta.book, context,
+    label: `${bookName(meta.book)} · ${meta.title || meta.id} · 原文第 ${blocks[index].printed ?? blocks[index].page} 页` };
+}
+
+function mountStudyQa(meta) {
+  if (!qaApi) return;
+  const root = document.getElementById("page-learn");
+  const active = new Set();
+  const cfg = loadQaConfig();
+  for (const placeholder of root.querySelectorAll("[data-qa-block]")) {
+    const blockId = placeholder.dataset.qaBlock;
+    const id = doubtKey(meta.id, blockId);
+    const context = studyQaContext(meta, blockId);
+    if (!context || !activeDoubt(meta.id, blockId)) continue;
+    const signature = qaApi.contextKey(context);
+    active.add(id);
+    const existing = qaPanels.get(id);
+    if (existing && existing.signature === signature) {
+      placeholder.replaceWith(existing.root);
+      existing.handle.refresh();
+      continue;
+    }
+    if (existing) existing.handle.destroy();
+    const handle = qaApi.mountPanel({ root: placeholder, context,
+      getRecord: () => app.state.doubts?.[id],
+      saveRecord: (update) => {
+        const latest = app.state.doubts?.[id];
+        if (!latest || latest.removed) return latest;
+        const next = typeof update === "function" ? update(latest) : update;
+        if (!next || next === latest) return latest;
+        const value = { ...next, chunk: meta.id, block: blockId, unit: meta.unit };
+        store.save(`doubts/${id}`, value, { silent: true, keepUpdatedAt: true, requirePersistence: true });
+        return app.state.doubts[id];
+      },
+      client: qaApi.createClient({ endpoint: cfg.endpoint, getAccessToken: () => loadQaConfig().accessToken })
+    });
+    qaPanels.set(id, { root: placeholder, handle, signature });
+  }
+  for (const [id, panel] of qaPanels) {
+    if (!active.has(id)) { panel.handle.destroy(); qaPanels.delete(id); }
+  }
 }
 
 function loadSyncMeta() {
@@ -3420,7 +3623,7 @@ function renderSettings() {
     return;
   }
   const active = document.activeElement;
-  if (active && root.contains(active) && /^(gh-token|gh-user|settings-repo|settings-branch)$/.test(active.id)) {
+  if (active && root.contains(active) && /^(gh-token|gh-user|settings-repo|settings-branch|qa-endpoint|qa-access-token)$/.test(active.id)) {
     const last = document.getElementById("settings-last-sync");
     if (last) last.textContent = lastSyncLabel();
     return;
@@ -3472,6 +3675,7 @@ function renderSettings() {
       <p id="settings-test-result" class="small" ${testMessage ? "" : "hidden"}>${escapeHtml(testMessage)}</p>
       <p id="settings-last-sync" class="small">${escapeHtml(lastSyncLabel())}</p>
     </section>
+    ${qaSettingsHtml()}
     <section class="panel">
       <h2 class="h2">进度文件</h2>
       <div class="button-row">
@@ -3493,6 +3697,7 @@ function renderSettings() {
     <p class="app-version mono">版本 ${escapeHtml(APP_VERSION)}</p>
   `;
   wireSettings();
+  wireQaSettings();
 }
 
 function wireSettings() {
@@ -4752,6 +4957,7 @@ function writeDoubt(meta, blockId, patch, options) {
     at: prev.at || shanghaiIso()
   };
   if (prev.answer) next.answer = prev.answer;
+  if (prev.qa) next.qa = prev.qa;
   if (prev.resolved) next.resolved = prev.resolved;
   if (prev.removed) next.removed = true;
   const incoming = { ...(patch || {}) };
@@ -4763,7 +4969,8 @@ function writeDoubt(meta, blockId, patch, options) {
   if (!next.at) next.at = shanghaiIso();
   if (patch && Object.prototype.hasOwnProperty.call(patch, "removed") && !patch.removed) delete next.removed;
   if (patch && Object.prototype.hasOwnProperty.call(patch, "resolved") && !patch.resolved) delete next.resolved;
-  store.save(`doubts/${id}`, next, options);
+  next.updatedAt = Math.max(Date.now(), (Number(prev.updatedAt) || 0) + 1);
+  store.save(`doubts/${id}`, next, { ...(options || {}), keepUpdatedAt: true });
 }
 
 function saveDoubtNote(meta, blockId, note, options) {
@@ -4774,16 +4981,20 @@ function saveDoubtNote(meta, blockId, note, options) {
   writeDoubt(meta, blockId, { note: text }, options || { silent: true });
 }
 
+function flushDoubtInput(meta, input) {
+  if (!input || input.dataset.doubtDirty !== "1") return;
+  const blockId = input.dataset.doubtNote;
+  if (app.ui.doubtTimers) clearTimeout(app.ui.doubtTimers[doubtKey(meta.id, blockId)]);
+  saveDoubtNote(meta, blockId, input.value, { silent: true });
+  delete input.dataset.doubtDirty;
+}
+
 function flushDoubtInputs() {
-  const chunkId = app.ui.routeChunkId || (hashRoute().chunkId || "");
+  const chunkId = document.getElementById("page-learn")?.dataset.chunkId || app.ui.learnBoundChunk || app.ui.routeChunkId || (hashRoute().chunkId || "");
   if (!chunkId) return;
   const meta = findChunkMeta(chunkId);
   if (!meta) return;
-  document.querySelectorAll("[data-doubt-note]").forEach((input) => {
-    const blockId = input.dataset.doubtNote;
-    if (app.ui.doubtTimers) clearTimeout(app.ui.doubtTimers[doubtKey(meta.id, blockId)]);
-    saveDoubtNote(meta, blockId, input.value, { silent: true });
-  });
+  document.querySelectorAll("[data-doubt-note]").forEach((input) => flushDoubtInput(meta, input));
 }
 
 function markdownPlain(md) {
@@ -5374,10 +5585,16 @@ function doubtPanelHtml(meta, block) {
   const rec = activeDoubt(meta.id, block.id);
   if (!rec) return "";
   const showCancel = app.ui.doubtCancel === id;
+  if (qaApi) {
+    return `<div class="doubt-box">
+      ${showCancel ? `<button type="button" class="btn btn-secondary tap-target" data-doubt-cancel="${escapeHtml(id)}">取消标记</button>` : ""}
+      <label class="small" for="doubt-note-${escapeHtml(String(block.id))}">阅读备注（可选）</label>
+      <input id="doubt-note-${escapeHtml(String(block.id))}" class="doubt-input" data-doubt-note="${escapeHtml(String(block.id))}" type="text" value="${escapeHtml(rec.note || "")}" placeholder="保留你的阅读备注">
+      <div id="doubt-answer-${escapeHtml(String(block.id))}" data-qa-block="${escapeHtml(String(block.id))}"></div>
+    </div>`;
+  }
   let answerHtml = "";
-  if (rec.resolved === "still") {
-    answerHtml = `<p class="small doubt-still">已记为还是不懂，下次再解答</p>`;
-  } else if (rec.answer) {
+  if (rec.answer) {
     const text = limitSentences(rec.answer.text || "", 3);
     const quote = rec.answer.quote ? `<blockquote class="doubt-quote">${escapeHtml(rec.answer.quote)}</blockquote>` : "";
     const actions = rec.resolved === "got"
@@ -5387,17 +5604,18 @@ function doubtPanelHtml(meta, block) {
           <button type="button" class="btn btn-secondary tap-target" data-doubt-still="${escapeHtml(id)}">还是不懂</button>
         </div>`;
     answerHtml = `<section class="doubt-answer" id="doubt-answer-${escapeHtml(String(block.id))}">
-      <p class="doubt-answer-kicker">解答</p>
+      <p class="doubt-answer-kicker">${rec.answer.status === "insufficient_context" ? "资料不足 · 尚不能确认" : "解答"}</p>
       ${text ? `<p class="doubt-answer-text">${escapeHtml(text)}</p>` : ""}
       ${quote}
       ${actions}
+      ${rec.resolved === "still" ? '<p class="small doubt-still">已记为还是不懂，原回答仍保留。</p>' : ""}
     </section>`;
   }
   return `
     <div class="doubt-box">
       ${showCancel ? `<button type="button" class="btn btn-secondary tap-target" data-doubt-cancel="${escapeHtml(id)}">取消标记</button>` : ""}
       <input class="doubt-input" data-doubt-note="${escapeHtml(String(block.id))}" type="text" value="${escapeHtml(rec.note || "")}" placeholder="哪里不懂？一句话就行，可不填">
-      <p class="doubt-hint">已记下。解答会出现在这段下面，不用现在追。</p>
+      <p class="doubt-hint">备注已记下。答疑模块正在载入；若未出现，请联网刷新。</p>
       ${answerHtml}
     </div>`;
 }
@@ -5697,14 +5915,19 @@ function renderLearn() {
   if (!root) return;
   flushDoubtInputs();
   if (app.ui.tab !== "learn") {
+    destroyQaPanels();
     if (root.innerHTML) root.innerHTML = "";
+    delete root.dataset.chunkId;
     return;
+  }
+  const chunkId = app.ui.routeChunkId || hashRoute().chunkId;
+  for (const [id, panel] of qaPanels) {
+    if (!id.startsWith(`${chunkId}:`)) { panel.handle.destroy(); qaPanels.delete(id); }
   }
   if (!app.data) {
     root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
     return;
   }
-  const chunkId = app.ui.routeChunkId || hashRoute().chunkId;
   const today = shanghaiToday();
   const weekUnits = app.data ? getWeekContext(today).units : [];
   weekUnits.forEach((unitId) => {
@@ -5759,6 +5982,8 @@ function renderLearn() {
     return;
   }
   const stepId = currentLearnStep(meta.id, steps);
+  if (stepId !== "read") destroyQaPanels();
+  root.dataset.chunkId = meta.id;
   writeLearnMemory(meta.id, stepId);
   const stepIndex = Math.max(0, steps.findIndex((step) => step.id === stepId));
   let body = "";
@@ -5871,12 +6096,12 @@ function wireDoubts(meta) {
       const blockId = button.dataset.doubt;
       const id = doubtKey(meta.id, blockId);
       const input = root.querySelector(`[data-doubt-note="${blockId}"]`);
-      if (input) saveDoubtNote(meta, blockId, input.value, { silent: true });
+      flushDoubtInput(meta, input);
       if (!activeDoubt(meta.id, blockId)) {
         const prev = (app.state.doubts && app.state.doubts[id]) || {};
         app.ui.doubtCancel = "";
         const patch = {
-          note: input ? input.value : (prev.note || ""),
+          note: prev.note || "",
           removed: false
         };
         if (prev.removed) {
@@ -5894,8 +6119,9 @@ function wireDoubts(meta) {
     button.addEventListener("click", () => {
       const blockId = button.dataset.doubtCancel.slice(meta.id.length + 1);
       const input = root.querySelector(`[data-doubt-note="${blockId}"]`);
+      flushDoubtInput(meta, input);
       app.ui.doubtCancel = "";
-      writeDoubt(meta, blockId, { note: input ? input.value : undefined, removed: true });
+      writeDoubt(meta, blockId, { removed: true });
     });
   });
   root.querySelectorAll("[data-doubt-got], [data-doubt-still]").forEach((button) => {
@@ -5903,15 +6129,16 @@ function wireDoubts(meta) {
       const id = button.dataset.doubtGot || button.dataset.doubtStill;
       const blockId = id.slice(meta.id.length + 1);
       const input = root.querySelector(`[data-doubt-note="${blockId}"]`);
-      if (input) saveDoubtNote(meta, blockId, input.value, { silent: true });
+      flushDoubtInput(meta, input);
       writeDoubt(meta, blockId, { resolved: button.dataset.doubtGot ? "got" : "still" });
     });
   });
   root.querySelectorAll("[data-doubt-note]").forEach((input) => {
     const blockId = input.dataset.doubtNote;
     const id = doubtKey(meta.id, blockId);
-    const saveNow = () => saveDoubtNote(meta, blockId, input.value, { silent: true });
+    const saveNow = () => flushDoubtInput(meta, input);
     input.addEventListener("input", () => {
+      input.dataset.doubtDirty = "1";
       if (!app.ui.doubtTimers) app.ui.doubtTimers = {};
       clearTimeout(app.ui.doubtTimers[id]);
       app.ui.doubtTimers[id] = setTimeout(saveNow, 1500);
@@ -5921,6 +6148,7 @@ function wireDoubts(meta) {
       saveNow();
     });
   });
+  mountStudyQa(meta);
 }
 
 function wireLearnQuiz(meta) {
@@ -7160,6 +7388,7 @@ async function boot() {
   app.githubConfig = loadGithubConfig();
   loadSyncMeta();
   loadStateFromLocal();
+  loadQaModule();
   app.sync.initialPullSettled = !hasToken();
   app.sync.phase = hasToken() ? "syncing" : "disconnected";
   if (!knownHash(location.hash)) {

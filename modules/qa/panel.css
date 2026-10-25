@@ -1,0 +1,64 @@
+.qa-panel {
+  --qa-ink: var(--ink, #202a33);
+  --qa-muted: var(--ink-2, #59636d);
+  --qa-line: var(--line, #ccd4db);
+  --qa-bg: var(--panel, #f8f9fa);
+  --qa-accent: var(--accent, #b32e25);
+  min-width: 0;
+  max-width: 100%;
+  margin: 12px 0;
+  padding: 14px;
+  border: 1px solid var(--qa-line);
+  border-radius: 8px;
+  color: var(--qa-ink);
+  background: var(--qa-bg);
+  font: 15px/1.65 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  overflow-wrap: anywhere;
+}
+.qa-panel *, .qa-panel *::before, .qa-panel *::after { box-sizing: border-box; min-width: 0; }
+.qa-panel [hidden] { display: none !important; }
+.qa-panel .qa-heading { margin: 0; font-size: 17px; font-weight: 700; }
+.qa-panel .qa-source, .qa-panel .qa-input-hint, .qa-panel .qa-answer-meta,
+.qa-panel .qa-legacy-note, .qa-panel .qa-old-context { color: var(--qa-muted); font-size: 12px; }
+.qa-panel .qa-source { margin: 3px 0 12px; }
+.qa-panel .qa-config-hint, .qa-panel .qa-insufficient { padding: 9px 11px; border-left: 3px solid #b87919; }
+.qa-panel .qa-config-hint { margin: 8px 0 14px; }
+.qa-panel .qa-turns { display: grid; gap: 12px; }
+.qa-panel .qa-turn { border-top: 1px solid var(--qa-line); padding: 12px 0 2px; }
+.qa-panel .qa-turn-heading { margin: 0; font-size: 12px; color: var(--qa-muted); font-weight: 600; }
+.qa-panel .qa-question { margin: 2px 0 11px; font-weight: 600; white-space: pre-wrap; }
+.qa-panel .qa-answer-text, .qa-panel .qa-quote-text { white-space: pre-wrap; margin: 7px 0; }
+.qa-panel .qa-badge { display: inline-block; border: 1px solid var(--qa-line); border-radius: 4px;
+  padding: 1px 7px; font-size: 12px; color: var(--qa-muted); }
+.qa-panel .qa-badge-warning { color: var(--warn, #8d5b11); }
+.qa-panel .qa-quote { margin: 10px 0; padding: 10px 12px; border-left: 3px solid var(--qa-line); }
+.qa-panel .qa-anchor { display: block; color: var(--qa-muted); font-style: normal; font-size: 12px; }
+.qa-panel .qa-quote .qa-button { margin-top: 6px; }
+.qa-panel .qa-follow-up { margin: 10px 0; }
+.qa-panel .qa-follow-up p { margin: 0 0 5px; }
+.qa-panel .qa-answer-meta { margin: 9px 0; }
+.qa-panel .qa-status { margin: 12px 0 5px; font-size: 13px; }
+.qa-panel .qa-status:empty { display: none; }
+.qa-panel .qa-waiting, .qa-panel .qa-empty, .qa-panel .qa-still-hint { color: var(--qa-muted); font-size: 13px; }
+.qa-panel .qa-error, .qa-panel .qa-over-limit { color: var(--bad, #ac2820); }
+.qa-panel .qa-form { margin-top: 14px; }
+.qa-panel .qa-input-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 5px; }
+.qa-panel .qa-input { display: block; width: 100%; max-width: 100%; min-height: 92px; resize: vertical;
+  margin: 0; padding: 10px 11px; border: 1px solid var(--qa-line); border-radius: 6px;
+  color: var(--qa-ink); background: var(--bg, #fff); font: inherit; font-size: 16px; line-height: 1.5; }
+.qa-panel .qa-input:focus-visible, .qa-panel .qa-button:focus-visible { outline: 2px solid var(--qa-accent); outline-offset: 3px; }
+.qa-panel .qa-input-hint { margin: 5px 0 8px; }
+.qa-panel .qa-controls, .qa-panel .qa-resolution { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.qa-panel .qa-count { margin-left: auto; font-size: 12px; color: var(--qa-muted); }
+.qa-panel .qa-count.qa-over-limit { color: var(--bad, #ac2820); }
+.qa-panel .qa-button { appearance: none; max-width: 100%; min-height: 44px; padding: 8px 12px;
+  border: 1px solid var(--qa-line); border-radius: 6px; background: transparent; color: var(--qa-ink);
+  font: inherit; font-size: 13px; font-weight: 600; line-height: 1.4; white-space: normal;
+  overflow-wrap: anywhere; cursor: pointer; touch-action: manipulation; }
+.qa-panel .qa-button-primary { background: var(--qa-accent); color: #fff; border-color: var(--qa-accent); }
+.qa-panel .qa-button[aria-pressed='true'] { border-color: var(--qa-accent); color: var(--qa-accent); }
+.qa-panel .qa-button:disabled, .qa-panel .qa-input:disabled { opacity: .6; cursor: default; }
+@media (max-width: 420px) {
+  .qa-panel { padding: 11px; }
+  .qa-panel .qa-quote { padding: 8px 9px; }
+}
