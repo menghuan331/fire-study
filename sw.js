@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-v12";
+const CACHE_VERSION = "study-v13";
 const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [
@@ -11,7 +11,13 @@ const PRECACHE = [
   "./manifest.webmanifest",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
-  "./icons/apple-touch-icon.png"
+  "./icons/apple-touch-icon.png",
+  "./modules/qa/index.js",
+  "./modules/qa/state.js",
+  "./modules/qa/client.js",
+  "./modules/qa/panel.js",
+  "./modules/qa/errors.js",
+  "./modules/qa/panel.css"
 ];
 
 function relativePath(url) {
@@ -38,6 +44,7 @@ function isNetworkFirstPath(rel) {
   return rel === ""
     || rel === "index.html"
     || (rel.startsWith("data/") && rel.endsWith(".json"))
+    || (rel.startsWith("modules/qa/") && /\.(js|css)$/.test(rel))
     || rel === "精讲/index.json"
     || isLectureFile(rel);
 }
