@@ -1465,13 +1465,15 @@ button.sync-status {
   min-width: 0;
 }
 
-.quiz-card .option-btn {
+.quiz-card .option-btn,
+.review-card .option-btn {
   align-items: flex-start;
   height: auto;
   white-space: normal;
 }
 
-.quiz-card .option-btn span:last-child {
+.quiz-card .option-btn span:last-child,
+.review-card .option-btn span:last-child {
   min-width: 0;
   overflow-wrap: anywhere;
 }
@@ -1983,6 +1985,66 @@ function countReviewRemaining(session, today, cards) {
   }
   return count;
 }
+
+const INLINE_KAOKAO_LIMIT = 15;
+const POOL_DAILY_LIMIT = 20;
+
+function anchorBlockId(anchor) {
+  const matched = String(anchor || "").match(/b(\d+)\s*$/);
+  return matched ? Number(matched[1]) : null;
+}
+
+function selectInlineKaokao(items, blocks, triedIds, limit) {
+  const list = (Array.isArray(items) ? items : []).filter((item) => item);
+  const blockList = Array.isArray(blocks) ? blocks : [];
+  const indexById = new Map();
+  blockList.forEach((block, index) => {
+    const id = Number(block && block.id);
+    if (Number.isFinite(id)) indexById.set(id, index);
+  });
+  const sorted = list.map((item) => {
+    const blockId = anchorBlockId(item.anchor);
+    const index = indexById.has(blockId) ? indexById.get(blockId) : blockList.length;
+    return { item, index };
+  }).sort((a, b) => a.index - b.index || String(a.item.id).localeCompare(String(b.item.id)));
+  if (sorted.length <= limit) return sorted.map((entry) => entry.item);
+  const tried = triedIds && typeof triedIds.has === "function" ? triedIds : new Set();
+  const selected = new Set();
+  for (const entry of sorted) {
+    if (tried.has(entry.item.id)) selected.add(entry.item.id);
+  }
+  let remaining = limit - selected.size;
+  const rest = sorted.filter((entry) => !selected.has(entry.item.id));
+  const hasWhy = (entry) => !!(entry.item.why && entry.item.why.q);
+  const hasDigit = (entry) => /\d/.test(String(entry.item.src || ""));
+  const tiers = [
+    rest.filter((entry) => hasWhy(entry)),
+    rest.filter((entry) => !hasWhy(entry) && hasDigit(entry)),
+    rest.filter((entry) => !hasWhy(entry) && !hasDigit(entry))
+  ];
+  for (const tier of tiers) {
+    if (remaining <= 0 || !tier.length) continue;
+    if (tier.length <= remaining) {
+      for (const entry of tier) selected.add(entry.item.id);
+      remaining -= tier.length;
+      continue;
+    }
+    const n = tier.length;
+    const k = remaining;
+    for (let i = 0; i < k; i += 1) {
+      selected.add(tier[Math.floor((i + 0.5) * n / k)].item.id);
+    }
+    remaining = 0;
+  }
+  return sorted.filter((entry) => selected.has(entry.item.id)).map((entry) => entry.item);
+}
+
+function pickPoolRelease(poolItems, releasedToday, limit) {
+  const items = Array.isArray(poolItems) ? poolItems : [];
+  const already = Math.max(0, Number(releasedToday) || 0);
+  const room = Math.max(0, Number(limit) - already);
+  return items.slice(0, room);
+}
 </script>
 
 <script id="sync">
@@ -2417,7 +2479,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-25.1";
+const APP_VERSION = "2026-10-26.1";
 const QA_CONFIG_KEY = "study-qa-config-v1";
 let qaApi = null;
 let qaLoadPromise = null;
@@ -4011,6 +4073,7 @@ function getQuestionStateClass(questionId) {
 }
 
 let skeletonActivationLock = false;
+let poolReleaseLock = false;
 
 function ensureSkeletonActivation(today) {
   if (skeletonActivationLock) return;
@@ -4414,6 +4477,73 @@ function ensureKaokaoLoaded(today) {
   units.forEach((unitId) => kickKaokao(unitId));
 }
 
+function blocksForPoolOrder(chunkId, items) {
+  const body = app.study.bodies && app.study.bodies[chunkId];
+  if (body && Array.isArray(body.blocks) && body.blocks.length) return body.blocks;
+  const ids = [];
+  const seen = new Set();
+  for (const item of items || []) {
+    const blockId = anchorBlockId(item.anchor);
+    if (blockId == null || seen.has(blockId)) continue;
+    seen.add(blockId);
+    ids.push(blockId);
+  }
+  ids.sort((a, b) => a - b);
+  return ids.map((id) => ({ id }));
+}
+
+function releasePoolCards(today) {
+  if (!today || poolReleaseLock || !app.state || !app.state.cards) return;
+  const docs = Object.values(kaokaoDocs());
+  if (!docs.length) return;
+  poolReleaseLock = true;
+  try {
+    const byChunk = new Map();
+    for (const doc of docs) {
+      const items = doc && Array.isArray(doc.items) ? doc.items : [];
+      for (const item of items) {
+        if (!item || !item.id || !item.chunk) continue;
+        if (!item.recog || !Array.isArray(item.recog.options)) continue;
+        if (!chunkDone(item.chunk)) continue;
+        if (latestKaokaoTry(item.id, "recog")) continue;
+        if (app.state.cards[`KK-${item.id}`]) continue;
+        if (!byChunk.has(item.chunk)) byChunk.set(item.chunk, []);
+        byChunk.get(item.chunk).push(item);
+      }
+    }
+    const chunkIds = [...byChunk.keys()].sort((a, b) => {
+      const da = (app.state.chunks && app.state.chunks[a] && app.state.chunks[a].doneAt) || "";
+      const db = (app.state.chunks && app.state.chunks[b] && app.state.chunks[b].doneAt) || "";
+      if (da !== db) return da < db ? -1 : 1;
+      return String(a).localeCompare(String(b));
+    });
+    const poolItems = [];
+    for (const chunkId of chunkIds) {
+      const group = byChunk.get(chunkId);
+      poolItems.push(...selectInlineKaokao(group, blocksForPoolOrder(chunkId, group), new Set(), group.length));
+    }
+    const releasedToday = Object.values(app.state.cards).filter((card) => card && card.pool === true && card.created === today).length;
+    const releasing = pickPoolRelease(poolItems, releasedToday, POOL_DAILY_LIMIT);
+    for (const item of releasing) {
+      const unit = (String(item.id).match(/U\d+/) || [])[0] || "";
+      store.save(`cards/KK-${item.id}`, {
+        box: 0,
+        due: today,
+        streak: 0,
+        streakStart: null,
+        cleared: false,
+        src: "kaokao",
+        kid: item.id,
+        created: today,
+        unit,
+        pool: true
+      }, { silent: true });
+    }
+  } finally {
+    poolReleaseLock = false;
+  }
+}
+
 function kickUnitIndex(unitId) {
   if (!unitId || app.study.indexes[unitId]) return;
   const state = app.study.indexState[unitId];
@@ -4601,12 +4731,18 @@ function printedRange(meta) {
   return `${from}–${to}`;
 }
 
+function chunkEstMinutes(meta) {
+  const base = Number(meta && meta.minutes) || 0;
+  if (!meta || !meta.unit || !kaokaoDocs()[meta.unit]) return base;
+  return base + Math.ceil(kaokaoItemsForChunk(meta).length * 0.5);
+}
+
 function chunkMetaLine(meta) {
   const questions = Array.isArray(meta.questions) ? meta.questions.length : 0;
   const parts = [
     bookName(meta.book),
     `印刷页 ${printedRange(meta)}`,
-    `${Number(meta.minutes) || 0} 分钟`,
+    `${chunkEstMinutes(meta)} 分钟`,
     `${questions} 题`
   ];
   return parts.filter(Boolean).join(" · ");
@@ -4628,6 +4764,8 @@ function daysLeftInWeek(today, week) {
 }
 
 function todayReviewView(today) {
+  ensureKaokaoLoaded(today);
+  releasePoolCards(today);
   const due = getReviewQueue(today).length;
   const session = app.ui.review && app.ui.review.sessionDate === today ? app.ui.review : null;
   const stats = session && session.stats ? session.stats : emptyReviewStats();
@@ -5009,20 +5147,28 @@ function markdownPlain(md) {
     .trim();
 }
 
-function anchorBlockId(anchor) {
-  const matched = String(anchor || "").match(/b(\d+)\s*$/);
-  return matched ? Number(matched[1]) : null;
-}
-
 function kaokaoDocs() {
   return app.study && app.study.kaokao ? app.study.kaokao : {};
 }
 
-function kaokaoItemsForChunk(meta) {
+function triedKaokaoIds(items) {
+  const tried = new Set();
+  for (const item of items || []) {
+    if (item && latestKaokaoTry(item.id, "recog")) tried.add(item.id);
+  }
+  return tried;
+}
+
+function allKaokaoItemsForChunk(meta) {
   if (!meta) return [];
   const doc = kaokaoDocs()[meta.unit];
   const items = doc && Array.isArray(doc.items) ? doc.items : [];
   return items.filter((item) => item && item.chunk === meta.id && item.recog && Array.isArray(item.recog.options));
+}
+
+function kaokaoItemsForChunk(meta) {
+  const all = allKaokaoItemsForChunk(meta);
+  return selectInlineKaokao(all, blocksForPoolOrder(meta && meta.id, all), triedKaokaoIds(all), INLINE_KAOKAO_LIMIT);
 }
 
 function whyItemsForChunk(meta) {
@@ -5455,6 +5601,12 @@ function kaokaoSummary(meta) {
   const said = retell && String(retell.text || "").trim() ? "已复述" : "未复述";
   const whyPart = whys.length ? ` · 为什么 ${thought}/${whys.length} 想到了` : "";
   return `小测 ${correct}/${items.length} 对（跳过 ${skipped}）${whyPart} · ${said}`;
+}
+
+function kaokaoPoolNote(meta) {
+  const left = allKaokaoItemsForChunk(meta).length - kaokaoItemsForChunk(meta).length;
+  if (left <= 0) return "";
+  return `另有 ${left} 条学完后进复习，每天最多 ${POOL_DAILY_LIMIT} 条`;
 }
 
 function clozeHtml(text) {
@@ -5890,6 +6042,7 @@ function doneStepHtml(meta) {
   const rec = app.state.chunks && app.state.chunks[meta.id];
   const reviewed = rec && rec.doneAt;
   const marked = chunkDoubtItems(meta.id);
+  const kaokaoParts = [kaokaoSummary(meta), kaokaoPoolNote(meta)].filter(Boolean);
   const doubtLine = marked.length ? `
     <div id="learn-doubt-line">
       <p>没看懂 ${marked.length} 处，已记下</p>
@@ -5901,7 +6054,7 @@ function doneStepHtml(meta) {
     ${reviewed ? `<p class="learn-review-note" id="learn-review-note">已于 ${escapeHtml(rec.doneAt)} 学完，这次是复习。</p>` : ""}
     <p id="learn-minutes">用时 ${learnMinutes(meta.id)} 分钟</p>
     <p id="learn-score">做题 ${score.done} 道对 ${score.correct} 道</p>
-    ${kaokaoSummary(meta) ? `<p id="learn-kaokao-line">${escapeHtml(kaokaoSummary(meta))}</p>` : ""}
+    ${kaokaoParts.length ? `<p id="learn-kaokao-line">${kaokaoParts.map((part) => escapeHtml(part)).join("<br>")}</p>` : ""}
     ${doubtLine}
     <div class="button-row">
       <button id="learn-finish" class="btn btn-primary tap-target" type="button">${reviewed ? "再学一遍完成" : "这一块学完了"}</button>
@@ -6240,7 +6393,7 @@ function renderToday(today, weekCtx) {
   const firstOpen = chunks.find((chunk) => !chunkDone(chunk.id)) || null;
   const shown = doneToday[0] || firstOpen;
   const learnedCount = chunks.filter((chunk) => chunkDone(chunk.id)).length;
-  const remainMin = chunks.filter((chunk) => !chunkDone(chunk.id)).reduce((sum, chunk) => sum + (Number(chunk.minutes) || 0), 0);
+  const remainMin = chunks.filter((chunk) => !chunkDone(chunk.id)).reduce((sum, chunk) => sum + chunkEstMinutes(chunk), 0);
   const currentWeek = weekCtx.week;
   const weekDoc = currentWeek ? app.state.weeks[currentWeek.start] || {} : {};
   const daysLeft = daysLeftInWeek(today, currentWeek);
@@ -6796,6 +6949,71 @@ function openKaokaoFromReview(item) {
   openLearn(item.chunk);
 }
 
+function poolIntroFrontHtml(item, tryItem) {
+  const options = (item.recog && item.recog.options) || [];
+  return `
+    <p id="review-pool-stem">${escapeHtml((item.recog && item.recog.stem) || "")}</p>
+    <ul class="option-list">
+      ${options.map((text, index) => `
+        <li>
+          <button type="button" class="${kkOptionClass(index, item, tryItem)}" data-pool-choice="${index}" ${tryItem ? "disabled" : ""}>
+            <span class="mono">${escapeHtml(String.fromCharCode(65 + index))}.</span>&nbsp;<span>${escapeHtml(text)}</span>
+          </button>
+        </li>`).join("")}
+    </ul>`;
+}
+
+function poolIntroAnswerHtml(item, tryItem) {
+  const options = (item.recog && item.recog.options) || [];
+  const answerText = options[Number(item.recog && item.recog.answer)] || "";
+  return `
+    <p class="quiz-result ${tryItem.ok ? "ok" : "bad"}" id="review-pool-result">${tryItem.ok ? "✓ 对了" : `✗ 正确是：${escapeHtml(answerText)}`}</p>
+    <p id="review-kaokao-src">原句：${escapeHtml(item.src || "")}</p>
+    <p class="small" id="review-pool-why">${escapeHtml((item.recog && item.recog.why) || "")}</p>
+    <button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>`;
+}
+
+function answerPoolIntro(choiceIndex) {
+  const session = app.ui.review;
+  if (!session || !session.currentId) return;
+  if (session.phase !== "front" && session.phase !== "pool") return;
+  if (!Number.isInteger(choiceIndex)) return;
+  const card = app.state.cards[session.currentId];
+  if (!card || card.pool !== true || card.src !== "kaokao") return;
+  const item = kaokaoItemById(card.kid);
+  const options = item && item.recog && Array.isArray(item.recog.options) ? item.recog.options : [];
+  if (!item || !options.length || choiceIndex < 0 || choiceIndex >= options.length) return;
+  if (latestKaokaoTry(item.id, "recog")) return;
+  const next = cloneReviewSession(session);
+  next.phase = "pool";
+  app.ui.review = next;
+  const shown = app.ui.kaokaoShown && app.ui.kaokaoShown[item.id];
+  recordKaokaoTry(item, {
+    at: shanghaiIso(),
+    level: "recog",
+    choice: choiceIndex,
+    ok: choiceIndex === Number(item.recog.answer),
+    ms: Math.max(0, Date.now() - (shown || Date.now()))
+  });
+}
+
+function advancePoolIntro() {
+  const session = app.ui.review;
+  const today = shanghaiToday();
+  if (!session || session.phase !== "pool" || !session.currentId) return;
+  const id = session.currentId;
+  const card = app.state.cards[id];
+  if (!card || card.pool !== true) return;
+  const item = kaokaoItemById(card.kid);
+  if (!item || !latestKaokaoTry(item.id, "recog")) return;
+  const nextCard = { ...card, box: 0, due: addDaysYmd(today, 1), streak: 0 };
+  const cards = { ...app.state.cards, [id]: nextCard };
+  const advanced = advanceReview(session, cards, today);
+  advanced.lastUndo = null;
+  app.ui.review = advanced;
+  store.save(`cards/${id}`, nextCard);
+}
+
 function renderReview(today) {
   const root = document.getElementById("page-review");
   if (!app.data) {
@@ -6804,6 +7022,7 @@ function renderReview(today) {
   }
   if (app.ui.tab !== "review") return;
   ensureKaokaoLoaded(today);
+  releasePoolCards(today);
 
   const dueIds = getReviewQueue(today).map((card) => card.id);
   const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards);
@@ -6839,17 +7058,33 @@ function renderReview(today) {
   const position = index >= 0 ? index + 1 : 1;
   const hintUsed = !!(app.ui.reviewHint && app.ui.reviewHint.cardId === card.id && app.ui.reviewHint.used);
   if (card.src !== "kaokao" && card.src !== "wrong") prepareSkeletonSource(card.id);
-  const srcTag = card.src === "kaokao"
-    ? `<p class="review-src" id="review-src-tag">小测里的句子</p>`
-    : card.src === "wrong"
-      ? ""
-      : `<p class="review-src" id="review-src-tag">教材要点</p>`;
+  const poolOptions = kkItem && kkItem.recog && Array.isArray(kkItem.recog.options) ? kkItem.recog.options : [];
+  const poolFirst = card.pool === true && card.src === "kaokao" && !latestKaokaoTry(card.kid, "recog");
+  const poolReady = poolFirst && poolOptions.length > 0;
+  const poolTry = session.phase === "pool" ? latestKaokaoTry(card.kid, "recog") : null;
+  const poolAnswered = !!(poolTry && kkItem && card.pool === true && card.src === "kaokao" && poolOptions.length > 0);
+  if (poolReady) {
+    if (!app.ui.kaokaoShown) app.ui.kaokaoShown = {};
+    if (!app.ui.kaokaoShown[kkItem.id]) app.ui.kaokaoShown[kkItem.id] = Date.now();
+  }
+  const srcTag = (poolReady || poolAnswered || (poolFirst && !kkItem))
+    ? `<p class="review-src" id="review-src-tag">新句子</p>`
+    : card.src === "kaokao"
+      ? `<p class="review-src" id="review-src-tag">小测里的句子</p>`
+      : card.src === "wrong"
+        ? ""
+        : `<p class="review-src" id="review-src-tag">教材要点</p>`;
+  let poolHold = false;
   let frontHtml = "";
-  if (card.src === "kaokao") {
+  if (poolReady || poolAnswered) {
+    frontHtml = poolIntroFrontHtml(kkItem, poolAnswered ? poolTry : null);
+  } else if (card.src === "kaokao") {
     if (!kkItem) {
       const unit = (String(card.kid || "").match(/U\d+/) || [])[0] || "";
       const state = unit && app.study.kaokaoState[unit];
-      frontHtml = `<p>${state === "missing" || state === "error" ? "这张可考句暂时没读到。" : "正在读取可考句…"}</p>`;
+      const missing = state === "missing" || state === "error";
+      frontHtml = `<p>${missing ? "这张可考句暂时没读到。" : "正在读取可考句…"}</p>`;
+      if (poolFirst && !missing) poolHold = true;
     } else {
       frontHtml = `<p id="review-cloze">${clozeHtml(kkItem.cloze && kkItem.cloze.text)}</p>`;
       if (hintUsed) frontHtml += `<p class="small" id="review-hint-text">${escapeHtml((kkItem.cloze && kkItem.cloze.hint) || "")}</p>`;
@@ -6859,7 +7094,10 @@ function renderReview(today) {
     frontHtml = `<p>${reviewRichText(content.front)}</p>`;
   }
   let answerHtml = "";
-  if (showAnswer && card.src === "kaokao") {
+  if (poolAnswered) {
+    answerHtml = poolIntroAnswerHtml(kkItem, poolTry);
+    if (app.ui.reviewSourceNote) answerHtml += `<p id="review-source-note">${escapeHtml(app.ui.reviewSourceNote)}</p>`;
+  } else if (showAnswer && card.src === "kaokao") {
     if (kkItem) {
       const filled = fillCloze(kkItem.cloze && kkItem.cloze.text, kkItem.cloze && kkItem.cloze.answers);
       answerHtml = `<section class="panel" id="review-kaokao-answer">
@@ -6885,7 +7123,14 @@ function renderReview(today) {
   }
   const mark = session.phase === "revealed" ? `<p class="review-mark">已记为没印象，明天会再出现。</p>` : "";
   let actions = "";
-  if (session.phase === "checking") {
+  if (poolAnswered) {
+    actions = `
+      <div class="review-actions">
+        <button id="review-pool-next" class="btn btn-primary tap-target" type="button">下一张</button>
+      </div>`;
+  } else if (poolReady || poolHold) {
+    actions = "";
+  } else if (session.phase === "checking") {
     actions = `
       <p class="small review-hint">和你心里的答案一样吗？</p>
       <div class="review-actions">
@@ -6911,7 +7156,7 @@ function renderReview(today) {
     <section class="panel">
       <div class="review-meta">
         <p class="small mono">第 ${position} / ${session.order.length} 张</p>
-        ${undo}
+        ${poolAnswered ? "" : undo}
       </div>
       <article class="review-card" data-phase="${session.phase}" data-src="${escapeHtml(card.src || "skeleton")}">
         ${srcTag}
@@ -6923,6 +7168,15 @@ function renderReview(today) {
     </section>
   `;
 
+  root.querySelectorAll("[data-pool-choice]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.disabled) return;
+      if (Date.now() < app.ui.reviewArmedAt) return;
+      root.querySelectorAll("[data-pool-choice]").forEach((el) => { el.disabled = true; });
+      answerPoolIntro(Number(button.dataset.poolChoice));
+    });
+  });
+  bindReviewButton("review-pool-next", advancePoolIntro);
   bindReviewButton("review-hint", () => {
     app.ui.reviewHint = { cardId: session.currentId, used: true };
     render();
@@ -7107,7 +7361,7 @@ function renderMapChunk(chunk) {
     ? `<span class="chunk-mark is-done" aria-hidden="true">✓</span>`
     : `<span class="chunk-mark is-todo" aria-hidden="true"></span>`;
   const questions = Array.isArray(chunk.questions) ? chunk.questions.length : 0;
-  const minutes = Number(chunk.minutes) || 0;
+  const minutes = chunkEstMinutes(chunk);
   const lecture = lecturesForChunk(chunk)[0];
   const tag = lecture
     ? `<button type="button" class="tag lecture-tag map-chunk-lecture" data-lecture-url="${escapeHtml(lecture.url)}">精讲</button>`
