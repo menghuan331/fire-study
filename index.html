@@ -2479,8 +2479,14 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-26.1";
-const QA_CONFIG_KEY = "study-qa-config-v1";
+const APP_VERSION = "2026-10-30.1";
+const QA_DIRECT_KEY = "study-qa-direct-v1";
+const QA_DIRECT_PROVIDERS = [
+  ["deepseek", "DeepSeek"],
+  ["dashscope", "阿里 DashScope"],
+  ["anthropic", "Anthropic"],
+  ["openai-compatible", "自定义 OpenAI 兼容"]
+];
 let qaApi = null;
 let qaLoadPromise = null;
 const qaPanels = new Map();
@@ -3049,12 +3055,203 @@ function saveGithubConfig(cfg) {
   return next;
 }
 
-function loadQaConfig() {
+function loadDirectConfig() {
+  const empty = { provider: "", model: "", baseUrl: "", apiKey: "", dailyLimit: 30 };
   try {
-    const parsed = JSON.parse(localStorage.getItem(QA_CONFIG_KEY) || "{}");
-    return { endpoint: typeof parsed.endpoint === "string" ? parsed.endpoint : "",
-      accessToken: typeof parsed.accessToken === "string" ? parsed.accessToken : "" };
-  } catch (_) { return { endpoint: "", accessToken: "" }; }
+    const parsed = JSON.parse(localStorage.getItem(QA_DIRECT_KEY) || "{}");
+    const provider = QA_DIRECT_PROVIDERS.some(([id]) => id === parsed.provider) ? parsed.provider : "";
+    const model = typeof parsed.model === "string" ? parsed.model : "";
+    const baseUrl = typeof parsed.baseUrl === "string" ? parsed.baseUrl : "";
+    const apiKey = typeof parsed.apiKey === "string" ? parsed.apiKey : "";
+    const limit = Number(parsed.dailyLimit);
+    const dailyLimit = Number.isInteger(limit) && limit >= 1 && limit <= 200 ? limit : 30;
+    return { provider, model, baseUrl, apiKey, dailyLimit };
+  } catch (_) { return empty; }
+}
+
+function readQaDirectDraft() {
+  const saved = loadDirectConfig();
+  const providerEl = document.getElementById("qa-provider");
+  const modelEl = document.getElementById("qa-model");
+  const baseEl = document.getElementById("qa-base-url");
+  const keyEl = document.getElementById("qa-api-key");
+  const limitEl = document.getElementById("qa-daily-limit");
+  const provider = providerEl ? providerEl.value : saved.provider;
+  const model = modelEl ? modelEl.value.trim() : saved.model;
+  const baseUrl = baseEl ? baseEl.value.trim() : saved.baseUrl;
+  const typedKey = keyEl ? keyEl.value.trim() : "";
+  let dailyLimit = saved.dailyLimit;
+  if (limitEl && limitEl.value.trim()) {
+    const parsed = Number(limitEl.value.trim());
+    dailyLimit = Number.isInteger(parsed) ? parsed : NaN;
+  }
+  return { provider, model, baseUrl, apiKey: typedKey || saved.apiKey, dailyLimit };
+}
+
+function qaBaseUrlProblem(baseUrl) {
+  const value = String(baseUrl || "").trim();
+  if (!value) return "请填写自定义地址。";
+  let url;
+  try { url = new URL(value); }
+  catch (_) { return "自定义地址格式不正确。"; }
+  if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash) {
+    return "自定义地址必须是 https，且不能带用户名、密码、查询参数或 #。";
+  }
+  return "";
+}
+
+function qaDirectProblem(draft, { requireLimit = true } = {}) {
+  if (!QA_DIRECT_PROVIDERS.some(([id]) => id === draft.provider)) return "请选择厂商。";
+  if (!draft.model) return "请填写模型名。";
+  if (draft.provider === "openai-compatible") {
+    const urlError = qaBaseUrlProblem(draft.baseUrl);
+    if (urlError) return urlError;
+  }
+  if (!draft.apiKey) return "请填写钥匙。";
+  if (/^(gh[pousr]_|github_pat_)/i.test(draft.apiKey)) return "这里需要答疑专用凭证，不能使用 GitHub 同步令牌。";
+  if (requireLimit && (!Number.isInteger(draft.dailyLimit) || draft.dailyLimit < 1 || draft.dailyLimit > 200)) {
+    return "每天最多提问次数要在 1 到 200 之间。";
+  }
+  return "";
+}
+
+function shanghaiCalendarDay(ms) {
+  const parts = shanghaiParts(ms);
+  return parts.y && parts.m && parts.d ? `${parts.y}-${parts.m}-${parts.d}` : "";
+}
+
+function qaTodayTurnCount() {
+  const today = shanghaiCalendarDay(Date.now());
+  if (!today || !app.state || !app.state.doubts) return 0;
+  let count = 0;
+  for (const rec of Object.values(app.state.doubts)) {
+    const turns = rec && rec.qa && rec.qa.turns;
+    if (!turns || typeof turns !== "object") continue;
+    for (const turn of Object.values(turns)) {
+      const created = Number(turn && turn.createdAt);
+      if (!Number.isFinite(created)) continue;
+      if (shanghaiCalendarDay(created) === today) count += 1;
+    }
+  }
+  return count;
+}
+
+function limitClient(client, allowed) {
+  return {
+    get configured() { return client.configured; },
+    answer(request, options) {
+      try {
+        if (!allowed(request)) return Promise.reject(new qaApi.QaError("DAILY_LIMIT"));
+      } catch (error) {
+        return Promise.reject(error);
+      }
+      return client.answer(request, options);
+    }
+  };
+}
+
+function directPingRequest() {
+  const requestId = globalThis.crypto && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `ping-${Date.now()}`;
+  return {
+    v: 1,
+    requestId,
+    threadId: "qa-ping:1",
+    unit: "U00",
+    chunkId: "qa-ping",
+    blockId: "1",
+    book: "SWX",
+    question: "用一句话说明火灾自动报警系统的作用",
+    context: [{
+      anchor: "SWX:p1:b1",
+      kind: "para",
+      text: "火灾自动报警系统用于尽早发现火灾并发出警报。"
+    }],
+    history: []
+  };
+}
+
+function saveQaDirectSettings(event) {
+  event.preventDefault();
+  const message = document.getElementById("qa-settings-message");
+  const draft = readQaDirectDraft();
+  const problem = qaDirectProblem(draft);
+  if (problem) {
+    if (message) message.textContent = problem;
+    return;
+  }
+  const next = {
+    provider: draft.provider,
+    model: draft.model,
+    baseUrl: draft.baseUrl,
+    apiKey: draft.apiKey,
+    dailyLimit: draft.dailyLimit
+  };
+  try { localStorage.setItem(QA_DIRECT_KEY, JSON.stringify(next)); }
+  catch (_) {
+    if (message) message.textContent = "设置未保存，请重试。";
+    return;
+  }
+  destroyQaPanels();
+  renderSettings();
+  const status = document.getElementById("qa-settings-message");
+  if (status) status.textContent = "当场问设置已保存在这台设备上。";
+}
+
+function clearQaDirectKey() {
+  const cfg = loadDirectConfig();
+  const next = { provider: cfg.provider, model: cfg.model, baseUrl: cfg.baseUrl, apiKey: "", dailyLimit: cfg.dailyLimit };
+  try { localStorage.setItem(QA_DIRECT_KEY, JSON.stringify(next)); }
+  catch (_) {
+    const message = document.getElementById("qa-settings-message");
+    if (message) message.textContent = "清除未成功，请重试。";
+    return;
+  }
+  destroyQaPanels();
+  renderSettings();
+  const status = document.getElementById("qa-settings-message");
+  if (status) status.textContent = "钥匙已从这台设备清除。";
+}
+
+async function testDirectConnection() {
+  const message = document.getElementById("qa-settings-message");
+  const button = document.getElementById("qa-direct-test");
+  if (!message || (button && button.disabled)) return;
+  const draft = readQaDirectDraft();
+  const problem = qaDirectProblem(draft, { requireLimit: false });
+  if (problem) {
+    message.textContent = problem;
+    return;
+  }
+  if (!qaApi) await loadQaModule();
+  if (!qaApi || !qaApi.createDirectClient) {
+    message.textContent = "当场问模块还没载入，请联网刷新后再试。";
+    return;
+  }
+  if (button) button.disabled = true;
+  message.textContent = "正在测试连接…";
+  const started = Date.now();
+  try {
+    const client = qaApi.createDirectClient({
+      provider: draft.provider,
+      model: draft.model,
+      baseUrl: draft.baseUrl,
+      getApiKey: () => draft.apiKey
+    });
+    const response = await client.answer(directPingRequest());
+    const seconds = Math.max(1, Math.round((Date.now() - started) / 1000));
+    const by = response && response.answer && response.answer.by ? response.answer.by : `${draft.provider}/${draft.model}`;
+    const current = document.getElementById("qa-settings-message");
+    if (current) current.textContent = `连通了：${by}，用时 ${seconds} 秒`;
+  } catch (error) {
+    const failure = qaApi.errorRecord ? qaApi.errorRecord(error) : null;
+    const current = document.getElementById("qa-settings-message");
+    if (current) current.textContent = failure && failure.message ? failure.message : "测试没有完成，请稍后重试。";
+  } finally {
+    const currentButton = document.getElementById("qa-direct-test");
+    if (currentButton) currentButton.disabled = false;
+  }
 }
 
 function destroyQaPanels() {
@@ -3077,18 +3274,32 @@ function loadQaModule() {
 }
 
 function qaSettingsHtml() {
-  const cfg = loadQaConfig();
+  const cfg = loadDirectConfig();
+  const options = [`<option value=""${cfg.provider ? "" : " selected"}>请选择</option>`]
+    .concat(QA_DIRECT_PROVIDERS.map(([value, label]) => `<option value="${value}"${cfg.provider === value ? " selected" : ""}>${label}</option>`))
+    .join("");
   return `<section class="panel">
-    <h2 class="h2">即时答疑</h2>
-    <p class="small">连接答疑服务后，可以在教材段落旁提问和追问。问题与回答随学习进度保存。</p>
-    <form id="qa-settings-form">
-      <div class="field"><label class="label" for="qa-endpoint">服务地址</label>
-        <input id="qa-endpoint" class="text-input" type="url" autocomplete="off" spellcheck="false" value="${escapeHtml(cfg.endpoint)}" placeholder="https://你的服务/v1/qa/answer"></div>
-      <div class="field"><label class="label" for="qa-access-token">答疑访问凭证</label>
-        <input id="qa-access-token" class="text-input" type="password" autocomplete="off" spellcheck="false" placeholder="${cfg.accessToken ? "已保存；留空保持原凭证" : "填写答疑服务的访问凭证"}"></div>
-      <div class="button-row"><button class="btn btn-primary tap-target" type="submit">保存答疑设置</button>
-        ${cfg.accessToken ? '<button id="qa-token-clear" class="btn btn-secondary tap-target" type="button">清除答疑凭证</button>' : ""}</div>
-      <p id="qa-settings-message" class="small" role="status">${cfg.endpoint ? "已保存服务地址，实际可用性会在提问时检查。" : "服务尚未配置，仍可先保存问题。"}</p>
+    <h2 class="h2">当场问</h2>
+    <p class="small">钥匙只保存在这台设备上，不会同步。建议给学习台单独开一把小额预充值钥匙。</p>
+    <form id="qa-settings-form" autocomplete="off" novalidate>
+      <div class="field"><label class="label" for="qa-provider">厂商</label>
+        <select id="qa-provider" class="text-input">${options}</select></div>
+      <div class="field"><label class="label" for="qa-model">模型名</label>
+        <input id="qa-model" class="text-input" type="text" autocomplete="off" spellcheck="false" value="${escapeHtml(cfg.model)}" placeholder="填写模型名"></div>
+      <div class="field" id="qa-base-url-field"${cfg.provider === "openai-compatible" ? "" : " hidden"}>
+        <label class="label" for="qa-base-url">自定义地址</label>
+        <input id="qa-base-url" class="text-input" type="text" inputmode="url" autocomplete="off" spellcheck="false" value="${escapeHtml(cfg.baseUrl)}" placeholder="https://example.com/v1"></div>
+      <div class="field"><label class="label" for="qa-api-key">钥匙</label>
+        <input id="qa-api-key" class="text-input" type="password" autocomplete="off" spellcheck="false" placeholder="${cfg.apiKey ? "留空表示保持原钥匙" : "填写模型钥匙"}">
+        ${cfg.apiKey ? '<p class="small">已保存</p>' : ""}</div>
+      <div class="field"><label class="label" for="qa-daily-limit">每天最多提问次数</label>
+        <input id="qa-daily-limit" class="text-input" type="number" inputmode="numeric" min="1" max="200" step="1" value="${escapeHtml(String(cfg.dailyLimit))}"></div>
+      <div class="button-row">
+        <button class="btn btn-primary tap-target" type="submit">保存</button>
+        <button id="qa-key-clear" class="btn btn-secondary tap-target" type="button">清除钥匙</button>
+        <button id="qa-direct-test" class="btn btn-secondary tap-target" type="button">测试一下</button>
+      </div>
+      <p id="qa-settings-message" class="small" role="status"></p>
     </form>
   </section>`;
 }
@@ -3096,36 +3307,14 @@ function qaSettingsHtml() {
 function wireQaSettings() {
   const form = document.getElementById("qa-settings-form");
   if (!form) return;
-  form.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const message = document.getElementById("qa-settings-message");
-    const endpoint = document.getElementById("qa-endpoint").value.trim();
-    const typed = document.getElementById("qa-access-token").value.trim();
-    try {
-      if (endpoint) {
-        const url = new URL(endpoint);
-        const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-        if ((url.protocol !== "https:" && !(local && url.protocol === "http:")) || url.username || url.password || url.hash || url.search)
-          throw new Error("请使用 HTTPS 答疑服务地址；本机调试可使用 localhost。地址不要包含凭证或查询参数。");
-      }
-      if (/^(gh[pousr]_|github_pat_)/i.test(typed)) throw new Error("这里需要答疑专用凭证，请勿填入 GitHub 令牌。");
-      const next = { endpoint, accessToken: typed || loadQaConfig().accessToken };
-      localStorage.setItem(QA_CONFIG_KEY, JSON.stringify(next));
-      destroyQaPanels();
-      document.getElementById("qa-access-token").value = "";
-      renderSettings();
-      document.getElementById("qa-settings-message").textContent = "答疑设置已保存在这台设备上。";
-    } catch (error) {
-      message.textContent = error instanceof TypeError ? "服务地址格式不正确，请检查后重试。" : (error.message || "设置未保存，请重试。");
-    }
+  document.getElementById("qa-provider")?.addEventListener("change", () => {
+    const field = document.getElementById("qa-base-url-field");
+    const provider = document.getElementById("qa-provider");
+    if (field && provider) field.hidden = provider.value !== "openai-compatible";
   });
-  document.getElementById("qa-token-clear")?.addEventListener("click", () => {
-    const cfg = loadQaConfig();
-    try { localStorage.setItem(QA_CONFIG_KEY, JSON.stringify({ ...cfg, accessToken: "" })); }
-    catch (_) { document.getElementById("qa-settings-message").textContent = "清除未成功，请重试。"; return; }
-    destroyQaPanels();
-    renderSettings();
-  });
+  form.addEventListener("submit", saveQaDirectSettings);
+  document.getElementById("qa-key-clear")?.addEventListener("click", clearQaDirectKey);
+  document.getElementById("qa-direct-test")?.addEventListener("click", () => { void testDirectConnection(); });
 }
 
 function studyQaContext(meta, blockId) {
@@ -3139,9 +3328,14 @@ function studyQaContext(meta, blockId) {
     if (/^h[3-6]$/.test(blocks[i].kind)) { positions.add(i); break; }
   }
   const context = [...positions].sort((a, b) => a - b).map((i) => blocks[i])
-    .filter((block) => block.kind !== "figure" && Number.isFinite(Number(block.page)))
-    .map((block) => ({ anchor: `${meta.book}:p${block.page}:b${block.id}`, kind: block.kind || "para",
-      text: markdownPlain(String(block.md || "").replace(/<\/t[dh]>/gi, " | ").replace(/<\/tr>/gi, "\n")) }))
+    .filter((block) => Number.isFinite(Number(block.page)))
+    .map((block) => {
+      const kind = block.kind || "para";
+      const text = kind === "figure"
+        ? (markdownPlain(block.md) || "图片（无图题）")
+        : markdownPlain(String(block.md || "").replace(/<\/t[dh]>/gi, " | ").replace(/<\/tr>/gi, "\n"));
+      return { anchor: `${meta.book}:p${block.page}:b${block.id}`, kind, text };
+    })
     .filter((part) => part.text);
   return { unit: meta.unit, chunkId: meta.id, blockId: String(blockId), book: meta.book, context,
     label: `${bookName(meta.book)} · ${meta.title || meta.id} · 原文第 ${blocks[index].printed ?? blocks[index].page} 页` };
@@ -3151,7 +3345,14 @@ function mountStudyQa(meta) {
   if (!qaApi) return;
   const root = document.getElementById("page-learn");
   const active = new Set();
-  const cfg = loadQaConfig();
+  const cfg = loadDirectConfig();
+  // 提问先写入 turn 再调用 answer，所以用 <=：第 limit 次仍能发出，重试不会再增加条数。
+  const client = limitClient(qaApi.createDirectClient({
+    provider: cfg.provider,
+    model: cfg.model,
+    baseUrl: cfg.baseUrl,
+    getApiKey: () => loadDirectConfig().apiKey
+  }), () => qaTodayTurnCount() <= loadDirectConfig().dailyLimit);
   for (const placeholder of root.querySelectorAll("[data-qa-block]")) {
     const blockId = placeholder.dataset.qaBlock;
     const id = doubtKey(meta.id, blockId);
@@ -3177,7 +3378,7 @@ function mountStudyQa(meta) {
         store.save(`doubts/${id}`, value, { silent: true, keepUpdatedAt: true, requirePersistence: true });
         return app.state.doubts[id];
       },
-      client: qaApi.createClient({ endpoint: cfg.endpoint, getAccessToken: () => loadQaConfig().accessToken })
+      client
     });
     qaPanels.set(id, { root: placeholder, handle, signature });
   }
@@ -3685,7 +3886,7 @@ function renderSettings() {
     return;
   }
   const active = document.activeElement;
-  if (active && root.contains(active) && /^(gh-token|gh-user|settings-repo|settings-branch|qa-endpoint|qa-access-token)$/.test(active.id)) {
+  if (active && root.contains(active) && /^(gh-token|gh-user|settings-repo|settings-branch|qa-provider|qa-model|qa-base-url|qa-api-key|qa-daily-limit)$/.test(active.id)) {
     const last = document.getElementById("settings-last-sync");
     if (last) last.textContent = lastSyncLabel();
     return;
@@ -5805,6 +6006,7 @@ function renderReadBlocks(meta, body) {
       const tex = String(block.md || "").replace(/^\$\$/, "").replace(/\$\$$/, "").trim();
       inner = `<div class="read-equation">${renderTex(tex, true)}</div>`;
     } else if (kind === "figure") {
+      doubt = true;
       inner = `<div class="read-figure">${renderRich(block.md)}</div>`;
     } else if (rhythm) {
       doubt = true;

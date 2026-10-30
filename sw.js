@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-v14";
+const CACHE_VERSION = "study-v15";
 const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [
@@ -15,6 +15,7 @@ const PRECACHE = [
   "./modules/qa/index.js",
   "./modules/qa/state.js",
   "./modules/qa/client.js",
+  "./modules/qa/direct.js",
   "./modules/qa/panel.js",
   "./modules/qa/errors.js",
   "./modules/qa/panel.css"
