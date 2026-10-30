@@ -46,7 +46,8 @@
 .qa-panel .qa-input { display: block; width: 100%; max-width: 100%; min-height: 92px; resize: vertical;
   margin: 0; padding: 10px 11px; border: 1px solid var(--qa-line); border-radius: 6px;
   color: var(--qa-ink); background: var(--bg, #fff); font: inherit; font-size: 16px; line-height: 1.5; }
-.qa-panel .qa-input:focus-visible, .qa-panel .qa-button:focus-visible { outline: 2px solid var(--qa-accent); outline-offset: 3px; }
+.qa-panel .qa-input:focus-visible, .qa-panel .qa-button:focus-visible,
+.qa-panel .qa-delete:focus-visible, .qa-panel .qa-reply-input:focus-visible { outline: 2px solid var(--qa-accent); outline-offset: 3px; }
 .qa-panel .qa-input-hint { margin: 5px 0 8px; }
 .qa-panel .qa-controls, .qa-panel .qa-resolution { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .qa-panel .qa-count { margin-left: auto; font-size: 12px; color: var(--qa-muted); }
@@ -58,6 +59,28 @@
 .qa-panel .qa-button-primary { background: var(--qa-accent); color: #fff; border-color: var(--qa-accent); }
 .qa-panel .qa-button[aria-pressed='true'] { border-color: var(--qa-accent); color: var(--qa-accent); }
 .qa-panel .qa-button:disabled, .qa-panel .qa-input:disabled { opacity: .6; cursor: default; }
+.qa-panel .qa-turn-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.qa-panel .qa-turn-head .qa-turn-heading { flex: 1; }
+.qa-panel .qa-delete { appearance: none; flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: auto; min-width: 44px; min-height: 44px; margin: 0; padding: 0 8px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--qa-muted); font: inherit; font-size: 13px; font-weight: 500; line-height: 1;
+  cursor: pointer; touch-action: manipulation; }
+.qa-panel .qa-delete:hover { color: var(--bad, #ac2820); }
+.qa-panel .qa-thread { border-top: 1px solid var(--qa-line); }
+.qa-panel .qa-thread .qa-turn { border-top: 0; }
+.qa-panel .qa-thread-summary, .qa-panel .qa-more-summary { min-height: 44px; padding: 12px 0; cursor: pointer;
+  font-size: 14px; line-height: 1.4; touch-action: manipulation; }
+.qa-panel .qa-more-summary { color: var(--qa-muted); }
+.qa-panel .qa-reply { border-left: 2px solid var(--qa-line); padding-left: 10px; }
+.qa-panel .qa-reply[data-depth="1"] { margin-left: 16px; }
+.qa-panel .qa-reply[data-depth="2"] { margin-left: 32px; }
+.qa-panel .qa-reply-compose { margin-top: 8px; }
+.qa-panel .qa-reply-input { display: block; width: 100%; max-width: 100%; min-height: 0; margin: 0; padding: 8px 10px;
+  border: 1px solid var(--qa-line); border-radius: 6px; color: var(--qa-ink); background: var(--bg, #fff);
+  font: inherit; font-size: 16px; line-height: 1.5; resize: vertical; }
+.qa-panel .qa-reply-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.qa-panel .qa-ask { margin-top: 12px; }
+.qa-panel .qa-answer-meta { font-size: 12px; }
 @media (max-width: 420px) {
   .qa-panel { padding: 11px; }
   .qa-panel .qa-quote { padding: 8px 9px; }

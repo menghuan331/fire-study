@@ -119,6 +119,11 @@ export function sortedTurns(record) {
       || (a.requestId < b.requestId ? -1 : a.requestId > b.requestId ? 1 : 0));
 }
 
+/** Tombstones stay in sortedTurns so other counts do not change. Callers that draw or prompt skip them. */
+export function visibleTurns(record) {
+  return sortedTurns(record).filter(turn => !turn.deleted);
+}
+
 function sameRecord(record, request) {
   return !!record && isObject(request) && !record.removed
     && (record.chunk === undefined || String(record.chunk) === request.chunkId)
@@ -167,20 +172,28 @@ export function setDraft(record, context, text, now) {
 
 export function historyFor(record, context) {
   const key = contextKey(context);
-  return sortedTurns(record).filter(turn => turn.contextKey === key
+  return visibleTurns(record).filter(turn => turn.contextKey === key
     && ['answered', 'insufficient_context'].includes(turn.status) && turn.answer?.text)
     .slice(-LIMITS.history / 2).flatMap(turn => [
-      { role: 'user', content: turn.question }, { role: 'assistant', content: turn.answer.text }
+      // A reply keeps its framing so the model knows which 再想一步 it answers.
+      { role: 'user', content: turn.request?.question || turn.question },
+      { role: 'assistant', content: turn.followUp ? `${turn.answer.text}\n再想一步：${turn.followUp}` : turn.answer.text }
     ]);
 }
 
-export function createTurn(context, question, record, { requestId, attemptId = requestId, now }) {
+export function createTurn(context, question, record, { requestId, attemptId = requestId, now, replyTo, followUp } = {}) {
   const source = snapshotContext(context);
   const { label, ...apiContext } = source;
+  const asked = String(question ?? '').trim();
+  if (!asked) throw new QaError('INVALID_REQUEST', '请先写下你的问题。', { retryable: false });
+  const requestQuestion = replyTo
+    ? `我来回答你上一轮的「再想一步」：${followUp ?? ''}\n我的回答：${asked}`
+    : asked;
   const createdAt = stamp(now, record?.updatedAt, ...sortedTurns(record).map(turn => turn.createdAt));
   const request = validateRequest({ v: 1, requestId, threadId: `${source.chunkId}:${source.blockId}`,
-    ...apiContext, question: String(question).trim(), history: historyFor(record, source) });
-  return { requestId, threadId: request.threadId, question: request.question,
+    ...apiContext, question: requestQuestion, history: historyFor(record, source) });
+  return { requestId, threadId: request.threadId, question: asked,
+    ...(replyTo ? { replyTo } : {}),
     contextKey: contextKey(source), request, createdAt, updatedAt: createdAt,
     status: 'pending', attemptId };
 }
@@ -212,7 +225,7 @@ export function applyResponse(record, request, response, now, attemptId) {
   const next = updateTurn(record, request.requestId, { status: valid.status,
     answer: valid.answer, followUp: valid.followUp || '', error: undefined, resolved: undefined }, now);
   // A late earlier answer belongs to its own turn. It must not replace a newer question's summary or resolution.
-  if (sortedTurns(next).at(-1)?.requestId !== request.requestId) return next;
+  if (visibleTurns(next).at(-1)?.requestId !== request.requestId) return next;
   const summary = { text: valid.answer.text, quote: valid.answer.quotes.map(quote => quote.text).join('\n'),
     by: valid.answer.by, at: valid.answer.at, basis: valid.answer.basis,
     quotes: copy(valid.answer.quotes), status: valid.status, requestId: request.requestId };
@@ -226,6 +239,75 @@ export function setResolution(record, requestId, resolved, now) {
   if (!record || record.removed || !turn || !['answered', 'insufficient_context'].includes(turn.status)
     || !['got', 'still'].includes(resolved)) return record;
   const next = updateTurn(record, requestId, { resolved }, now);
-  if (sortedTurns(next).at(-1)?.requestId === requestId) next.resolved = resolved;
+  if (visibleTurns(next).at(-1)?.requestId === requestId) next.resolved = resolved;
   return next;
+}
+
+function answerSummary(turn) {
+  const answer = turn.answer || {};
+  const quotes = Array.isArray(answer.quotes) ? answer.quotes : [];
+  return {
+    text: answer.text, quote: quotes.map(item => item.text).join('\n'),
+    by: answer.by, at: answer.at, basis: answer.basis,
+    quotes: copy(quotes), status: turn.status, requestId: turn.requestId
+  };
+}
+
+function idsToDelete(record, requestId) {
+  const turns = sortedTurns(record);
+  const ids = [];
+  const queue = [requestId];
+  const seen = new Set();
+  while (queue.length) {
+    const id = queue.shift();
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const turn = record?.qa?.turns?.[id];
+    if (!isObject(turn) || turn.deleted) continue;
+    ids.push(id);
+    for (const candidate of turns) {
+      if (candidate.replyTo === id && !candidate.deleted) queue.push(candidate.requestId);
+    }
+  }
+  return ids;
+}
+
+function tombstone(turn, updatedAt) {
+  return {
+    requestId: turn.requestId, threadId: turn.threadId, contextKey: turn.contextKey,
+    createdAt: turn.createdAt, deleted: true, updatedAt
+  };
+}
+
+function reconcileSummary(record, ids) {
+  if (!record.answer?.requestId || !ids.has(record.answer.requestId)) return record;
+  const last = visibleTurns(record).filter(turn =>
+    ['answered', 'insufficient_context'].includes(turn.status) && turn.answer?.text).at(-1);
+  if (!last) {
+    const result = { ...record };
+    delete result.answer;
+    delete result.resolved;
+    return result;
+  }
+  const result = { ...record, answer: answerSummary(last) };
+  if (last.resolved === 'got' || last.resolved === 'still') result.resolved = last.resolved;
+  else delete result.resolved;
+  return result;
+}
+
+/** Replace one turn, and replies hanging under it, with syncable tombstones. Content is dropped. */
+export function deleteTurn(record, requestId, now) {
+  if (!record || record.removed) return record;
+  const ids = idsToDelete(record, requestId);
+  if (!ids.length) return record;
+  let next = record;
+  for (const id of ids) {
+    const turn = next.qa?.turns?.[id];
+    if (!isObject(turn) || turn.deleted) continue;
+    const stamped = updateTurn(next, id, { deleted: true }, now);
+    if (stamped === next) continue;
+    const updatedAt = stamped.qa.turns[id].updatedAt;
+    next = { ...stamped, qa: { ...stamped.qa, turns: { ...stamped.qa.turns, [id]: tombstone(turn, updatedAt) } } };
+  }
+  return reconcileSummary(next, new Set(ids.filter(id => next.qa?.turns?.[id]?.deleted)));
 }
