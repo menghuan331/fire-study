@@ -1160,6 +1160,26 @@ button.sync-status {
   flex: 1 1 0;
 }
 
+.learn-return {
+  position: fixed;
+  z-index: 20;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: 999px;
+  padding: 8px 18px;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  white-space: nowrap;
+  box-shadow: 0 8px 20px color-mix(in srgb, #000 24%, transparent);
+}
+
+body.has-learn-return .learn-bar {
+  padding-right: 148px;
+}
+
 .read-flow {
   font-size: 17px;
   line-height: 1.75;
@@ -1819,14 +1839,15 @@ function emptyReviewStats() {
   return { remember: 0, wrong: 0, blank: 0 };
 }
 
-function createReviewSession(today, dueIds) {
+function createReviewSession(today, dueIds, quota) {
+  const limit = sessionQueueLimit(quota);
   const order = [];
   const seen = new Set();
   for (const id of dueIds || []) {
     if (!id || seen.has(id)) continue;
+    if (order.length >= limit) break;
     seen.add(id);
     order.push(id);
-    if (order.length >= 60) break;
   }
   return {
     sessionDate: today,
@@ -1888,23 +1909,60 @@ function withSkipped(doneIds, skipped) {
   return done;
 }
 
-function reconcileReviewSession(session, today, dueIds, cards) {
+function sessionQueueLimit(quota) {
+  if (quota == null || quota === "") return 60;
+  const n = Number(quota);
+  if (!Number.isFinite(n)) return 60;
+  return n > 0 ? n : 0;
+}
+
+function reconcileReviewSession(session, today, dueIds, cards, quota) {
   if (!session || session.sessionDate !== today || !Array.isArray(session.order) || session.order.length === 0) {
-    return createReviewSession(today, dueIds);
+    return createReviewSession(today, dueIds, quota);
   }
   const next = cloneReviewSession(session);
-  const seen = new Set(next.order);
+  const done = [];
+  const doneSet = new Set();
+  for (const id of next.doneIds || []) {
+    if (!id || doneSet.has(id)) continue;
+    doneSet.add(id);
+    done.push(id);
+  }
+  const limit = sessionQueueLimit(quota);
+  const pending = [];
+  const seen = new Set();
   for (const id of dueIds || []) {
-    if (!id || seen.has(id)) continue;
+    if (!id || doneSet.has(id) || seen.has(id)) continue;
+    if (pending.length >= limit) break;
     seen.add(id);
-    next.order.push(id);
+    pending.push(id);
   }
-  if (!next.currentId) {
-    const found = listPendingSkip(next.order, next.doneIds, cards, today);
-    next.doneIds = withSkipped(next.doneIds, found.skipped);
-    next.currentId = found.currentId;
-    if (found.currentId) next.phase = "front";
+  const phase = next.phase || "front";
+  const currentId = next.currentId || null;
+  const undoneHere = !!(next.lastUndo && next.lastUndo.cardId === currentId);
+  const pin = currentId && !doneSet.has(currentId) && (
+    phase === "checking" || phase === "pool" || phase === "revealed" || undoneHere
+  );
+  if (pin) {
+    const rest = pending.filter((id) => id !== currentId);
+    const room = Math.max(0, limit - 1);
+    next.order = done.concat(currentId, rest.slice(0, room));
+    next.doneIds = done;
+    next.currentId = currentId;
+    next.phase = phase;
+    return next;
   }
+  next.order = done.concat(pending);
+  next.doneIds = done;
+  if (phase === "front" && currentId && pending.includes(currentId)) {
+    next.currentId = currentId;
+    next.phase = "front";
+    return next;
+  }
+  const found = listPendingSkip(next.order, next.doneIds, cards, today);
+  next.doneIds = withSkipped(next.doneIds, found.skipped);
+  next.currentId = found.currentId;
+  next.phase = "front";
   return next;
 }
 
@@ -1988,6 +2046,8 @@ function countReviewRemaining(session, today, cards) {
 
 const INLINE_KAOKAO_LIMIT = 15;
 const POOL_DAILY_LIMIT = 20;
+const POOL_PAUSE_BACKLOG = 30;
+const REVIEW_DAILY_CAP = 30;
 
 function anchorBlockId(anchor) {
   const matched = String(anchor || "").match(/b(\d+)\s*$/);
@@ -2044,6 +2104,91 @@ function pickPoolRelease(poolItems, releasedToday, limit) {
   const already = Math.max(0, Number(releasedToday) || 0);
   const room = Math.max(0, Number(limit) - already);
   return items.slice(0, room);
+}
+
+function skeletonChunkMap(indexes) {
+  const map = new Map();
+  const list = Array.isArray(indexes)
+    ? indexes
+    : (indexes && typeof indexes === "object" ? Object.values(indexes) : []);
+  for (const index of list) {
+    const chunks = index && Array.isArray(index.chunks) ? index.chunks : [];
+    for (const chunk of chunks) {
+      if (!chunk || chunk.id == null || chunk.id === "") continue;
+      const cards = Array.isArray(chunk.cards) ? chunk.cards : [];
+      for (const cardId of cards) {
+        if (cardId == null || cardId === "" || map.has(cardId)) continue;
+        map.set(cardId, chunk.id);
+      }
+    }
+  }
+  return map;
+}
+
+function planSkeletonIntroductions(cards, states, today, activeUnits, cap, isLearned) {
+  const limit = typeof cap === "number" ? cap : 10;
+  const active = new Set(activeUnits || []);
+  const learned = typeof isLearned === "function" ? isLearned : null;
+  const byUnit = new Map();
+  for (const card of cards || []) {
+    if (!card || !active.has(card.unit)) continue;
+    if (learned && !learned(card.id)) continue;
+    if (!byUnit.has(card.unit)) byUnit.set(card.unit, []);
+    byUnit.get(card.unit).push(card);
+  }
+  const newcomers = [];
+  for (const list of byUnit.values()) {
+    const ordered = list.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    let introducedToday = 0;
+    for (const card of ordered) {
+      const state = states && states[card.id];
+      if (state && state.created === today) introducedToday += 1;
+    }
+    let slots = limit - introducedToday;
+    if (slots < 0) slots = 0;
+    for (const card of ordered) {
+      if (slots <= 0) break;
+      if (states && states[card.id]) continue;
+      newcomers.push(card);
+      slots -= 1;
+    }
+  }
+  return newcomers;
+}
+
+function poolReleaseAllowed(backlog, limit) {
+  return (Number(backlog) || 0) < (Number(limit) || 0);
+}
+
+function capReviewQueue(queue, reviewedToday, cap, extra) {
+  const list = Array.isArray(queue) ? queue : [];
+  const reviewed = Math.max(0, Number(reviewedToday) || 0);
+  const limit = Math.max(0, Number(cap) || 0);
+  const more = Math.max(0, Number(extra) || 0);
+  return list.slice(0, Math.max(0, limit + more - reviewed));
+}
+
+function orderReviewQueue(cards) {
+  const wrong = [];
+  const reviewed = [];
+  const fresh = [];
+  for (const card of Array.isArray(cards) ? cards : []) {
+    if (!card) continue;
+    if (card.src === "wrong") wrong.push(card);
+    else if ((Number(card.box) || 0) >= 1 || card.reviewedOn) reviewed.push(card);
+    else fresh.push(card);
+  }
+  const byId = (a, b) => String(a.id || "").localeCompare(String(b.id || ""));
+  const byDue = (a, b) => String(a.due || "").localeCompare(String(b.due || ""))
+    || String(a.created || "").localeCompare(String(b.created || ""))
+    || byId(a, b);
+  const byCreated = (a, b) => String(a.created || "").localeCompare(String(b.created || ""))
+    || String(a.due || "").localeCompare(String(b.due || ""))
+    || byId(a, b);
+  wrong.sort(byDue);
+  reviewed.sort(byDue);
+  fresh.sort(byCreated);
+  return wrong.concat(reviewed, fresh);
 }
 </script>
 
@@ -2479,7 +2624,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-10-30.2";
+const APP_VERSION = "2026-11-02.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -2555,35 +2700,6 @@ function nextCardForget(card, today) {
 function shouldClearWrongCard(card, today) {
   if (card.src !== "wrong" || !card.streakStart) return false;
   return (card.streak || 0) >= 3 && diffDaysYmd(card.streakStart, today) > 21;
-}
-
-function planSkeletonIntroductions(cards, states, today, activeUnits, cap) {
-  const limit = typeof cap === "number" ? cap : 10;
-  const active = new Set(activeUnits || []);
-  const byUnit = new Map();
-  for (const card of cards || []) {
-    if (!card || !active.has(card.unit)) continue;
-    if (!byUnit.has(card.unit)) byUnit.set(card.unit, []);
-    byUnit.get(card.unit).push(card);
-  }
-  const newcomers = [];
-  for (const list of byUnit.values()) {
-    const ordered = list.slice().sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-    let introducedToday = 0;
-    for (const card of ordered) {
-      const state = states && states[card.id];
-      if (state && state.created === today) introducedToday += 1;
-    }
-    let slots = limit - introducedToday;
-    if (slots < 0) slots = 0;
-    for (const card of ordered) {
-      if (slots <= 0) break;
-      if (states && states[card.id]) continue;
-      newcomers.push(card);
-      slots -= 1;
-    }
-  }
-  return newcomers;
 }
 
 function newSkeletonCardState(today) {
@@ -2739,6 +2855,11 @@ const app = {
     reviewHint: null,
     reviewSourceNote: "",
     reviewSourceFor: "",
+    reviewExtra: null,
+    returnTo: null,
+    returnDest: null,
+    returnOrigin: null,
+    returnArrived: false,
     highlightToken: 0,
     katexState: ""
   },
@@ -4295,7 +4416,25 @@ function ensureSkeletonActivation(today) {
     seen.add(card.unit);
     active.push(card.unit);
   }
-  const newcomers = planSkeletonIntroductions(app.data.cards.cards, app.state.cards, today, active, 10);
+  let indexReady = true;
+  for (const unitId of active) {
+    if (app.study.indexes[unitId]) continue;
+    kickUnitIndex(unitId);
+    indexReady = false;
+  }
+  if (!indexReady) return;
+  const map = skeletonChunkMap(active.map((unitId) => app.study.indexes[unitId]));
+  const newcomers = planSkeletonIntroductions(
+    app.data.cards.cards,
+    app.state.cards,
+    today,
+    active,
+    10,
+    (cardId) => {
+      const chunkId = map.get(cardId);
+      return !!(chunkId && chunkDone(chunkId));
+    }
+  );
   skeletonActivationLock = true;
   try {
     for (const card of newcomers) {
@@ -4306,18 +4445,78 @@ function ensureSkeletonActivation(today) {
   }
 }
 
+function reviewCardVisible(card, map) {
+  if (!card) return false;
+  if (card.src === "wrong") return true;
+  if (card.src === "kaokao") {
+    if (!card.kid) return true;
+    const item = kaokaoItemById(card.kid);
+    if (!item || !item.chunk) {
+      // Kaokao cards only come from learned chunks; keep them while the doc is loading or unreadable.
+      const unit = (String(card.kid).match(/U\d+/) || [])[0] || "";
+      if (unit) kickKaokao(unit);
+      return true;
+    }
+    return chunkDone(item.chunk);
+  }
+  const unit = card.unit || skeletonUnit(card.id);
+  if (!unit || !app.study.indexes[unit]) return false;
+  const chunkId = map.get(card.id);
+  if (!chunkId) return false;
+  return chunkDone(chunkId);
+}
+
 function getReviewQueue(today) {
-  const all = Object.entries(app.state.cards)
+  const all = Object.entries(app.state.cards || {})
     .map(([id, card]) => ({ id, ...card }))
-    .filter((card) => !card.cleared && card.due && card.due <= today);
-  const wrong = all.filter((c) => c.src === "wrong");
-  const kaokao = all.filter((c) => c.src === "kaokao");
-  const skeleton = all.filter((c) => c.src !== "wrong" && c.src !== "kaokao");
-  const sorter = (a, b) => `${a.due}-${a.created || ""}`.localeCompare(`${b.due}-${b.created || ""}`);
-  wrong.sort(sorter);
-  kaokao.sort(sorter);
-  skeleton.sort(sorter);
-  return [...wrong, ...kaokao, ...skeleton].slice(0, 60);
+    .filter((card) => card && !card.cleared && card.due && card.due <= today);
+  const units = new Set();
+  for (const card of all) {
+    if (card.src === "wrong" || card.src === "kaokao") continue;
+    const unit = card.unit || skeletonUnit(card.id);
+    if (unit) units.add(unit);
+  }
+  for (const unitId of units) {
+    if (!app.study.indexes[unitId]) kickUnitIndex(unitId);
+  }
+  const map = skeletonChunkMap(Object.values(app.study.indexes || {}));
+  return orderReviewQueue(all.filter((card) => reviewCardVisible(card, map)));
+}
+
+function reviewedTodayCount(today) {
+  let count = 0;
+  for (const card of Object.values((app.state && app.state.cards) || {})) {
+    if (card && card.reviewedOn === today) count += 1;
+  }
+  return count;
+}
+
+function reviewExtraCount(today) {
+  const extra = app.ui && app.ui.reviewExtra;
+  if (!extra || extra.date !== today) return 0;
+  const n = Number(extra.n);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function reviewSessionQuota(today) {
+  return Math.max(0, REVIEW_DAILY_CAP + reviewExtraCount(today) - reviewedTodayCount(today));
+}
+
+function reviewQueueToday(today) {
+  return capReviewQueue(getReviewQueue(today), reviewedTodayCount(today), REVIEW_DAILY_CAP, reviewExtraCount(today));
+}
+
+function bumpReviewExtra(today) {
+  app.ui.reviewExtra = { date: today, n: reviewExtraCount(today) + 10 };
+}
+
+function reviewCapMessage(left) {
+  return `今天 ${REVIEW_DAILY_CAP} 张复习完了。还有 ${left} 张到期，明天接着来。`;
+}
+
+function reviewPoolPauseText(today) {
+  if (poolReleaseAllowed(getReviewQueue(today).length, POOL_PAUSE_BACKLOG)) return "";
+  return `复习积压 ≥ ${POOL_PAUSE_BACKLOG} 张，新的可考句先不放，复习清下来再继续`;
 }
 
 function getTomorrowDueCount(today) {
@@ -4697,6 +4896,7 @@ function releasePoolCards(today) {
   if (!today || poolReleaseLock || !app.state || !app.state.cards) return;
   const docs = Object.values(kaokaoDocs());
   if (!docs.length) return;
+  if (!poolReleaseAllowed(getReviewQueue(today).length, POOL_PAUSE_BACKLOG)) return;
   poolReleaseLock = true;
   try {
     const byChunk = new Map();
@@ -4967,12 +5167,12 @@ function daysLeftInWeek(today, week) {
 function todayReviewView(today) {
   ensureKaokaoLoaded(today);
   releasePoolCards(today);
-  const due = getReviewQueue(today).length;
+  const backlog = getReviewQueue(today).length;
   const session = app.ui.review && app.ui.review.sessionDate === today ? app.ui.review : null;
   const stats = session && session.stats ? session.stats : emptyReviewStats();
   const reviewed = (stats.remember || 0) + (stats.wrong || 0) + (stats.blank || 0);
   const remaining = reviewDueCount(today);
-  return { due, stats, reviewed, remaining, done: remaining === 0 };
+  return { due: backlog, backlog, stats, reviewed, remaining, done: backlog === 0 };
 }
 
 function chunkScore(meta) {
@@ -5740,6 +5940,7 @@ function whyStepHtml(meta) {
             <button id="why-miss" class="btn btn-bad" type="button">没想到</button>
           </div>`}
         ${saved && index < items.length - 1 ? `<div class="button-row"><button id="why-next" class="btn btn-primary tap-target" type="button">下一题</button></div>` : ""}
+        ${saved && index === items.length - 1 ? `<div class="button-row"><button id="why-done" class="btn btn-primary tap-target" type="button">做完了，下一步</button></div>` : ""}
       ` : ""}
     </article>
   `;
@@ -5807,6 +6008,8 @@ function kaokaoSummary(meta) {
 function kaokaoPoolNote(meta) {
   const left = allKaokaoItemsForChunk(meta).length - kaokaoItemsForChunk(meta).length;
   if (left <= 0) return "";
+  const paused = reviewPoolPauseText(shanghaiToday());
+  if (paused) return paused;
   return `另有 ${left} 条学完后进复习，每天最多 ${POOL_DAILY_LIMIT} 条`;
 }
 
@@ -5860,7 +6063,21 @@ function wireKaokao(meta) {
     button.addEventListener("click", () => {
       const item = kaokaoItemsForChunk(meta).find((entry) => entry.id === button.dataset.kkSrc);
       if (!item) return;
-      highlightBlock(document.getElementById(`block-${anchorBlockId(item.anchor)}`), item.src);
+      const steps = buildLearnSteps(meta);
+      setReturnTo({
+        tab: "learn",
+        chunkId: meta.id,
+        step: currentLearnStep(meta.id, steps),
+        whyIndex: app.ui.learnWhy || 0,
+        kkId: item.id,
+        label: "回到这题"
+      }, { tab: "learn", chunkId: meta.id });
+      app.ui.kaokaoFocus = {
+        chunkId: meta.id,
+        blockId: anchorBlockId(item.anchor),
+        src: item.src || ""
+      };
+      render();
     });
   });
   root.querySelectorAll("[data-kk-open]").forEach((button) => {
@@ -5907,10 +6124,19 @@ function wireKaokao(meta) {
     app.ui.learnWhyReveal = false;
     render();
   });
+  const whyDone = document.getElementById("why-done");
+  if (whyDone) whyDone.addEventListener("click", () => advanceLearnStep(meta));
   const whySrc = document.getElementById("why-src");
   if (whySrc) whySrc.addEventListener("click", () => {
     const items = whyItemsForChunk(meta);
     const index = Math.min(Math.max(app.ui.learnWhy || 0, 0), Math.max(0, items.length - 1));
+    setReturnTo({
+      tab: "learn",
+      chunkId: meta.id,
+      step: "why",
+      whyIndex: index,
+      label: "回到这题"
+    }, { tab: "learn", chunkId: meta.id });
     openItemSource(meta, items[index]);
   });
   const retell = document.getElementById("learn-retell");
@@ -6265,9 +6491,93 @@ function doneStepHtml(meta) {
   `;
 }
 
+function sameRoute(route, place) {
+  if (!route || !place) return false;
+  return route.tab === place.tab && (route.chunkId || "") === (place.chunkId || "");
+}
+
+function setReturnTo(target, dest) {
+  const route = hashRoute();
+  app.ui.returnTo = target;
+  app.ui.returnDest = dest || { tab: route.tab, chunkId: route.chunkId || "" };
+  app.ui.returnOrigin = { tab: route.tab, chunkId: route.chunkId || "" };
+  app.ui.returnArrived = sameRoute(app.ui.returnOrigin, app.ui.returnDest);
+}
+
+function clearReturnTo() {
+  app.ui.returnTo = null;
+  app.ui.returnDest = null;
+  app.ui.returnOrigin = null;
+  app.ui.returnArrived = false;
+}
+
+function syncReturnTo(route) {
+  if (!app.ui.returnTo || !app.ui.returnDest) return;
+  const here = { tab: route.tab, chunkId: route.chunkId || "" };
+  if (!app.ui.returnArrived) {
+    if (sameRoute(here, app.ui.returnDest)) app.ui.returnArrived = true;
+    else if (!sameRoute(here, app.ui.returnOrigin)) clearReturnTo();
+    return;
+  }
+  if (!sameRoute(here, app.ui.returnDest)) clearReturnTo();
+}
+
+function followReturnTo() {
+  const target = app.ui.returnTo;
+  if (!target) return;
+  clearReturnTo();
+  if (target.tab === "review") {
+    navigateTo("review");
+    return;
+  }
+  const chunkId = target.chunkId || "";
+  if (Number.isInteger(target.whyIndex)) app.ui.learnWhy = target.whyIndex;
+  if (target.step === "why") app.ui.learnWhyReveal = true;
+  if (chunkId) writeLearnMemory(chunkId, target.step || "read");
+  const route = hashRoute();
+  if (chunkId && route.chunkId !== chunkId) {
+    openLearn(chunkId);
+    return;
+  }
+  render();
+  if (target.kkId) {
+    const escaped = window.CSS && CSS.escape ? CSS.escape(target.kkId) : String(target.kkId).replace(/"/g, "");
+    const el = document.querySelector(`[data-kk-src="${escaped}"]`);
+    if (el && el.scrollIntoView) el.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+
+function goLearnStep(meta, nextId) {
+  if (!meta) return;
+  const retell = document.getElementById("learn-retell");
+  if (retell) {
+    clearTimeout(app.ui.retellTimer);
+    app.ui.retellTimer = null;
+    saveKaokaoRetell(meta.id, retell.value, meta.unit, { silent: true });
+  }
+  flushDoubtInputs();
+  app.ui.learnChoice = "";
+  writeLearnMemory(meta.id, nextId);
+  render();
+}
+
+function advanceLearnStep(meta) {
+  if (!meta) return;
+  const steps = buildLearnSteps(meta);
+  const stepId = currentLearnStep(meta.id, steps);
+  const stepIndex = Math.max(0, steps.findIndex((step) => step.id === stepId));
+  if (stepIndex < steps.length - 1) {
+    goLearnStep(meta, steps[stepIndex + 1].id);
+    return;
+  }
+  const finish = document.getElementById("learn-finish");
+  if (finish && finish.scrollIntoView) finish.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 function renderLearn() {
   const root = document.getElementById("page-learn");
   if (!root) return;
+  document.body.classList.remove("has-learn-return");
   flushDoubtInputs();
   if (app.ui.tab !== "learn") {
     destroyQaPanels();
@@ -6341,6 +6651,8 @@ function renderLearn() {
   root.dataset.chunkId = meta.id;
   writeLearnMemory(meta.id, stepId);
   const stepIndex = Math.max(0, steps.findIndex((step) => step.id === stepId));
+  const showReturn = !!(app.ui.returnTo && stepId === "read");
+  if (showReturn) document.body.classList.add("has-learn-return");
   let body = "";
   if (stepId === "preview") body = previewStepHtml(meta);
   else if (stepId === "read") body = readStepHtml(meta);
@@ -6370,27 +6682,18 @@ function renderLearn() {
       <button id="learn-prev" class="btn btn-secondary tap-target" type="button" ${stepIndex === 0 ? "disabled" : ""}>上一步</button>
       <button id="learn-next" class="btn btn-primary tap-target" type="button" ${stepIndex >= steps.length - 1 ? "disabled" : ""}>下一步</button>
     </div>
+    ${showReturn ? `<button id="learn-return" class="learn-return" type="button">${escapeHtml(app.ui.returnTo.label || "返回")}</button>` : ""}
   `;
-  const goStep = (nextId) => {
-    const retell = document.getElementById("learn-retell");
-    if (retell) {
-      clearTimeout(app.ui.retellTimer);
-      app.ui.retellTimer = null;
-      saveKaokaoRetell(meta.id, retell.value, meta.unit, { silent: true });
-    }
-    flushDoubtInputs();
-    app.ui.learnChoice = "";
-    writeLearnMemory(meta.id, nextId);
-    render();
-  };
   document.getElementById("learn-back").addEventListener("click", () => navigateTo("today"));
   const prev = document.getElementById("learn-prev");
   const next = document.getElementById("learn-next");
-  if (prev) prev.addEventListener("click", () => { if (stepIndex > 0) goStep(steps[stepIndex - 1].id); });
-  if (next) next.addEventListener("click", () => { if (stepIndex < steps.length - 1) goStep(steps[stepIndex + 1].id); });
+  if (prev) prev.addEventListener("click", () => { if (stepIndex > 0) goLearnStep(meta, steps[stepIndex - 1].id); });
+  if (next) next.addEventListener("click", () => { if (stepIndex < steps.length - 1) goLearnStep(meta, steps[stepIndex + 1].id); });
   root.querySelectorAll("[data-step]").forEach((button) => {
-    button.addEventListener("click", () => goStep(button.dataset.step));
+    button.addEventListener("click", () => goLearnStep(meta, button.dataset.step));
   });
+  const returnBtn = document.getElementById("learn-return");
+  if (returnBtn) returnBtn.addEventListener("click", followReturnTo);
   root.querySelectorAll("[data-doubt-jump]").forEach((button) => {
     button.addEventListener("click", () => {
       app.ui.kaokaoFocus = {
@@ -6398,7 +6701,7 @@ function renderLearn() {
         blockId: button.dataset.doubtJump,
         src: ""
       };
-      goStep("read");
+      goLearnStep(meta, "read");
     });
   });
   const settingsBtn = document.getElementById("learn-go-settings");
@@ -6612,11 +6915,16 @@ function renderToday(today, weekCtx) {
   }
   const pendingDoubts = pendingDoubtAnswers();
   let reviewBody = "";
-  if (!review.done) {
+  if (review.remaining > 0) {
     const eta = Math.round(review.remaining * 0.6);
     reviewBody = `
       <p class="small" id="today-review-status">到期 ${review.remaining} 张 · 约 ${eta} 分钟</p>
       <div class="button-row"><button id="today-go-review" class="btn btn-primary tap-target" type="button">开始复习</button></div>
+    `;
+  } else if (review.backlog > 0) {
+    reviewBody = `
+      <p class="small" id="today-review-status">${escapeHtml(reviewCapMessage(review.backlog))}</p>
+      <div class="button-row"><button id="today-go-review" class="btn btn-secondary tap-target" type="button">去复习</button></div>
     `;
   } else if (review.reviewed > 0) {
     reviewBody = `<p class="today-check" id="today-review-status">✓ 复习完成（答对 ${review.stats.remember || 0} / 答错 ${review.stats.wrong || 0} / 没印象 ${review.stats.blank || 0}）</p>`;
@@ -6963,10 +7271,10 @@ function reviewRichText(text) {
 }
 
 function reviewDueCount(today) {
-  const dueIds = getReviewQueue(today).map((card) => card.id);
+  const dueIds = reviewQueueToday(today).map((card) => card.id);
   const session = app.ui.review;
   if (session && session.sessionDate === today && Array.isArray(session.order) && session.order.length) {
-    app.ui.review = reconcileReviewSession(session, today, dueIds, app.state.cards);
+    app.ui.review = reconcileReviewSession(session, today, dueIds, app.state.cards, reviewSessionQuota(today));
     const remaining = countReviewRemaining(app.ui.review, today, app.state.cards);
     if (remaining != null) return remaining;
   }
@@ -6984,6 +7292,7 @@ function applyReviewGrade(card, action, today) {
     next = nextCardForget(card, today);
   }
   if (next && Object.prototype.hasOwnProperty.call(next, "intro")) delete next.intro;
+  if (next) next.reviewedOn = today;
   return next;
 }
 
@@ -7113,6 +7422,7 @@ function openSkeletonFromReview(cardId) {
     return;
   }
   app.ui.reviewSourceNote = "";
+  setReturnTo({ tab: "review", label: "回到复习" }, { tab: "learn", chunkId: meta.id });
   app.ui.kaokaoFocus = {
     chunkId: meta.id,
     blockId: anchorBlockId(base && base.anchor),
@@ -7142,6 +7452,7 @@ function openKaokaoFromReview(item) {
     return;
   }
   app.ui.reviewSourceNote = "";
+  setReturnTo({ tab: "review", label: "回到复习" }, { tab: "learn", chunkId: item.chunk });
   app.ui.kaokaoFocus = {
     chunkId: item.chunk,
     blockId: anchorBlockId(item.anchor),
@@ -7208,7 +7519,7 @@ function advancePoolIntro() {
   if (!card || card.pool !== true) return;
   const item = kaokaoItemById(card.kid);
   if (!item || !latestKaokaoTry(item.id, "recog")) return;
-  const nextCard = { ...card, box: 0, due: addDaysYmd(today, 1), streak: 0 };
+  const nextCard = { ...card, box: 0, due: addDaysYmd(today, 1), streak: 0, reviewedOn: today };
   const cards = { ...app.state.cards, [id]: nextCard };
   const advanced = advanceReview(session, cards, today);
   advanced.lastUndo = null;
@@ -7226,23 +7537,37 @@ function renderReview(today) {
   ensureKaokaoLoaded(today);
   releasePoolCards(today);
 
-  const dueIds = getReviewQueue(today).map((card) => card.id);
-  const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards);
+  const backlog = getReviewQueue(today);
+  const dueIds = capReviewQueue(backlog, reviewedTodayCount(today), REVIEW_DAILY_CAP, reviewExtraCount(today)).map((card) => card.id);
+  const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards, reviewSessionQuota(today));
   app.ui.review = session;
   const undo = reviewUndoHtml();
   const stats = session.stats || emptyReviewStats();
+  const pauseNote = reviewPoolPauseText(today);
+  const pauseHtml = pauseNote ? `<p class="small" id="review-pool-hold">${escapeHtml(pauseNote)}</p>` : "";
 
   if (!session.currentId) {
+    const cappedOut = backlog.length > 0;
+    const doneText = cappedOut
+      ? `<p id="review-cap-note">${escapeHtml(reviewCapMessage(backlog.length))}</p>
+         <div class="button-row"><button id="review-more" class="btn btn-secondary tap-target" type="button">再来 10 张</button></div>`
+      : `<p>今天复习完了：答对 ${stats.remember} 张，答错 ${stats.wrong} 张，没印象 ${stats.blank} 张。明天到期 ${getTomorrowDueCount(today)} 张。</p>`;
     root.innerHTML = `
       <h1 class="h1">复习</h1>
       <section class="panel">
         ${undo ? `<div class="review-meta"><span></span>${undo}</div>` : ""}
         <div class="empty">
-          <p>今天复习完了：答对 ${stats.remember} 张，答错 ${stats.wrong} 张，没印象 ${stats.blank} 张。明天到期 ${getTomorrowDueCount(today)} 张。</p>
+          ${doneText}
         </div>
       </section>
+      ${pauseHtml}
     `;
     bindReviewButton("review-undo", undoCurrentReview);
+    const more = document.getElementById("review-more");
+    if (more) more.addEventListener("click", () => {
+      bumpReviewExtra(today);
+      render();
+    });
     app.ui.reviewArmedAt = Date.now() + 300;
     return;
   }
@@ -7256,8 +7581,8 @@ function renderReview(today) {
   const kkItem = card.src === "kaokao" ? kaokaoItemById(card.kid) : null;
   const content = card.src === "kaokao" ? null : reviewCardContent(card);
   const showAnswer = session.phase === "checking" || session.phase === "revealed";
-  const index = session.order.indexOf(session.currentId);
-  const position = index >= 0 ? index + 1 : 1;
+  const reviewed = reviewedTodayCount(today);
+  const todayNo = stored && stored.reviewedOn === today ? reviewed : reviewed + 1;
   const hintUsed = !!(app.ui.reviewHint && app.ui.reviewHint.cardId === card.id && app.ui.reviewHint.used);
   if (card.src !== "kaokao" && card.src !== "wrong") prepareSkeletonSource(card.id);
   const poolOptions = kkItem && kkItem.recog && Array.isArray(kkItem.recog.options) ? kkItem.recog.options : [];
@@ -7357,7 +7682,7 @@ function renderReview(today) {
     <h1 class="h1">复习</h1>
     <section class="panel">
       <div class="review-meta">
-        <p class="small mono">第 ${position} / ${session.order.length} 张</p>
+        <p class="small mono" id="review-today-count">今天 ${todayNo} / ${REVIEW_DAILY_CAP}</p>
         ${poolAnswered ? "" : undo}
       </div>
       <article class="review-card" data-phase="${session.phase}" data-src="${escapeHtml(card.src || "skeleton")}">
@@ -7368,6 +7693,7 @@ function renderReview(today) {
         ${actions}
       </article>
     </section>
+    ${pauseHtml}
   `;
 
   root.querySelectorAll("[data-pool-choice]").forEach((button) => {
@@ -7781,6 +8107,7 @@ function render() {
   const route = hashRoute();
   app.ui.tab = route.tab;
   app.ui.routeChunkId = route.chunkId;
+  syncReturnTo(route);
   document.body.classList.toggle("is-learn", route.tab === "learn");
   renderPages();
   renderNav();
