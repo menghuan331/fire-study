@@ -193,6 +193,8 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     const badge = element('span', `qa-badge${insufficient || unverified ? ' qa-badge-warning' : ''}`,
       unverified ? '没核对原文' : insufficient ? '资料不足 · 尚不能确认' : answer.basis === '推理' ? '推理说明' : '教材依据');
     host.append(badge, element('p', 'qa-answer-text', answer.text));
+    if (typeof answer.imageNote === 'string' && answer.imageNote)
+      host.append(element('p', 'qa-image-note', answer.imageNote));
     // The synthetic sentence is only there so an answered turn can be saved. It is not the user's quote.
     const quotes = answer.fallbackQuote === true ? [] : (answer.quotes || []);
     quotes.slice(0, 1).forEach((quote, index) => appendQuote(host, quote, index, turn));
@@ -500,6 +502,13 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
         composerOpen = false; replies.clear(); userThreads.clear();
       }
       current = next; populateDraft(); render();
+    },
+    ask(text) {
+      if (disposed) return;
+      const question = String(text ?? '').trim();
+      if (!question) return;
+      input.value = question;
+      submit();
     },
     destroy() {
       if (disposed) return;

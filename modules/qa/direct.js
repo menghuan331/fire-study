@@ -10,7 +10,7 @@ export const SYSTEM_PROMPT = `你是注册消防工程师备考的讲解老师�
 4. 有容易混的说法或数字，用一句话点出来；这个点常考的话，用一句话说一般怎么考。
 5. 总共 3～6 句。不要客套，不要写“教材写明”“根据原文”这种复读，不要编造你不确定的数字或规范条文号。
 6. 如果原文片段不够回答，就说清缺什么，status 用 insufficient_context。
-7. 原文片段里有图片时，你看不到图本身，只能根据图题和上下文讲；需要看图才能回答时，要说明这一点。
+7. 如果附了图，先看图，用读者能对上的方式指出图里的位置。没有附图时，你看不到图本身，只能根据图题和上下文讲；需要看图才能回答时，要说明这一点。
 8. 如果他是在回答你上一轮的「再想一步」，第一句先判断他答得对不对、差在哪，再把道理补完整；他答对了就不要再出新的 followUp，答错或不完整才再给一个更小的 followUp。
 
 只输出一个 JSON 对象，不要输出其他文字：
@@ -19,11 +19,11 @@ text 里不要用英文双引号，要引用就用「」。
 basis 规则：主要靠原文就填“教材”，用到了教材以外的道理就填“推理”。`;
 
 const PROVIDERS = new Set(['deepseek', 'dashscope', 'anthropic', 'openai-compatible']);
-const OPENAI_URL = {
+export const OPENAI_URL = {
   deepseek: 'https://api.deepseek.com/chat/completions',
   dashscope: 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions'
 };
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
+export const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const GITHUB_TOKEN = /^(gh[pousr]_|github_pat_)/i;
 const BALANCE = /insufficient balance|余额不足|quota/i;
 const EDGE = new Set(Array.from(' \t\r\n\u3000"\'“”‘’「」『』《》〈〉（）()[]【】{}，。！？、；：,.!?;:…—-·~～`'));
@@ -35,6 +35,14 @@ function trimmed(value) {
 function providerName(value) {
   const name = trimmed(value);
   return PROVIDERS.has(name) ? name : '';
+}
+
+export function chatCompletionsUrl(provider, baseUrl) {
+  const name = providerName(provider);
+  if (!name) return '';
+  if (name === 'openai-compatible') return compatibleUrl(baseUrl);
+  if (name === 'anthropic') return ANTHROPIC_URL;
+  return OPENAI_URL[name] || '';
 }
 
 function compatibleUrl(baseUrl) {
@@ -54,6 +62,31 @@ function userContent(request) {
   const lines = request.context.map(part => `[${part.anchor}] (${part.kind}) ${part.text}`);
   return `【教材位置】${place}\n【原文片段】\n${lines.join('\n')}\n【我的问题】${request.question}`;
 }
+
+function usableImages(images) {
+  if (!Array.isArray(images)) return [];
+  return images.filter(img => img && typeof img.base64 === 'string' && img.base64 && typeof img.mediaType === 'string' && img.mediaType).slice(0, 2);
+}
+
+function imageFetch(result) {
+  if (Array.isArray(result)) return { expected: null, images: usableImages(result) };
+  if (result && typeof result === 'object') {
+    const images = usableImages(result.images);
+    const expected = Number(result.expected);
+    return { expected: Number.isFinite(expected) ? Math.max(0, expected) : null, images };
+  }
+  return { expected: null, images: [] };
+}
+
+function imageContent(style, text, images) {
+  const shots = images.map(img => style === 'anthropic'
+    ? { type: 'image', source: { type: 'base64', media_type: img.mediaType, data: img.base64 } }
+    : { type: 'image_url', image_url: { url: `data:${img.mediaType};base64,${img.base64}` } });
+  if (style === 'anthropic') return [...shots, { type: 'text', text }];
+  return [{ type: 'text', text }, ...shots];
+}
+
+const VISION_REJECTION = /image|vision|unsupported/i;
 
 function historyMessages(history) {
   return history.map(message => ({ role: message.role, content: message.content }));
@@ -282,7 +315,14 @@ function hasJsonFragment(source) {
 }
 
 function stripThink(source) {
-  return String(source || '').replace(/<think>[\s\S]*?<\/think>/gi, '');
+  let text = String(source || '');
+  text = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  text = text.replace(/<think>[\s\S]*$/gi, '');
+  return text;
+}
+
+function contextHasFigure(request) {
+  return Array.isArray(request && request.context) && request.context.some((part) => part && part.kind === 'figure');
 }
 
 function extractJsonObject(text) {
@@ -429,7 +469,7 @@ async function send(fetchImpl, url, headers, body, signal, stopOf) {
 
 /** Browser-direct model client. Same answer() contract as createClient. The key stays in memory for the request only. */
 export function createDirectClient({ provider, model, baseUrl, getApiKey = () => '', fetchImpl = globalThis.fetch,
-  timeoutMs = 60000, now = () => Date.now() } = {}) {
+  timeoutMs = 60000, now = () => Date.now(), getImages } = {}) {
   const timeout = Math.max(1, Number(timeoutMs) || 60000);
   const inFlight = new Map();
   const name = providerName(provider);
@@ -495,24 +535,53 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
         const url = name === 'openai-compatible' ? compatibleUrl(baseUrl)
           : name === 'anthropic' ? ANTHROPIC_URL : OPENAI_URL[name];
         if (!url) throw new QaError('NOT_CONFIGURED');
-        const messages = [...historyMessages(payload.history), { role: 'user', content: userContent(payload) }];
         const headers = headersFor(style, key);
+        const promptText = userContent(payload);
+        let images = [];
+        let imagesMissing = false;
+        let imagesPartial = false;
+        if (typeof getImages === 'function') {
+          try {
+            const fetched = imageFetch(await getImages(payload));
+            images = fetched.images;
+            const expected = fetched.expected;
+            if (expected != null && expected > images.length) {
+              if (!images.length) imagesMissing = true;
+              else imagesPartial = true;
+            } else if ((expected == null || expected === 0) && contextHasFigure(payload) && !images.length) {
+              imagesMissing = true;
+            }
+          } catch {
+            images = [];
+            if (contextHasFigure(payload)) imagesMissing = true;
+          }
+        }
         let jsonMode = style === 'openai';
+        let dropImages = false;
         let raw = '';
         let status = 0;
         let ok = false;
-        for (let attempt = 0; attempt < 2; attempt += 1) {
+        for (let attempt = 0; attempt < 3; attempt += 1) {
           if (stop || signal?.aborted) failStop();
+          const content = !dropImages && images.length ? imageContent(style, promptText, images) : promptText;
+          const messages = [...historyMessages(payload.history), { role: 'user', content }];
           const body = style === 'anthropic' ? anthropicBody(modelName, messages) : openaiBody(modelName, messages, jsonMode);
           const result = await send(fetchImpl, url, headers, body, controller.signal, stopOf);
           raw = result.raw;
           status = result.status;
           ok = result.ok;
           if (ok) break;
-          if (attempt === 0 && jsonMode && status === 400 && String(raw).toLowerCase().includes('response_format')) {
+          const lower = String(raw).toLowerCase();
+          let retry = false;
+          if (attempt < 2 && jsonMode && status === 400 && lower.includes('response_format')) {
             jsonMode = false;
-            continue;
+            retry = true;
           }
+          if (attempt < 2 && !dropImages && images.length && status === 400 && VISION_REJECTION.test(lower)) {
+            dropImages = true;
+            retry = true;
+          }
+          if (retry) continue;
           const failure = httpFailure(status, raw);
           if (failure) throw failure;
           if (BALANCE.test(raw)) throw new QaError('NO_BALANCE', undefined, { status });
@@ -528,7 +597,10 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
           throw new QaError('INVALID_RESPONSE');
         }
         const extracted = extractJsonObject(text);
-        return assemble(payload, extracted.parsed, name, modelName, now, key, extracted.recovered);
+        const assembled = assemble(payload, extracted.parsed, name, modelName, now, key, extracted.recovered);
+        if (dropImages || imagesMissing) assembled.answer.imageNote = '这次模型没看到图';
+        else if (imagesPartial) assembled.answer.imageNote = '这次模型没看到全部的图';
+        return assembled;
       })();
 
       const promise = Promise.race([operation, canceled]).finally(() => {

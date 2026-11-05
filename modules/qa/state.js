@@ -60,7 +60,19 @@ export function validateRequest(request) {
   if (!Array.isArray(request.history) || request.history.length > LIMITS.history
     || request.history.some(message => !isObject(message) || !['user', 'assistant'].includes(message.role)
       || typeof message.content !== 'string')) fail('对话历史格式无效，请重新提问。');
-  return request;
+  return {
+    v: 1,
+    requestId: request.requestId,
+    threadId: request.threadId,
+    unit: request.unit,
+    chunkId: request.chunkId,
+    blockId: request.blockId,
+    book: request.book,
+    question: request.question,
+    context: request.context.map(part => ({ anchor: part.anchor, kind: part.kind, text: part.text })),
+    history: request.history.map(message => ({ role: message.role, content: message.content })),
+    ...(typeof request.label === 'string' && request.label ? { label: request.label } : {})
+  };
 }
 
 export function validateResponse(request, response) {

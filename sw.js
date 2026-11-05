@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-v18";
+const CACHE_VERSION = "study-v19";
 const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [
@@ -18,7 +18,13 @@ const PRECACHE = [
   "./modules/qa/direct.js",
   "./modules/qa/panel.js",
   "./modules/qa/errors.js",
-  "./modules/qa/panel.css"
+  "./modules/qa/panel.css",
+  "./modules/flow/pages.js",
+  "./modules/flow/agent.js",
+  "./modules/flow/view.js",
+  "./modules/flow/flow.css",
+  "./modules/agent/kernel.js",
+  "./modules/agent/llm.js"
 ];
 
 function relativePath(url) {
@@ -46,6 +52,8 @@ function isNetworkFirstPath(rel) {
     || rel === "index.html"
     || (rel.startsWith("data/") && rel.endsWith(".json"))
     || (rel.startsWith("modules/qa/") && /\.(js|css)$/.test(rel))
+    || (rel.startsWith("modules/flow/") && /\.(js|css)$/.test(rel))
+    || (rel.startsWith("modules/agent/") && /\.(js|css)$/.test(rel))
     || rel === "精讲/index.json"
     || isLectureFile(rel);
 }

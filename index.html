@@ -8,6 +8,7 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="modules/qa/panel.css">
+<link rel="stylesheet" href="modules/flow/flow.css">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#c4271d">
 <style>
@@ -1665,6 +1666,7 @@ body.is-learn .app-shell {
         <section id="page-plan" class="page" hidden></section>
         <section id="page-settings" class="page" hidden></section>
         <section id="page-learn" class="page" hidden></section>
+        <section id="page-flow" class="page" hidden></section>
       </main>
     </div>
   </div>
@@ -1699,6 +1701,23 @@ function mergeQaState(leftValue, rightValue) {
   }));
   const draft = newer(isObject(left.draft) ? left.draft : undefined, isObject(right.draft) ? right.draft : undefined);
   return { version: 1, turns, ...(draft ? { draft: { ...copy(draft), updatedAt: number(draft.updatedAt) } } : {}) };
+}
+
+function normalizeAgentRuns(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { date: "", n: 0 };
+  return {
+    date: typeof value.date === "string" ? value.date : "",
+    n: Math.max(0, Number(value.n) || 0)
+  };
+}
+
+function mergeAgentRuns(left, right) {
+  const a = normalizeAgentRuns(left);
+  const b = normalizeAgentRuns(right);
+  if (a.date === b.date) return { date: a.date, n: Math.max(a.n, b.n) };
+  if (!a.date) return b;
+  if (!b.date) return a;
+  return a.date > b.date ? a : b;
 }
 
 function mergeStates(local, remote) {
@@ -1737,6 +1756,38 @@ function mergeStates(local, remote) {
     const out = mergeMaps(a, b);
     for (const id of Object.keys(out)) {
       if (a?.[id]?.qa || b?.[id]?.qa) out[id].qa = mergeQaState(a?.[id]?.qa, b?.[id]?.qa);
+    }
+    return out;
+  }
+
+  function unionIds(leftIds, rightIds) {
+    const out = [];
+    const seen = new Set();
+    for (const id of [...(leftIds || []), ...(rightIds || [])]) {
+      if (typeof id !== "string" || !id || seen.has(id)) continue;
+      seen.add(id);
+      out.push(id);
+    }
+    return out;
+  }
+
+  function flowPagesKeyOf(rec) {
+    return rec && typeof rec.pagesKey === "string" ? rec.pagesKey : "";
+  }
+
+  function mergeFlow(a, b) {
+    const out = mergeMaps(a, b);
+    for (const id of Object.keys(out)) {
+      if (!out[id] || typeof out[id] !== "object" || Array.isArray(out[id])) continue;
+      const left = a && a[id];
+      const right = b && b[id];
+      const at = Number(left && left.updatedAt) || 0;
+      const bt = Number(right && right.updatedAt) || 0;
+      const winner = bt > at ? right : left;
+      const seen = flowPagesKeyOf(left) === flowPagesKeyOf(right)
+        ? unionIds(left && left.seen, right && right.seen)
+        : unionIds(winner && winner.seen, []);
+      out[id] = { ...out[id], seen };
     }
     return out;
   }
@@ -1817,7 +1868,10 @@ function mergeStates(local, remote) {
     chunks: mergeMaps(left.chunks, right.chunks),
     kaokao: mergeMaps(left.kaokao, right.kaokao),
     kaokaoRetell: mergeMaps(left.kaokaoRetell, right.kaokaoRetell),
-    doubts: mergeDoubts(left.doubts, right.doubts)
+    doubts: mergeDoubts(left.doubts, right.doubts),
+    flow: mergeFlow(left.flow, right.flow),
+    agentNotes: mergeMaps(left.agentNotes, right.agentNotes),
+    agentRuns: mergeAgentRuns(left.agentRuns, right.agentRuns)
   };
 }
 
@@ -2204,7 +2258,10 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
       chunks: {},
       kaokao: {},
       kaokaoRetell: {},
-      doubts: {}
+      doubts: {},
+      flow: {},
+      agentNotes: {},
+      agentRuns: { date: "", n: 0 }
     };
   }
 
@@ -2304,7 +2361,10 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
       baselineAt: Number(src.baselineAt) || 0,
       startedAt: src.startedAt || "",
       weeks: src.weeks || {},
-      chunks: src.chunks || {}
+      chunks: src.chunks || {},
+      flow: src.flow && typeof src.flow === "object" && !Array.isArray(src.flow) ? src.flow : {},
+      agentNotes: src.agentNotes && typeof src.agentNotes === "object" && !Array.isArray(src.agentNotes) ? src.agentNotes : {},
+      agentRuns: normalizeAgentRuns(src.agentRuns)
     });
     const cards = groupByUnit(src.cards);
     for (const unit of Object.keys(cards).sort()) {
@@ -2381,6 +2441,9 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
         if (json.startedAt) remote.startedAt = String(json.startedAt);
         remote.weeks = json.weeks || {};
         remote.chunks = json.chunks && typeof json.chunks === "object" && !Array.isArray(json.chunks) ? json.chunks : {};
+        if (json.flow && typeof json.flow === "object" && !Array.isArray(json.flow)) remote.flow = json.flow;
+        if (json.agentNotes && typeof json.agentNotes === "object" && !Array.isArray(json.agentNotes)) remote.agentNotes = json.agentNotes;
+        remote.agentRuns = normalizeAgentRuns(json.agentRuns);
       } else if (filePath.startsWith(`${PROGRESS_PREFIX}cards/`)) {
         absorbRecords(remote.cards, json, unitFromPath(filePath));
       } else if (filePath.startsWith(`${PROGRESS_PREFIX}attempts/`)) {
@@ -2615,7 +2678,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-05.1";
+const APP_VERSION = "2026-11-05.2";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -2890,7 +2953,10 @@ function createDefaultState() {
     chunks: {},
     kaokao: {},
     kaokaoRetell: {},
-    doubts: {}
+    doubts: {},
+    flow: {},
+    agentNotes: {},
+    agentRuns: { date: "", n: 0 }
   };
 }
 
@@ -2986,7 +3052,10 @@ function coerceState(input, options) {
     chunks: {},
     kaokao: {},
     kaokaoRetell: {},
-    doubts: {}
+    doubts: {},
+    flow: {},
+    agentNotes: {},
+    agentRuns: normalizeAgentRuns(src.agentRuns)
   };
   const sections = src.sections && typeof src.sections === "object" && !Array.isArray(src.sections) ? src.sections : {};
   const sectionsAt = src.sectionsAt && typeof src.sectionsAt === "object" && !Array.isArray(src.sectionsAt) ? src.sectionsAt : {};
@@ -3008,6 +3077,8 @@ function coerceState(input, options) {
   copyRecords(src.kaokao, state.kaokao);
   copyRecords(src.kaokaoRetell, state.kaokaoRetell);
   copyRecords(src.doubts, state.doubts);
+  copyRecords(src.flow, state.flow);
+  copyRecords(src.agentNotes, state.agentNotes);
   return state;
 }
 
@@ -3085,6 +3156,14 @@ function setNestedState(path, value, options) {
   } else if (kind === "doubts" && id) {
     if (!app.state.doubts) app.state.doubts = {};
     app.state.doubts[id] = stampSavedRecord(value, options, now);
+  } else if (kind === "flow" && id) {
+    if (!app.state.flow) app.state.flow = {};
+    app.state.flow[id] = stampSavedRecord(value, options, now);
+  } else if (kind === "agentNotes" && id) {
+    if (!app.state.agentNotes) app.state.agentNotes = {};
+    app.state.agentNotes[id] = stampSavedRecord(value, options, now);
+  } else if (path === "agentRuns") {
+    app.state.agentRuns = normalizeAgentRuns(value);
   } else if (path === "startedAt") {
     app.state.startedAt = value;
   } else if (path === "baselineDone") {
@@ -3305,7 +3384,9 @@ function saveQaDirectSettings(event) {
     if (message) message.textContent = "设置未保存，请重试。";
     return;
   }
+  if (flowRunner && flowRunner.running) flowRunner.abort();
   destroyQaPanels();
+  destroyFlowQa();
   renderSettings();
   const status = document.getElementById("qa-settings-message");
   if (status) status.textContent = "当场问设置已保存在这台设备上。";
@@ -3321,6 +3402,7 @@ function clearQaDirectKey() {
     return;
   }
   destroyQaPanels();
+  destroyFlowQa();
   renderSettings();
   const status = document.getElementById("qa-settings-message");
   if (status) status.textContent = "钥匙已从这台设备清除。";
@@ -3369,6 +3451,16 @@ async function testDirectConnection() {
 function destroyQaPanels() {
   for (const panel of qaPanels.values()) panel.handle.destroy();
   qaPanels.clear();
+}
+
+function destroyFlowQa() {
+  if (flowQa && flowQa.handle) flowQa.handle.destroy();
+  flowQa = null;
+}
+
+function qaDirectSignature() {
+  const cfg = loadDirectConfig();
+  return `${cfg.provider}\n${cfg.model}\n${cfg.baseUrl}`;
 }
 
 function loadQaModule() {
@@ -3463,14 +3555,15 @@ function mountStudyQa(meta) {
     provider: cfg.provider,
     model: cfg.model,
     baseUrl: cfg.baseUrl,
-    getApiKey: () => loadDirectConfig().apiKey
+    getApiKey: () => loadDirectConfig().apiKey,
+    getImages: qaImagesFor
   }), () => qaTodayTurnCount() <= loadDirectConfig().dailyLimit);
   for (const placeholder of root.querySelectorAll("[data-qa-block]")) {
     const blockId = placeholder.dataset.qaBlock;
     const id = doubtKey(meta.id, blockId);
     const context = studyQaContext(meta, blockId);
     if (!context || !activeDoubt(meta.id, blockId)) continue;
-    const signature = qaApi.contextKey(context);
+    const signature = `${qaApi.contextKey(context)}\n${qaDirectSignature()}`;
     active.add(id);
     const existing = qaPanels.get(id);
     if (existing && existing.signature === signature) {
@@ -4819,7 +4912,7 @@ async function loadStudyBlobUrl(repoPath, filename) {
       await cacheStudyResponse(repoPath, clone);
       const previous = app.study.imageUrls[filename];
       await remember(res);
-      if (previous !== app.study.imageUrls[filename] && app.ui.tab === "learn") render();
+      if (previous !== app.study.imageUrls[filename] && (app.ui.tab === "learn" || app.ui.tab === "flow")) render();
     }).catch(() => {});
     return app.study.imageUrls[filename];
   }
@@ -4989,7 +5082,7 @@ function kickKatex() {
   script.src = "https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js";
   script.onload = () => {
     app.ui.katexState = window.katex ? "ready" : "failed";
-    if (app.ui.tab === "learn") render();
+    if (app.ui.tab === "learn" || app.ui.tab === "flow") render();
   };
   script.onerror = () => {
     app.ui.katexState = "failed";
@@ -5212,6 +5305,7 @@ function completeLearnChunk(meta) {
 function hashRoute() {
   let key = (location.hash || "").replace(/^#/, "");
   try { key = decodeURIComponent(key); } catch (_) {}
+  if (key.startsWith("flow-")) return { tab: "flow", chunkId: key.slice("flow-".length) };
   if (key.startsWith("learn-")) return { tab: "learn", chunkId: key.slice("learn-".length) };
   if (VALID_TABS.includes(key)) return { tab: key, chunkId: "" };
   return { tab: "today", chunkId: "" };
@@ -6935,6 +7029,7 @@ function renderToday(today, weekCtx) {
   ` : "";
   root.innerHTML = `
     <h1 class="h1">今天</h1>
+    ${todayFlowLine()}
     <section class="today-board">
       <article class="today-task">
         <h2 class="today-kicker">① 复习</h2>
@@ -6966,6 +7061,8 @@ function renderToday(today, weekCtx) {
   if (nextBtn) nextBtn.addEventListener("click", () => openLearn(nextBtn.dataset.chunk));
   const allBtn = document.getElementById("today-all-chunks");
   if (allBtn) allBtn.addEventListener("click", () => openWeekMap());
+  const flowBtn = document.getElementById("today-open-flow");
+  if (flowBtn) flowBtn.addEventListener("click", () => openFlow(flowBtn.dataset.chunk));
 }
 
 function practiceQuestionLists(unitId) {
@@ -8050,6 +8147,784 @@ function renderPlan(today, weekCtx) {
   `;
 }
 
+let flowModules = null;
+let flowLoadPromise = null;
+let flowRunner = null;
+let flowQa = null;
+const flowOpened = new Set();
+let flowShown = { key: "", at: 0 };
+
+function loadFlowModules() {
+  if (flowLoadPromise) return flowLoadPromise;
+  flowLoadPromise = Promise.all([
+    import("./modules/flow/view.js"),
+    import("./modules/flow/pages.js"),
+    import("./modules/flow/agent.js"),
+    import("./modules/agent/llm.js")
+  ]).then(([view, pages, agent, llm]) => {
+    flowModules = { view, pages, agent, llm };
+    render();
+    return flowModules;
+  }).catch(() => null);
+  return flowLoadPromise;
+}
+
+function scheduleUnits() {
+  const units = app.data && app.data.schedule && app.data.schedule.units;
+  return (units || []).filter((unit) => unit && unit.id && unit.id !== "CASE");
+}
+
+function nextFlowChunk() {
+  if (!app.data) return null;
+  for (const unit of scheduleUnits()) {
+    const index = app.study.indexes[unit.id];
+    if (!index) {
+      const state = app.study.indexState[unit.id];
+      if (state === "missing" || state === "error") continue;
+      kickUnitIndex(unit.id);
+      return null;
+    }
+    for (const chunk of index.chunks || []) {
+      if (chunk && chunk.id && !chunkDone(chunk.id)) return chunk;
+    }
+  }
+  return null;
+}
+
+function todayFlowLine() {
+  const chunk = nextFlowChunk();
+  if (!chunk) return "";
+  return `<p class="today-flow"><button id="today-open-flow" class="text-link tap-target" type="button" data-chunk="${escapeHtml(chunk.id)}">继续新学习流 · ${escapeHtml(chunk.title || chunk.id)}</button></p>`;
+}
+
+function openFlow(chunkId) {
+  if (!chunkId) return;
+  const next = `#flow-${encodeURIComponent(chunkId)}`;
+  if (location.hash !== next) location.hash = next;
+  else render();
+}
+
+function ensureChunkMeta(chunkId) {
+  const found = findChunkMeta(chunkId);
+  if (found || !app.data) return found;
+  for (const unit of scheduleUnits()) {
+    if (!app.study.indexes[unit.id]) kickUnitIndex(unit.id);
+  }
+  return findChunkMeta(chunkId);
+}
+
+function chunkLookupSettled() {
+  if (!app.data) return false;
+  return scheduleUnits().every((unit) => {
+    if (app.study.indexes[unit.id]) return true;
+    const state = app.study.indexState[unit.id];
+    return state === "missing" || state === "error";
+  });
+}
+
+function flowRecord(chunkId) {
+  const rec = app.state.flow && app.state.flow[chunkId];
+  const runs = rec && rec.agentRuns && typeof rec.agentRuns === "object" ? rec.agentRuns : {};
+  return {
+    seen: Array.isArray(rec && rec.seen) ? rec.seen.slice() : [],
+    queue: Array.isArray(rec && rec.queue) ? rec.queue.slice() : [],
+    cursor: Math.max(0, Number(rec && rec.cursor) || 0),
+    reason: rec && typeof rec.reason === "string" ? rec.reason : "",
+    rule: rec && typeof rec.rule === "string" ? rec.rule : "",
+    events: Array.isArray(rec && rec.events) ? rec.events.map((item) => ({ ...item })) : [],
+    agentRuns: { date: typeof runs.date === "string" ? runs.date : "", n: Number(runs.n) || 0 },
+    pagesKey: rec && typeof rec.pagesKey === "string" ? rec.pagesKey : ""
+  };
+}
+
+function saveFlow(chunkId, patch, options) {
+  const prev = flowRecord(chunkId);
+  const has = (key) => patch && Object.prototype.hasOwnProperty.call(patch, key);
+  const next = {
+    seen: has("seen") ? patch.seen : prev.seen,
+    queue: has("queue") ? patch.queue : prev.queue,
+    cursor: has("cursor") ? patch.cursor : prev.cursor,
+    reason: has("reason") ? patch.reason : prev.reason,
+    rule: has("rule") ? patch.rule : prev.rule,
+    events: has("events") ? patch.events : prev.events,
+    agentRuns: has("agentRuns") ? patch.agentRuns : prev.agentRuns,
+    pagesKey: has("pagesKey") ? patch.pagesKey : prev.pagesKey
+  };
+  if (!Array.isArray(next.seen)) next.seen = [];
+  if (!Array.isArray(next.queue)) next.queue = [];
+  if (!Array.isArray(next.events)) next.events = [];
+  if (next.events.length > 200) next.events = next.events.slice(-200);
+  store.save(`flow/${chunkId}`, next, options);
+}
+
+function appendFlowEvent(chunkId, event) {
+  const rec = flowRecord(chunkId);
+  const next = { ...event };
+  if (typeof next.text === "string") next.text = redactFlowText(next.text);
+  saveFlow(chunkId, { events: rec.events.concat(next) });
+}
+
+function redactFlowText(value) {
+  const key = loadDirectConfig().apiKey;
+  let text = String(value ?? "");
+  if (key) text = text.split(key).join("");
+  return text;
+}
+
+function clipChars(value, limit) {
+  return Array.from(String(value || "")).slice(0, limit).join("");
+}
+
+function flowCatalog(meta) {
+  if (!flowModules || !meta) return null;
+  const body = app.study.bodies[meta.id];
+  if (!body || !Array.isArray(body.blocks)) return null;
+  const pages = flowModules.pages.paginateBlocks(body.blocks);
+  const questions = flowModules.pages.questionsForChunk({
+    id: meta.id,
+    blocks: body.blocks,
+    questions: meta.questions || []
+  }, allKaokaoItemsForChunk(meta), app.derived.questionById);
+  const answered = questions
+    .filter((question) => question.kind === "kaokao" ? latestKaokaoTry(question.id, "recog") : latestTry(question.id))
+    .map((question) => question.id);
+  return { pages, questions, blocks: body.blocks, answered };
+}
+
+function ensureFlowQueue(meta, catalog) {
+  const rec = flowRecord(meta.id);
+  if (!catalog || !flowModules) return rec;
+  const next = flowModules.pages.reconcileFlowRecord(rec, catalog.pages, catalog.questions, catalog.answered);
+  if (!next.rebuilt) return rec;
+  saveFlow(meta.id, {
+    queue: next.queue,
+    cursor: next.cursor,
+    seen: next.seen,
+    rule: next.rule,
+    pagesKey: next.pagesKey
+  }, { silent: true });
+  return flowRecord(meta.id);
+}
+
+function prepareFlowQueue(meta, catalog) {
+  let rec = ensureFlowQueue(meta, catalog);
+  if (!catalog || !flowModules) return rec;
+  const valid = new Set([
+    ...(catalog.pages || []).map((page) => page.id),
+    ...(catalog.questions || []).map((question) => question.id)
+  ]);
+  for (let guard = 0; guard < 8; guard += 1) {
+    const pruned = flowModules.pages.dropUnresolved(rec.queue, rec.cursor, valid);
+    if (pruned.dropped) {
+      saveFlow(meta.id, { queue: pruned.queue, cursor: pruned.cursor }, { silent: true });
+      rec = flowRecord(meta.id);
+      continue;
+    }
+    if (rec.cursor > rec.queue.length) {
+      saveFlow(meta.id, { cursor: rec.queue.length }, { silent: true });
+      rec = flowRecord(meta.id);
+      continue;
+    }
+    if (rec.cursor >= rec.queue.length) {
+      const missing = flowModules.pages.missingPages(catalog.pages, rec.seen);
+      if (missing.length) {
+        saveFlow(meta.id, { queue: rec.queue.concat(missing) }, { silent: true });
+        rec = flowRecord(meta.id);
+        continue;
+      }
+    }
+    break;
+  }
+  return rec;
+}
+
+function blocksForPage(catalog, page) {
+  const byId = new Map((catalog.blocks || []).map((block) => [String(block.id), block]));
+  return (page && page.blockIds || []).map((id) => byId.get(String(id))).filter(Boolean);
+}
+
+function pagePlain(blocks) {
+  return (blocks || []).map((block) => markdownPlain(block.md)).filter(Boolean).join("\n");
+}
+
+function flowBlockHtml(block) {
+  const kind = block.kind || "para";
+  if (kind === "table") {
+    const parts = splitTableMd(block.md);
+    const table = parts.table ? `<div class="read-table-wrap">${sanitizeTableHtml(parts.table)}</div>` : "";
+    return `${parts.before ? `<div>${renderRich(parts.before)}</div>` : ""}${table}`;
+  }
+  if (kind === "equation") {
+    const tex = String(block.md || "").replace(/^\$\$/, "").replace(/\$\$$/, "").trim();
+    return `<div class="read-equation">${renderTex(tex, true)}</div>`;
+  }
+  if (kind === "bold") return `<h2 class="flow-heading">${renderRich(block.md)}</h2>`;
+  if (kind === "h3" || kind === "h4" || kind === "h5" || kind === "h6" || kind === "fixed") {
+    const tag = kind === "fixed" ? "h6" : kind;
+    return `<${tag} class="flow-heading">${renderRich(stripHashes(block.md))}</${tag}>`;
+  }
+  if (kind === "figure") return `<figure class="flow-figure">${renderRich(block.md)}</figure>`;
+  if (kind === "footnote" || kind === "qr" || kind === "review_insert") return `<p class="flow-aside">${renderRich(block.md)}</p>`;
+  return `<p>${renderRich(block.md)}</p>`;
+}
+
+function flowPageHtml(blocks) {
+  return (blocks || []).map(flowBlockHtml).join("");
+}
+
+function flowPageSources(meta, pageId, questions) {
+  const ids = new Set((questions || []).filter((item) => item.kind === "kaokao" && item.pageId === pageId).map((item) => item.id));
+  const marks = [];
+  for (const item of allKaokaoItemsForChunk(meta)) {
+    if (!ids.has(item.id) || !item.src || !item.cloze) continue;
+    const answers = item.cloze.answers;
+    const list = Array.isArray(answers) ? answers : (answers == null || answers === "" ? [] : [answers]);
+    if (!list.length) continue;
+    marks.push({ src: item.src, answers: list, text: item.cloze.text || "" });
+  }
+  return marks;
+}
+
+function flowQuestionView(meta, question) {
+  if (!question) return null;
+  if (question.kind === "kaokao") {
+    const item = kaokaoItemById(question.id);
+    const options = item && item.recog && item.recog.options || [];
+    const tryItem = latestKaokaoTry(question.id, "recog");
+    return {
+      stem: item && item.recog && item.recog.stem || "",
+      options: options.map((text, index) => ({
+        key: String(index),
+        label: String.fromCharCode(65 + index),
+        text: String(text)
+      })),
+      multi: false,
+      result: tryItem ? {
+        ok: !!tryItem.ok,
+        why: item.recog.why || "",
+        correctKeys: [String(item.recog.answer)],
+        choiceKeys: [String(tryItem.choice)]
+      } : null,
+      source: question.pageId ? { text: "看原文" } : null
+    };
+  }
+  const exam = app.derived.questionById.get(question.id);
+  const last = latestTry(question.id);
+  const answer = String(exam && exam.answer || "");
+  const why = [exam && exam.explanation, exam && exam.verify && exam.verify.note].filter(Boolean).join("\n");
+  const options = exam && exam.options
+    ? Object.entries(exam.options).map(([key, text]) => ({ key, label: key, text: String(text) }))
+    : [];
+  return {
+    stem: exam && exam.stem || "",
+    options,
+    multi: !!(exam && isMultiSelect(exam.type)),
+    result: last ? {
+      ok: !!last.ok,
+      why,
+      correctKeys: answer.split("").filter(Boolean),
+      choiceKeys: String(last.choice || "").split("").filter(Boolean)
+    } : null,
+    source: question.pageId ? { text: "看原文" } : null
+  };
+}
+
+function flowCorrect(queue, questions) {
+  const byId = new Map((questions || []).map((question) => [question.id, question]));
+  const counted = new Set();
+  let correct = 0;
+  for (const id of queue || []) {
+    const question = byId.get(id);
+    if (!question || counted.has(id)) continue;
+    counted.add(id);
+    if (question.kind === "kaokao") {
+      const tryItem = latestKaokaoTry(id, "recog");
+      if (tryItem && tryItem.ok) correct += 1;
+    } else if (latestTry(id) && latestTry(id).ok) correct += 1;
+  }
+  return correct;
+}
+
+function flowNextChunk(meta) {
+  const list = [];
+  let blocked = false;
+  for (const unit of scheduleUnits()) {
+    const index = app.study.indexes[unit.id];
+    if (!index) {
+      const state = app.study.indexState[unit.id];
+      if (state === "missing" || state === "error") continue;
+      kickUnitIndex(unit.id);
+      blocked = true;
+      continue;
+    }
+    if (blocked) continue;
+    for (const chunk of index.chunks || []) if (chunk) list.push(chunk);
+  }
+  if (!list.some((chunk) => chunk.id === meta.id)) return null;
+  return nextChunkAfter(list, meta);
+}
+
+function flowRunCount(chunkId) {
+  const rec = flowRecord(chunkId);
+  return rec.agentRuns.date === shanghaiToday() ? rec.agentRuns.n : 0;
+}
+
+function flowNotes() {
+  return Object.entries(app.state.agentNotes || {}).map(([id, note]) => ({ id, ...note }));
+}
+
+function flowAgentContext(chunkId) {
+  const meta = findChunkMeta(chunkId);
+  const rec = flowRecord(chunkId);
+  const catalog = meta ? flowCatalog(meta) : null;
+  const pages = (catalog ? catalog.pages : []).map((page) => {
+    const text = pagePlain(blocksForPage(catalog, page));
+    return { id: page.id, kind: page.kind, blockIds: page.blockIds, preview: clipChars(text, 40), text };
+  });
+  const questions = (catalog ? catalog.questions : []).map((question) => {
+    const view = flowQuestionView(meta, question);
+    return {
+      id: question.id,
+      kind: question.kind,
+      pageId: question.pageId,
+      preview: clipChars(view.stem, 40),
+      stem: view.stem,
+      options: view.options.map((option) => option.text),
+      status: view.result ? (view.result.ok ? "答对" : "答错") : "未答"
+    };
+  });
+  return {
+    chunkId: chunkId || "",
+    seen: rec.seen,
+    queue: rec.queue,
+    cursor: rec.cursor,
+    events: rec.events,
+    pages,
+    questions,
+    notes: flowNotes()
+  };
+}
+
+function flowRunSnapshot() {
+  const cfg = loadDirectConfig();
+  return {
+    provider: cfg.provider,
+    model: cfg.model,
+    baseUrl: cfg.baseUrl,
+    apiKey: cfg.apiKey
+  };
+}
+
+function flowLlm(snap) {
+  if (!flowModules) return null;
+  const cfg = snap && typeof snap === "object" ? snap : flowRunSnapshot();
+  const apiKey = typeof cfg.apiKey === "string" ? cfg.apiKey : "";
+  return flowModules.llm.createAgentLlm({
+    provider: cfg.provider,
+    model: cfg.model,
+    baseUrl: cfg.baseUrl,
+    getApiKey: () => apiKey
+  });
+}
+
+function jobChunk(job) {
+  const id = job && job.extra && job.extra.chunkId;
+  return typeof id === "string" ? id : "";
+}
+
+function ensureFlowRunner() {
+  if (flowRunner || !flowModules) return flowRunner;
+  flowRunner = flowModules.agent.createStudyRunner({
+    getContext(job) {
+      return flowAgentContext(jobChunk(job));
+    },
+    captureRun() {
+      return flowRunSnapshot();
+    },
+    getLlm(snap) {
+      return flowLlm(snap);
+    },
+    hasKey: () => !!loadDirectConfig().apiKey,
+    provider: () => loadDirectConfig().provider,
+    secret: () => loadDirectConfig().apiKey,
+    saveQueue(queue, reason, job) {
+      const chunkId = jobChunk(job);
+      if (!chunkId) return;
+      const rec = flowRecord(chunkId);
+      const text = redactFlowText(reason);
+      const events = rec.events.concat([{ type: "decide", text, at: Date.now() }]);
+      if (rec.queue.length && rec.cursor >= rec.queue.length) {
+        saveFlow(chunkId, { reason: text, events });
+        return;
+      }
+      const nextQueue = flowModules.pages.replaceUnseen(rec.queue, rec.cursor, queue);
+      saveFlow(chunkId, { queue: nextQueue, reason: text, events });
+    },
+    saveReason(reason, job) {
+      const chunkId = jobChunk(job);
+      if (!chunkId) return;
+      const text = redactFlowText(reason);
+      if (!text) return;
+      const rec = flowRecord(chunkId);
+      saveFlow(chunkId, { rule: text, events: rec.events.concat([{ type: "decide", text, at: Date.now() }]) });
+    },
+    saveNote(notes) {
+      for (const [id, note] of Object.entries(notes || {})) {
+        if (!note || typeof note !== "object") continue;
+        store.save(`agentNotes/${id}`, { ...note, text: redactFlowText(note.text) });
+      }
+    },
+    bumpRun(job) {
+      const today = shanghaiToday();
+      const prev = normalizeAgentRuns(app.state.agentRuns);
+      const n = prev.date === today ? prev.n + 1 : 1;
+      store.save("agentRuns", { date: today, n }, { silent: true });
+      const chunkId = jobChunk(job);
+      if (!chunkId) return;
+      const rec = flowRecord(chunkId);
+      const count = rec.agentRuns.date === today ? rec.agentRuns.n + 1 : 1;
+      saveFlow(chunkId, { agentRuns: { date: today, n: count } }, { silent: true });
+    },
+    runsToday() {
+      const runs = normalizeAgentRuns(app.state.agentRuns);
+      return runs.date === shanghaiToday() ? runs.n : 0;
+    },
+    ranToday(job) {
+      return flowRunCount(jobChunk(job)) > 0;
+    },
+    notes: () => ({ ...(app.state.agentNotes || {}) }),
+    now: () => Date.now()
+  });
+  return flowRunner;
+}
+
+function triggerFlow(chunkId, kind, extra) {
+  if (!chunkId || !flowModules) return;
+  const runner = ensureFlowRunner();
+  if (!runner) return;
+  void runner.trigger(kind, { ...(extra || {}), chunkId });
+}
+
+function maybeOpenFlow(chunkId) {
+  const key = `${chunkId}:${shanghaiToday()}`;
+  if (flowOpened.has(key)) return;
+  flowOpened.add(key);
+  triggerFlow(chunkId, "open", { chunkId });
+}
+
+function flowAdvance(meta, sec, streak) {
+  const catalog = flowCatalog(meta);
+  if (!catalog) return;
+  const rec = flowRecord(meta.id);
+  if (rec.cursor >= rec.queue.length) return;
+  const id = rec.queue[rec.cursor] || "";
+  const pageIds = new Set(catalog.pages.map((page) => page.id));
+  const seen = rec.seen.slice();
+  if (id && pageIds.has(id) && !seen.includes(id)) seen.push(id);
+  let queue = rec.queue.slice();
+  const cursor = rec.cursor + 1;
+  if (cursor >= queue.length) {
+    const have = new Set(seen);
+    const missing = catalog.pages.map((page) => page.id).filter((pageId) => !have.has(pageId));
+    if (missing.length) queue = queue.concat(missing);
+  }
+  saveFlow(meta.id, {
+    seen,
+    queue,
+    cursor,
+    events: rec.events.concat([{ type: "read", id, sec, at: Date.now() }])
+  });
+  if (streak) triggerFlow(meta.id, "streak", { chunkId: meta.id });
+}
+
+function answerFlowQuestion(meta, question, choice) {
+  if (!question) return;
+  if (question.kind === "kaokao") {
+    const item = kaokaoItemById(question.id);
+    if (!item || latestKaokaoTry(item.id, "recog")) return;
+    const index = Number(choice);
+    if (!Number.isInteger(index)) return;
+    const shown = flowShown.key === `${meta.id}:${item.id}` ? flowShown.at : Date.now();
+    const ok = index === Number(item.recog.answer);
+    recordKaokaoTry(item, {
+      at: shanghaiIso(),
+      level: "recog",
+      choice: index,
+      ok,
+      ms: Math.max(0, Date.now() - shown)
+    });
+    appendFlowEvent(meta.id, { type: "answer", id: item.id, ok, at: Date.now() });
+    if (!ok) triggerFlow(meta.id, "wrong", { id: item.id, chunkId: meta.id });
+    return;
+  }
+  const exam = app.derived.questionById.get(question.id);
+  if (!exam || latestTry(exam.id)) return;
+  const ok = compareAnswer(choice, exam.answer, exam.type);
+  submitAnswer(exam, choice);
+  appendFlowEvent(meta.id, { type: "answer", id: exam.id, ok, at: Date.now() });
+  if (!ok) triggerFlow(meta.id, "wrong", { id: exam.id, chunkId: meta.id });
+}
+
+function flowQaContext(meta, blocks) {
+  const usable = (blocks || []).filter((block) => Number.isFinite(Number(block.page)));
+  if (!usable.length) return null;
+  const primary = usable.find((block) => block.kind === "figure") || usable[0];
+  const context = usable.map((block) => {
+    const kind = block.kind || "para";
+    const text = kind === "figure"
+      ? (markdownPlain(block.md) || "图片（无图题）")
+      : markdownPlain(String(block.md || "").replace(/<\/t[dh]>/gi, " | ").replace(/<\/tr>/gi, "\n"));
+    return { anchor: `${meta.book}:p${block.page}:b${block.id}`, kind, text };
+  }).filter((part) => part.text);
+  if (!context.length) return null;
+  return {
+    unit: meta.unit,
+    chunkId: meta.id,
+    blockId: String(primary.id),
+    book: meta.book,
+    context,
+    label: `${bookName(meta.book)} · ${meta.title || meta.id} · 原文第 ${primary.printed ?? primary.page} 页`
+  };
+}
+
+function mountFlowQa(slot, meta, blocks) {
+  if (!qaApi || !slot) return null;
+  const context = flowQaContext(meta, blocks);
+  if (!context) return null;
+  const signature = `${qaApi.contextKey(context)}\n${qaDirectSignature()}`;
+  if (flowQa && flowQa.signature === signature && flowQa.handle) {
+    slot.replaceWith(flowQa.root);
+    flowQa.handle.refresh();
+    return flowQa.handle;
+  }
+  if (flowQa && flowQa.handle) flowQa.handle.destroy();
+  const root = document.createElement("div");
+  slot.replaceWith(root);
+  const blockId = context.blockId;
+  const id = doubtKey(meta.id, blockId);
+  const cfg = loadDirectConfig();
+  const raw = qaApi.createDirectClient({
+    provider: cfg.provider,
+    model: cfg.model,
+    baseUrl: cfg.baseUrl,
+    getApiKey: () => loadDirectConfig().apiKey,
+    getImages: qaImagesFor
+  });
+  const limited = limitClient(raw, () => qaTodayTurnCount() <= loadDirectConfig().dailyLimit);
+  const client = {
+    get configured() { return limited.configured; },
+    answer(request, options) {
+      return Promise.resolve(limited.answer(request, options)).then((response) => {
+        const text = redactFlowText(request && request.question || "");
+        appendFlowEvent(meta.id, { type: "ask", text, at: Date.now() });
+        triggerFlow(meta.id, "ask", { text, chunkId: meta.id });
+        return response;
+      });
+    }
+  };
+  const handle = qaApi.mountPanel({
+    root,
+    context,
+    getRecord: () => app.state.doubts && app.state.doubts[id],
+    saveRecord(update) {
+      const latest = app.state.doubts && app.state.doubts[id];
+      if (latest && latest.removed) return latest;
+      const next = typeof update === "function" ? update(latest) : update;
+      if (!next || next === latest) return latest || null;
+      const value = { ...next, chunk: meta.id, block: blockId, unit: meta.unit };
+      if (!value.at) value.at = shanghaiIso();
+      store.save(`doubts/${id}`, value, { silent: true, keepUpdatedAt: true, requirePersistence: true });
+      return app.state.doubts[id];
+    },
+    client
+  });
+  flowQa = { handle, root, signature };
+  return handle;
+}
+
+function figureFiles(block) {
+  const files = [];
+  const re = /!\[[^\]]*\]\(<([^>]+)>\)|!\[[^\]]*\]\(([^)]+)\)/g;
+  let match;
+  const md = String(block && block.md || "");
+  while ((match = re.exec(md))) {
+    const file = imageFileName(match[1] || match[2]);
+    if (file) files.push(file);
+  }
+  return files;
+}
+
+function qaFigureFiles(request) {
+  const body = app.study.bodies && app.study.bodies[request && request.chunkId];
+  const blocks = body && Array.isArray(body.blocks) ? body.blocks : [];
+  const asked = blocks.find((block) => String(block.id) === String(request && request.blockId));
+  const page = asked ? asked.page : undefined;
+  const files = [];
+  const seen = new Set();
+  const add = (block) => {
+    if (!block || block.kind !== "figure") return;
+    for (const file of figureFiles(block)) {
+      if (seen.has(file)) continue;
+      seen.add(file);
+      files.push(file);
+    }
+  };
+  if (asked && asked.kind === "figure") add(asked);
+  for (const block of blocks) {
+    if (page != null && block.page === page) add(block);
+  }
+  return files.slice(0, 2);
+}
+
+async function blobToJpeg(blob) {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const edge = Math.max(bitmap.width, bitmap.height) || 1;
+    const scale = Math.min(1, 1280 / edge);
+    const width = Math.max(1, Math.round(bitmap.width * scale));
+    const height = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const out = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
+    if (!out) return null;
+    const bytes = new Uint8Array(await out.arrayBuffer());
+    let binary = "";
+    const size = 0x8000;
+    for (let i = 0; i < bytes.length; i += size) binary += String.fromCharCode(...bytes.subarray(i, i + size));
+    return { mediaType: "image/jpeg", base64: btoa(binary) };
+  } finally {
+    if (bitmap.close) bitmap.close();
+  }
+}
+
+async function qaImagesFor(request) {
+  const files = qaFigureFiles(request);
+  const images = [];
+  for (const file of files) {
+    try {
+      let url = app.study.imageUrls[file];
+      if (!url) url = await loadStudyBlobUrl(`教材/图片/${file}`, file);
+      const res = await fetch(url);
+      if (!res.ok) continue;
+      const image = await blobToJpeg(await res.blob());
+      if (image) images.push(image);
+    } catch (_) {}
+  }
+  return { expected: files.length, images: images.slice(0, 2) };
+}
+
+function flowBodyStatus(meta) {
+  kickChunkBody(meta);
+  kickKaokao(meta.unit);
+  kickKatex();
+  const body = app.study.bodies[meta.id];
+  const bodyState = app.study.bodyState[meta.id];
+  if (!body) return bodyState === "missing" || bodyState === "error" ? "missing" : "loading";
+  const kaokaoState = app.study.kaokaoState[meta.unit];
+  if (!app.study.kaokao[meta.unit] && kaokaoState !== "missing" && kaokaoState !== "error" && kaokaoState !== "ready") return "loading";
+  return "ready";
+}
+
+function renderFlowPage() {
+  const root = document.getElementById("page-flow");
+  if (!root || app.ui.tab !== "flow") return;
+  const chunkId = app.ui.routeChunkId || "";
+  const leave = () => {
+    if ((location.hash || "") !== "#today") location.hash = "#today";
+    else render();
+  };
+  if (!flowModules) {
+    root.replaceChildren();
+    const note = document.createElement("p");
+    note.className = "flow-stem";
+    note.textContent = "正在准备学习流…";
+    const exit = document.createElement("button");
+    exit.type = "button";
+    exit.id = "flow-exit";
+    exit.textContent = "退出";
+    exit.addEventListener("click", leave);
+    root.append(note, exit);
+    loadFlowModules();
+    return;
+  }
+  const meta = ensureChunkMeta(chunkId);
+  if (!meta) {
+    flowModules.view.renderFlow(root, {
+      chunkId,
+      status: chunkLookupSettled() ? "missing" : "loading",
+      message: chunkLookupSettled() ? "没有这一块。" : "正在读取目录…",
+      onExit: leave
+    });
+    return;
+  }
+  const readiness = flowBodyStatus(meta);
+  if (readiness !== "ready") {
+    flowModules.view.renderFlow(root, {
+      chunkId: meta.id,
+      status: readiness,
+      message: "这一块的原文暂时没读到。",
+      onExit: leave
+    });
+    return;
+  }
+  const catalog = flowCatalog(meta);
+  const rec = prepareFlowQueue(meta, catalog);
+  const total = rec.queue.length;
+  const finished = !!(catalog && flowModules.pages.flowFinished(catalog.pages, rec.seen, rec.queue, rec.cursor));
+  const currentId = finished ? "" : (rec.queue[rec.cursor] || "");
+  const pageById = new Map((catalog ? catalog.pages : []).map((page) => [page.id, page]));
+  const questionById = new Map((catalog ? catalog.questions : []).map((question) => [question.id, question]));
+  const page = pageById.get(currentId) || null;
+  const question = questionById.get(currentId) || null;
+  const mode = finished ? "done" : (question ? "question" : "read");
+  const itemId = finished ? "done" : currentId;
+  const shownKey = `${meta.id}:${itemId}`;
+  if (flowShown.key !== shownKey) flowShown = { key: shownKey, at: Date.now() };
+  const sourcePage = question && question.pageId ? pageById.get(question.pageId) : null;
+  const readBlocks = page ? blocksForPage(catalog, page) : [];
+  const qaBlocks = mode === "question" && sourcePage ? blocksForPage(catalog, sourcePage) : readBlocks;
+  const questionView = question ? flowQuestionView(meta, question) : null;
+  const nextChunk = flowNextChunk(meta);
+  const activeNotes = flowNotes().filter((note) => note && !note.removed && note.text);
+  flowModules.view.renderFlow(root, {
+    chunkId: meta.id,
+    status: "ready",
+    mode,
+    itemId,
+    cursor: finished ? total : Math.min(total, rec.cursor + 1),
+    total,
+    reason: rec.reason,
+    rule: rec.rule,
+    html: mode === "read" ? flowPageHtml(readBlocks) : "",
+    sources: page ? flowPageSources(meta, page.id, catalog.questions) : [],
+    figure: !!(page && page.kind === "figure"),
+    question: questionView,
+    peekHtml: sourcePage ? flowPageHtml(blocksForPage(catalog, sourcePage)) : "",
+    correct: flowCorrect(rec.queue, catalog ? catalog.questions : []),
+    nextId: nextChunk ? nextChunk.id : "",
+    nextTitle: nextChunk ? (nextChunk.title || nextChunk.id) : "",
+    decisions: rec.events.filter((event) => event && event.type === "decide" && event.text).slice(-8),
+    notes: activeNotes,
+    onExit: leave,
+    onOpen: (id) => openFlow(id),
+    onNext: ({ sec, streak }) => flowAdvance(meta, sec, streak),
+    onAnswer: (choice) => answerFlowQuestion(meta, question, choice),
+    onDeleteNote(id) {
+      const note = app.state.agentNotes && app.state.agentNotes[id];
+      if (!note) return;
+      store.save(`agentNotes/${id}`, { ...note, removed: true });
+    },
+    refresh: () => render(),
+    mountQa: (slot) => mountFlowQa(slot, meta, qaBlocks)
+  });
+  if (mode !== "done") maybeOpenFlow(meta.id);
+  if (mode === "done" && !chunkDone(meta.id)) completeLearnChunk(meta);
+}
+
 function renderNav() {
   const tab = app.ui.tab;
   document.querySelectorAll("[data-tab-link]").forEach((link) => {
@@ -8060,7 +8935,7 @@ function renderNav() {
 
 function renderPages() {
   const tab = app.ui.tab;
-  VALID_TABS.concat(["learn"]).forEach((name) => {
+  VALID_TABS.concat(["learn", "flow"]).forEach((name) => {
     const el = document.getElementById(`page-${name}`);
     if (el) el.hidden = tab !== name;
   });
@@ -8072,6 +8947,7 @@ function render() {
   app.ui.routeChunkId = route.chunkId;
   syncReturnTo(route);
   document.body.classList.toggle("is-learn", route.tab === "learn");
+  document.body.classList.toggle("is-flow", route.tab === "flow");
   renderPages();
   renderNav();
   renderSettings();
@@ -8083,6 +8959,7 @@ function render() {
     renderSyncStatus();
     renderToday(today, { phase: "pre", week: null, weekLabel: "加载中", units: [] });
     renderLearn();
+    renderFlowPage();
     return;
   }
   if (shouldActivateSkeletons(hasToken(), app.sync.initialPullSettled)) {
@@ -8097,12 +8974,13 @@ function render() {
   renderWeek(today, weekCtx);
   renderPlan(today, weekCtx);
   renderLearn();
+  renderFlowPage();
 }
 
 function knownHash(hash) {
   let key = String(hash || "").replace(/^#/, "");
   try { key = decodeURIComponent(key); } catch (_) {}
-  return VALID_TABS.includes(key) || key.startsWith("learn-");
+  return VALID_TABS.includes(key) || key.startsWith("learn-") || key.startsWith("flow-");
 }
 
 function wireRouting() {
@@ -8135,6 +9013,7 @@ async function boot() {
   loadSyncMeta();
   loadStateFromLocal();
   loadQaModule();
+  loadFlowModules();
   app.sync.initialPullSettled = !hasToken();
   app.sync.phase = hasToken() ? "syncing" : "disconnected";
   if (!knownHash(location.hash)) {
