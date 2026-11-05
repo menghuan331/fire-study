@@ -9,7 +9,7 @@ const messages = {
   TIMEOUT: '等待回答超时。问题已保留，可以重试同一个问题。',
   UNAVAILABLE: '答疑服务暂时不可用，请稍后重试。',
   NETWORK_ERROR: '网络连接中断，或答疑服务暂时无法连接。问题已保留，请稍后重试。',
-  INVALID_RESPONSE: '答疑服务返回的内容无法验证，请重试。',
+  INVALID_RESPONSE: '模型这次没返回能用的内容，问题已保留，可以再试一次。',
   INVALID_CITATION: '回答的教材引用未通过核对，未将它作为有效回答保存。请重试。',
   INVALID_REQUEST: '问题或教材上下文不符合要求，请检查后重新提问。',
   CONTEXT_CHANGED: '教材片段已经变化。请把问题带入输入框，按当前片段重新提问。',

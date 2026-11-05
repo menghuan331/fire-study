@@ -1389,8 +1389,7 @@ body.has-learn-return .learn-bar {
   padding: 0;
 }
 
-.doubt-jump-list .text-link,
-.today-doubt-jump .text-link {
+.doubt-jump-list .text-link {
   display: inline-flex;
   align-items: center;
   min-height: 44px;
@@ -1401,14 +1400,6 @@ body.has-learn-return .learn-bar {
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
-}
-
-.today-doubt-jump {
-  margin: 8px 0 0;
-}
-
-.today-doubt-jump .text-link {
-  color: var(--warn);
 }
 
 .read-table-wrap {
@@ -2624,7 +2615,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-02.1";
+const APP_VERSION = "2026-11-05.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -6420,28 +6411,6 @@ function quizStepHtml(meta) {
   `;
 }
 
-function pendingDoubtAnswers() {
-  const list = [];
-  for (const [id, rec] of Object.entries((app.state && app.state.doubts) || {})) {
-    if (!rec || rec.removed || rec.resolved || !rec.answer) continue;
-    if (!rec.answer.text && !rec.answer.quote) continue;
-    list.push({ id, ...rec });
-  }
-  list.sort((a, b) => (Number(a.updatedAt) || 0) - (Number(b.updatedAt) || 0));
-  return list;
-}
-
-function openDoubtAnswer(rec) {
-  if (!rec || !rec.chunk) return;
-  app.ui.kaokaoFocus = {
-    chunkId: rec.chunk,
-    blockId: rec.block,
-    src: ""
-  };
-  writeLearnMemory(rec.chunk, "read");
-  openLearn(rec.chunk);
-}
-
 function chunkDoubtItems(chunkId) {
   const list = [];
   for (const [id, rec] of Object.entries((app.state && app.state.doubts) || {})) {
@@ -6913,7 +6882,6 @@ function renderToday(today, weekCtx) {
   } else if (review.done) {
     foot = `<p class="today-foot" id="today-complete">复习完成，今天也算完成。时间够的话学一块。</p>`;
   }
-  const pendingDoubts = pendingDoubtAnswers();
   let reviewBody = "";
   if (review.remaining > 0) {
     const eta = Math.round(review.remaining * 0.6);
@@ -6971,7 +6939,6 @@ function renderToday(today, weekCtx) {
       <article class="today-task">
         <h2 class="today-kicker">① 复习</h2>
         ${reviewBody}
-        ${pendingDoubts.length ? `<p class="today-doubt-jump"><button id="today-doubt-answer" class="text-link tap-target" type="button">有 ${pendingDoubts.length} 条解答待看</button></p>` : ""}
       </article>
       <article class="today-task" id="today-chunk-card">
         <h2 class="today-kicker">② 今天这一块</h2>
@@ -6989,10 +6956,6 @@ function renderToday(today, weekCtx) {
   }
   const reviewBtn = document.getElementById("today-go-review");
   if (reviewBtn) reviewBtn.addEventListener("click", () => navigateTo("review"));
-  const doubtBtn = document.getElementById("today-doubt-answer");
-  if (doubtBtn && pendingDoubts[0]) {
-    doubtBtn.addEventListener("click", () => openDoubtAnswer(pendingDoubts[0]));
-  }
   const settingsBtn = document.getElementById("today-go-settings");
   if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
   const startBtn = document.getElementById("today-start-learn");

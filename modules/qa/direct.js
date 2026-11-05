@@ -15,6 +15,7 @@ export const SYSTEM_PROMPT = `你是注册消防工程师备考的讲解老师�
 
 只输出一个 JSON 对象，不要输出其他文字：
 {"status":"answered 或 insufficient_context","text":"讲解正文","basis":"教材 或 推理","quotes":[{"anchor":"原文片段里的 anchor","text":"逐字摘抄"}],"followUp":"可选，一句建议他接着想的问题"}
+text 里不要用英文双引号，要引用就用「」。
 basis 规则：主要靠原文就填“教材”，用到了教材以外的道理就填“推理”。`;
 
 const PROVIDERS = new Set(['deepseek', 'dashscope', 'anthropic', 'openai-compatible']);
@@ -63,14 +64,14 @@ function openaiBody(model, messages, jsonMode) {
     model,
     messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
     temperature: 0.3,
-    max_tokens: 1200
+    max_tokens: 2000
   };
   if (jsonMode) body.response_format = { type: 'json_object' };
   return body;
 }
 
 function anthropicBody(model, messages) {
-  return { model, system: SYSTEM_PROMPT, messages, max_tokens: 1200, temperature: 0.3 };
+  return { model, system: SYSTEM_PROMPT, messages, max_tokens: 2000, temperature: 0.3 };
 }
 
 function headersFor(style, key) {
@@ -132,6 +133,13 @@ function fallbackQuote(request) {
   return { anchor: part.anchor, text };
 }
 
+function quoteOnly(parsed) {
+  return !!parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    && typeof parsed.anchor === 'string'
+    && parsed.status === undefined && parsed.basis === undefined && parsed.followUp === undefined
+    && !Array.isArray(parsed.quotes);
+}
+
 function firstJsonObject(source) {
   for (let start = 0; start < source.length; start += 1) {
     if (source[start] !== '{') continue;
@@ -151,8 +159,12 @@ function firstJsonObject(source) {
       else if (ch === '}') {
         depth -= 1;
         if (depth === 0) {
-          try { return JSON.parse(source.slice(start, index + 1)); }
-          catch { break; }
+          try {
+            const parsed = JSON.parse(source.slice(start, index + 1));
+            // A broken answer can still contain a complete quote object. That is not the answer.
+            if (!quoteOnly(parsed)) return parsed;
+          } catch { /* try a later brace */ }
+          break;
         }
       }
     }
@@ -160,15 +172,136 @@ function firstJsonObject(source) {
   return null;
 }
 
+const KNOWN_FIELDS = ['status', 'text', 'basis', 'quotes', 'followUp'];
+
+function unescapeLoose(value) {
+  let out = '';
+  for (let index = 0; index < value.length; index += 1) {
+    if (value[index] !== '\\') {
+      out += value[index];
+      continue;
+    }
+    const next = value[index + 1];
+    if (next === 'n') { out += '\n'; index += 1; continue; }
+    if (next === '"') { out += '"'; index += 1; continue; }
+    if (next === '\\') { out += '\\'; index += 1; continue; }
+    out += '\\';
+  }
+  return out;
+}
+
+function trimLooseTail(raw) {
+  let end = raw.length;
+  while (end > 0 && /\s/.test(raw[end - 1])) end -= 1;
+  while (end > 0 && (raw[end - 1] === '}' || raw[end - 1] === ']')) {
+    end -= 1;
+    while (end > 0 && /\s/.test(raw[end - 1])) end -= 1;
+  }
+  if (end > 0 && raw[end - 1] === '"' && (end === 1 || raw[end - 2] !== '\\')) end -= 1;
+  return raw.slice(0, end);
+}
+
+function isTopLevelKey(source, index) {
+  let depth = 0;
+  let bracket = 0;
+  let inside = false;
+  let escaped = false;
+  for (let cursor = 0; cursor < index; cursor += 1) {
+    const ch = source[cursor];
+    if (inside) {
+      if (escaped) escaped = false;
+      else if (ch === '\\') escaped = true;
+      else if (ch === '"') inside = false;
+      continue;
+    }
+    if (ch === '"') { inside = true; continue; }
+    if (ch === '{') depth += 1;
+    else if (ch === '}') depth = depth > 0 ? depth - 1 : 0;
+    else if (ch === '[') bracket += 1;
+    else if (ch === ']') bracket = bracket > 0 ? bracket - 1 : 0;
+  }
+  return !inside && depth === 1 && bracket === 0;
+}
+
+function nextFieldCut(rest) {
+  const boundary = /"\s*,\s*"/g;
+  const complete = /^(?:status|text|basis|quotes|followUp)"\s*:/;
+  for (let match = boundary.exec(rest); match; match = boundary.exec(rest)) {
+    const after = rest.slice(match.index + match[0].length);
+    if (complete.test(after)) return match.index;
+    const ident = /^[A-Za-z]*/.exec(after)[0];
+    if (!ident || !KNOWN_FIELDS.some(field => field.startsWith(ident))) continue;
+    const tail = after.slice(ident.length);
+    // Truncation fell inside the next field name. Keep the string, drop the JSON tail.
+    if (/^[\s,:"'}\]]*$/.test(tail)) return match.index;
+  }
+  return -1;
+}
+
+function looseStringField(source, field) {
+  const key = new RegExp(`"${field}"\\s*:\\s*"`, 'g');
+  const topLevelOnly = field === 'text';
+  for (let match = key.exec(source); match; match = key.exec(source)) {
+    if (topLevelOnly && !isTopLevelKey(source, match.index)) continue;
+    const rest = source.slice(match.index + match[0].length);
+    const cut = nextFieldCut(rest);
+    const raw = cut >= 0 ? rest.slice(0, cut) : trimLooseTail(rest);
+    return unescapeLoose(raw);
+  }
+  return '';
+}
+
+function looseStatus(source) {
+  const match = /"status"\s*:\s*"(answered|insufficient_context)"/.exec(source);
+  return match ? match[1] : '';
+}
+
+function looseObject(source) {
+  const text = looseStringField(source, 'text').trim();
+  if (!text) return null;
+  const parsed = { text };
+  const status = looseStatus(source);
+  if (status) parsed.status = status;
+  const followUp = looseStringField(source, 'followUp').trim();
+  if (followUp) parsed.followUp = followUp;
+  return parsed;
+}
+
+function plainBody(source) {
+  return String(source || '').replace(/```[a-zA-Z0-9_-]*[ \t]*\n?/g, '').trim();
+}
+
+function looksLikeJson(source) {
+  const text = plainBody(source);
+  return text.startsWith('{') || text.startsWith('[');
+}
+
+function hasJsonFragment(source) {
+  const text = plainBody(source);
+  return /\{\s*"/.test(text) || /\[\s*[{\["]/.test(text);
+}
+
+function stripThink(source) {
+  return String(source || '').replace(/<think>[\s\S]*?<\/think>/gi, '');
+}
+
 function extractJsonObject(text) {
-  const source = String(text || '');
+  const source = stripThink(text);
   const chunks = [];
   const fence = /```(?:json)?\s*([\s\S]*?)```/gi;
   for (let match = fence.exec(source); match; match = fence.exec(source)) chunks.push(match[1]);
   chunks.push(source);
   for (const chunk of chunks) {
     const parsed = firstJsonObject(chunk);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return { parsed, recovered: false };
+  }
+  for (const chunk of chunks) {
+    const parsed = looseObject(chunk);
+    if (parsed) return { parsed, recovered: true };
+  }
+  const body = plainBody(source);
+  if (body && !looksLikeJson(body) && !hasJsonFragment(body)) {
+    return { parsed: { status: 'answered', text: body }, recovered: true };
   }
   throw new QaError('INVALID_RESPONSE');
 }
@@ -186,27 +319,68 @@ function modelOutput(style, data) {
   return content.map(part => typeof part === 'string' ? part : typeof part?.text === 'string' ? part.text : '').join('');
 }
 
-function assemble(request, parsed, provider, model, clock, key) {
+function textFrom(value) {
+  if (typeof value === 'string') return value.trim() ? { text: value, coerced: false } : null;
+  if (typeof value === 'number' && Number.isFinite(value)) return { text: String(value), coerced: true };
+  if (typeof value === 'boolean') return { text: value ? 'true' : 'false', coerced: true };
+  if (Array.isArray(value)) {
+    const parts = value.map(item => textFrom(item)?.text.trim()).filter(Boolean);
+    return parts.length ? { text: parts.join('\n'), coerced: true } : null;
+  }
+  if (value && typeof value === 'object') {
+    if (Object.prototype.hasOwnProperty.call(value, 'text')) {
+      const nested = textFrom(value.text);
+      return nested ? { text: nested.text, coerced: true } : null;
+    }
+    try {
+      const json = JSON.stringify(value);
+      if (json && json !== '{}' && json !== '[]') return { text: json, coerced: true };
+    } catch { /* not serializable */ }
+  }
+  return null;
+}
+
+function quoteAttemptCount(quotes) {
+  if (!Array.isArray(quotes)) return 0;
+  let count = 0;
+  for (const quote of quotes) {
+    if (quote && typeof quote.anchor === 'string' && typeof quote.text === 'string' && quote.text.trim()) count += 1;
+  }
+  return count;
+}
+
+function assemble(request, parsed, provider, model, clock, key, recovered = false) {
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new QaError('INVALID_RESPONSE');
-  const status = parsed.status;
-  if (status !== 'answered' && status !== 'insufficient_context') throw new QaError('INVALID_RESPONSE');
+  const rawStatus = parsed.status;
+  const status = rawStatus === 'answered' || rawStatus === 'insufficient_context' ? rawStatus : 'answered';
+  const converted = textFrom(parsed.text);
+  if (!converted) throw new QaError('INVALID_RESPONSE');
   let quotes = verifiedQuotes(request, parsed.quotes);
+  // One citation that misses the source is enough: drop it and mark the answer unverified.
+  const quotesFailed = quoteAttemptCount(parsed.quotes) > quotes.length;
+  let usedFallback = false;
   if (status === 'answered' && quotes.length === 0) {
     const fallback = fallbackQuote(request);
-    if (fallback) quotes = [fallback];
+    if (fallback) {
+      quotes = [fallback];
+      usedFallback = true;
+    }
   }
+  const unverified = !!(recovered || status !== rawStatus || converted.coerced || quotesFailed || usedFallback);
   const response = {
     v: 1,
     requestId: request.requestId,
     threadId: request.threadId,
     status,
     answer: {
-      text: typeof parsed.text === 'string' ? parsed.text : '',
-      // Models sometimes drift from the two labels; anything else is treated as reasoning.
-      basis: parsed.basis === '教材' ? '教材' : '推理',
+      text: converted.text,
+      // Unverified text is labeled 推理. Otherwise only the exact label 教材 counts as textbook basis.
+      basis: unverified ? '推理' : (parsed.basis === '教材' ? '教材' : '推理'),
       by: `${provider}/${model}`,
       at: new Date(clock()).toISOString(),
-      quotes
+      quotes,
+      ...(unverified ? { unverified: true } : {}),
+      ...(usedFallback ? { fallbackQuote: true } : {})
     }
   };
   if (typeof parsed.followUp === 'string' && parsed.followUp.trim()) response.followUp = parsed.followUp;
@@ -353,7 +527,8 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
           if (BALANCE.test(raw)) throw new QaError('NO_BALANCE', undefined, { status });
           throw new QaError('INVALID_RESPONSE');
         }
-        return assemble(payload, extractJsonObject(text), name, modelName, now, key);
+        const extracted = extractJsonObject(text);
+        return assemble(payload, extracted.parsed, name, modelName, now, key, extracted.recovered);
       })();
 
       const promise = Promise.race([operation, canceled]).finally(() => {

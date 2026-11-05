@@ -73,7 +73,8 @@ export function validateResponse(request, response) {
     || !['教材', '推理'].includes(answer.basis) || typeof answer.by !== 'string' || !answer.by.trim()
     || typeof answer.at !== 'string' || !/^\d{4}-\d\d-\d\dT/.test(answer.at)
     || !Number.isFinite(Date.parse(answer.at)) || !Array.isArray(answer.quotes)
-    || (response.followUp !== undefined && typeof response.followUp !== 'string')) fail('INVALID_RESPONSE');
+    || (response.followUp !== undefined && typeof response.followUp !== 'string')
+    || (own(answer, 'unverified') && typeof answer.unverified !== 'boolean')) fail('INVALID_RESPONSE');
   if (response.status === 'answered' && answer.quotes.length === 0) fail('INVALID_CITATION');
   for (const quote of answer.quotes) {
     const original = request.context.find(part => part.anchor === quote?.anchor);
