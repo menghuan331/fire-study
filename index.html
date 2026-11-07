@@ -12,7 +12,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#c4271d">
 <style>
-@import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+SC:wght@600&display=swap");
 
 :root {
   --bg: #eef0f2;
@@ -32,9 +31,9 @@
   --fg: #1d2329;
   --muted: #56606b;
   --rx-n: #3d4148;
-  --font-display: "Noto Serif SC", "Songti SC", serif;
+  --font-display: "Iowan Old Style", "Songti SC", serif;
   --font-body: -apple-system, "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
   --r: 6px;
 }
 
@@ -1638,34 +1637,23 @@ body.is-learn .app-shell {
 <body>
 <div class="app-shell">
   <div class="main-layout">
-    <nav id="tab-nav" class="nav" aria-label="主导航">
-      <a href="#today" data-tab-link="today">今日</a>
-      <a href="#practice" data-tab-link="practice">做题</a>
-      <a href="#review" data-tab-link="review">复习</a>
-      <a href="#map" data-tab-link="map">地图</a>
-      <a href="#week" data-tab-link="week">本周</a>
-      <a href="#plan" data-tab-link="plan">排程</a>
-    </nav>
-
     <div class="main-column">
-      <header class="status-bar">
-        <div id="status-left" class="status-left">消考学习台</div>
-        <div id="status-center" class="status-center">加载中</div>
-        <div id="status-right" class="status-right">
-          <button id="sync-status" class="sync-status" type="button">未连接 GitHub</button>
-          <span id="exam-countdown">距考试 <span class="mono">--</span> 天</span>
-        </div>
-      </header>
-
+      <dialog id="flow-menu" class="flow-menu" aria-label="菜单">
+        <button id="flow-menu-close" class="flow-ask" type="button">关闭</button>
+        <a href="#practice">错题和做过的题</a>
+        <a href="#map">地图</a>
+        <a href="#week">本周</a>
+        <a href="#plan">排程</a>
+        <a href="#settings">设置</a>
+        <p class="flow-menu-status"><button id="sync-status" class="sync-status" type="button">未连接 GitHub</button> · <span id="exam-countdown">距考试 -- 天</span></p>
+      </dialog>
       <main class="content-wrap">
-        <section id="page-today" class="page"></section>
+        <button id="flow-return" class="flow-ask" type="button" hidden>返回</button>
         <section id="page-practice" class="page" hidden></section>
-        <section id="page-review" class="page" hidden></section>
         <section id="page-map" class="page" hidden></section>
         <section id="page-week" class="page" hidden></section>
         <section id="page-plan" class="page" hidden></section>
         <section id="page-settings" class="page" hidden></section>
-        <section id="page-learn" class="page" hidden></section>
         <section id="page-flow" class="page" hidden></section>
       </main>
     </div>
@@ -2678,7 +2666,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-05.2";
+const APP_VERSION = "2026-11-07.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -2799,7 +2787,7 @@ const EXAM_DATE = "2027-11-08"; // 按往年 11 月初估计，出公告后改
 const STORAGE_KEY = "study-state-cache-v1";
 const GITHUB_CONFIG_KEY = "study-github-config";
 const SYNC_META_KEY = "study-github-sync";
-const NAV_TABS = ["today", "practice", "review", "map", "week", "plan"];
+const NAV_TABS = ["practice", "map", "week", "plan"];
 const VALID_TABS = NAV_TABS.concat(["settings"]);
 const DEFAULT_GITHUB = { owner: "menghuan331", repo: "fire-engineer-study", branch: "main" };
 const BOOK_NAMES = {
@@ -3247,16 +3235,14 @@ function saveGithubConfig(cfg) {
 }
 
 function loadDirectConfig() {
-  const empty = { provider: "", model: "", baseUrl: "", apiKey: "", dailyLimit: 30 };
+  const empty = { provider: "", model: "", baseUrl: "", apiKey: "" };
   try {
     const parsed = JSON.parse(localStorage.getItem(QA_DIRECT_KEY) || "{}");
     const provider = QA_DIRECT_PROVIDERS.some(([id]) => id === parsed.provider) ? parsed.provider : "";
     const model = typeof parsed.model === "string" ? parsed.model : "";
     const baseUrl = typeof parsed.baseUrl === "string" ? parsed.baseUrl : "";
     const apiKey = typeof parsed.apiKey === "string" ? parsed.apiKey : "";
-    const limit = Number(parsed.dailyLimit);
-    const dailyLimit = Number.isInteger(limit) && limit >= 1 && limit <= 200 ? limit : 30;
-    return { provider, model, baseUrl, apiKey, dailyLimit };
+    return { provider, model, baseUrl, apiKey };
   } catch (_) { return empty; }
 }
 
@@ -3266,17 +3252,11 @@ function readQaDirectDraft() {
   const modelEl = document.getElementById("qa-model");
   const baseEl = document.getElementById("qa-base-url");
   const keyEl = document.getElementById("qa-api-key");
-  const limitEl = document.getElementById("qa-daily-limit");
   const provider = providerEl ? providerEl.value : saved.provider;
   const model = modelEl ? modelEl.value.trim() : saved.model;
   const baseUrl = baseEl ? baseEl.value.trim() : saved.baseUrl;
   const typedKey = keyEl ? keyEl.value.trim() : "";
-  let dailyLimit = saved.dailyLimit;
-  if (limitEl && limitEl.value.trim()) {
-    const parsed = Number(limitEl.value.trim());
-    dailyLimit = Number.isInteger(parsed) ? parsed : NaN;
-  }
-  return { provider, model, baseUrl, apiKey: typedKey || saved.apiKey, dailyLimit };
+  return { provider, model, baseUrl, apiKey: typedKey || saved.apiKey };
 }
 
 function qaBaseUrlProblem(baseUrl) {
@@ -3291,7 +3271,7 @@ function qaBaseUrlProblem(baseUrl) {
   return "";
 }
 
-function qaDirectProblem(draft, { requireLimit = true } = {}) {
+function qaDirectProblem(draft) {
   if (!QA_DIRECT_PROVIDERS.some(([id]) => id === draft.provider)) return "请选择厂商。";
   if (!draft.model) return "请填写模型名。";
   if (draft.provider === "openai-compatible") {
@@ -3300,9 +3280,6 @@ function qaDirectProblem(draft, { requireLimit = true } = {}) {
   }
   if (!draft.apiKey) return "请填写钥匙。";
   if (/^(gh[pousr]_|github_pat_)/i.test(draft.apiKey)) return "这里需要答疑专用凭证，不能使用 GitHub 同步令牌。";
-  if (requireLimit && (!Number.isInteger(draft.dailyLimit) || draft.dailyLimit < 1 || draft.dailyLimit > 200)) {
-    return "每天最多提问次数要在 1 到 200 之间。";
-  }
   return "";
 }
 
@@ -3311,35 +3288,6 @@ function shanghaiCalendarDay(ms) {
   return parts.y && parts.m && parts.d ? `${parts.y}-${parts.m}-${parts.d}` : "";
 }
 
-function qaTodayTurnCount() {
-  const today = shanghaiCalendarDay(Date.now());
-  if (!today || !app.state || !app.state.doubts) return 0;
-  let count = 0;
-  for (const rec of Object.values(app.state.doubts)) {
-    const turns = rec && rec.qa && rec.qa.turns;
-    if (!turns || typeof turns !== "object") continue;
-    for (const turn of Object.values(turns)) {
-      const created = Number(turn && turn.createdAt);
-      if (!Number.isFinite(created)) continue;
-      if (shanghaiCalendarDay(created) === today) count += 1;
-    }
-  }
-  return count;
-}
-
-function limitClient(client, allowed) {
-  return {
-    get configured() { return client.configured; },
-    answer(request, options) {
-      try {
-        if (!allowed(request)) return Promise.reject(new qaApi.QaError("DAILY_LIMIT"));
-      } catch (error) {
-        return Promise.reject(error);
-      }
-      return client.answer(request, options);
-    }
-  };
-}
 
 function directPingRequest() {
   const requestId = globalThis.crypto && typeof crypto.randomUUID === "function"
@@ -3376,8 +3324,7 @@ function saveQaDirectSettings(event) {
     provider: draft.provider,
     model: draft.model,
     baseUrl: draft.baseUrl,
-    apiKey: draft.apiKey,
-    dailyLimit: draft.dailyLimit
+    apiKey: draft.apiKey
   };
   try { localStorage.setItem(QA_DIRECT_KEY, JSON.stringify(next)); }
   catch (_) {
@@ -3394,7 +3341,7 @@ function saveQaDirectSettings(event) {
 
 function clearQaDirectKey() {
   const cfg = loadDirectConfig();
-  const next = { provider: cfg.provider, model: cfg.model, baseUrl: cfg.baseUrl, apiKey: "", dailyLimit: cfg.dailyLimit };
+  const next = { provider: cfg.provider, model: cfg.model, baseUrl: cfg.baseUrl, apiKey: "" };
   try { localStorage.setItem(QA_DIRECT_KEY, JSON.stringify(next)); }
   catch (_) {
     const message = document.getElementById("qa-settings-message");
@@ -3496,8 +3443,6 @@ function qaSettingsHtml() {
       <div class="field"><label class="label" for="qa-api-key">钥匙</label>
         <input id="qa-api-key" class="text-input" type="password" autocomplete="off" spellcheck="false" placeholder="${cfg.apiKey ? "留空表示保持原钥匙" : "填写模型钥匙"}">
         ${cfg.apiKey ? '<p class="small">已保存</p>' : ""}</div>
-      <div class="field"><label class="label" for="qa-daily-limit">每天最多提问次数</label>
-        <input id="qa-daily-limit" class="text-input" type="number" inputmode="numeric" min="1" max="200" step="1" value="${escapeHtml(String(cfg.dailyLimit))}"></div>
       <div class="button-row">
         <button class="btn btn-primary tap-target" type="submit">保存</button>
         <button id="qa-key-clear" class="btn btn-secondary tap-target" type="button">清除钥匙</button>
@@ -3550,20 +3495,20 @@ function mountStudyQa(meta) {
   const root = document.getElementById("page-learn");
   const active = new Set();
   const cfg = loadDirectConfig();
-  // 提问先写入 turn 再调用 answer，所以用 <=：第 limit 次仍能发出，重试不会再增加条数。
-  const client = limitClient(qaApi.createDirectClient({
+  const client = qaApi.createDirectClient({
     provider: cfg.provider,
     model: cfg.model,
     baseUrl: cfg.baseUrl,
     getApiKey: () => loadDirectConfig().apiKey,
-    getImages: qaImagesFor
-  }), () => qaTodayTurnCount() <= loadDirectConfig().dailyLimit);
+    getImages: qaImagesFor,
+    getNotes: () => app.state.agentNotes || {}
+  });
   for (const placeholder of root.querySelectorAll("[data-qa-block]")) {
     const blockId = placeholder.dataset.qaBlock;
     const id = doubtKey(meta.id, blockId);
     const context = studyQaContext(meta, blockId);
     if (!context || !activeDoubt(meta.id, blockId)) continue;
-    const signature = `${qaApi.contextKey(context)}\n${qaDirectSignature()}`;
+    const signature = `${qaApi.contextKey(context)}\n${JSON.stringify(context.exercise || null)}\n${qaDirectSignature()}`;
     active.add(id);
     const existing = qaPanels.get(id);
     if (existing && existing.signature === signature) {
@@ -4091,7 +4036,7 @@ function renderSettings() {
     return;
   }
   const active = document.activeElement;
-  if (active && root.contains(active) && /^(gh-token|gh-user|settings-repo|settings-branch|qa-provider|qa-model|qa-base-url|qa-api-key|qa-daily-limit)$/.test(active.id)) {
+  if (active && root.contains(active) && /^(gh-token|gh-user|settings-repo|settings-branch|qa-provider|qa-model|qa-base-url|qa-api-key)$/.test(active.id)) {
     const last = document.getElementById("settings-last-sync");
     if (last) last.textContent = lastSyncLabel();
     return;
@@ -4729,7 +4674,6 @@ function openLecture(url) {
 }
 
 function renderStatusBar(today, weekCtx) {
-  document.getElementById("status-center").textContent = weekCtx.weekLabel;
   const days = Math.max(0, diffDaysYmd(today, EXAM_DATE));
   const countdown = document.getElementById("exam-countdown");
   if (countdown) countdown.innerHTML = `距考试 <span class="mono">${days}</span> 天`;
@@ -5306,16 +5250,9 @@ function hashRoute() {
   let key = (location.hash || "").replace(/^#/, "");
   try { key = decodeURIComponent(key); } catch (_) {}
   if (key.startsWith("flow-")) return { tab: "flow", chunkId: key.slice("flow-".length) };
-  if (key.startsWith("learn-")) return { tab: "learn", chunkId: key.slice("learn-".length) };
+  if (key.startsWith("learn-")) return { tab: "flow", chunkId: key.slice("learn-".length) };
   if (VALID_TABS.includes(key)) return { tab: key, chunkId: "" };
-  return { tab: "today", chunkId: "" };
-}
-
-function openLearn(chunkId) {
-  if (!chunkId) return;
-  const next = `#learn-${encodeURIComponent(chunkId)}`;
-  if (location.hash !== next) location.hash = next;
-  else render();
+  return { tab: "flow", chunkId: "" };
 }
 
 function readLearnMemory() {
@@ -6599,7 +6536,7 @@ function followReturnTo() {
   if (chunkId) writeLearnMemory(chunkId, target.step || "read");
   const route = hashRoute();
   if (chunkId && route.chunkId !== chunkId) {
-    openLearn(chunkId);
+    openFlow(chunkId);
     return;
   }
   render();
@@ -6637,168 +6574,6 @@ function advanceLearnStep(meta) {
   if (finish && finish.scrollIntoView) finish.scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-function renderLearn() {
-  const root = document.getElementById("page-learn");
-  if (!root) return;
-  document.body.classList.remove("has-learn-return");
-  flushDoubtInputs();
-  if (app.ui.tab !== "learn") {
-    destroyQaPanels();
-    if (root.innerHTML) root.innerHTML = "";
-    delete root.dataset.chunkId;
-    return;
-  }
-  const chunkId = app.ui.routeChunkId || hashRoute().chunkId;
-  for (const [id, panel] of qaPanels) {
-    if (!id.startsWith(`${chunkId}:`)) { panel.handle.destroy(); qaPanels.delete(id); }
-  }
-  if (!app.data) {
-    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
-    return;
-  }
-  const today = shanghaiToday();
-  const weekUnits = app.data ? getWeekContext(today).units : [];
-  weekUnits.forEach((unitId) => {
-    kickUnitIndex(unitId);
-    kickKaokao(unitId);
-    kickRhythm(unitId);
-  });
-  const meta = findChunkMeta(chunkId);
-  if (!meta) {
-    const waiting = weekUnits.some((unitId) => app.study.indexState[unitId] === "loading" || !app.study.indexState[unitId]);
-    root.innerHTML = waiting
-      ? `<p class="small">正在读取学习内容…</p>`
-      : `<p>原文存在你的私有仓库里，需要先在设置页连接 GitHub。</p>
-         <p>连接 GitHub 后才能看到学习内容</p>
-         <div class="button-row"><button id="learn-go-settings" class="btn btn-secondary tap-target" type="button">去设置</button></div>`;
-    const settingsBtn = document.getElementById("learn-go-settings");
-    if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
-    return;
-  }
-  if (canReadRepo()) {
-    kickChunkBody(meta);
-    kickKaokao(meta.unit);
-    kickRhythm(meta.unit);
-  }
-  if (app.ui.learnBoundChunk !== meta.id) {
-    app.ui.learnBoundChunk = meta.id;
-    app.ui.learnQid = "";
-    app.ui.learnChoice = "";
-    app.ui.learnQuiz = "list";
-    app.ui.learnRecall = 0;
-    app.ui.learnReveal = false;
-    app.ui.learnDoubtOpen = false;
-    app.ui.learnWhy = 0;
-    app.ui.learnWhyReveal = false;
-    app.ui.quizCursor = {};
-    app.ui.quizCollapsed = {};
-    app.ui.quizReview = {};
-    app.ui.kaokaoShown = {};
-    app.ui.doubtCancel = "";
-  }
-  ensureLearnTimer(meta.id);
-  const steps = buildLearnSteps(meta);
-  const memory = app.ui.learnPlace && app.ui.learnPlace.chunkId === meta.id
-    ? app.ui.learnPlace
-    : readLearnMemory();
-  const preferred = memory && memory.chunkId === meta.id ? memory.stepId : "";
-  const kaokaoState = app.study.kaokaoState[meta.unit];
-  const kaokaoPending = canReadRepo() && !app.study.kaokao[meta.unit]
-    && kaokaoState !== "missing" && kaokaoState !== "error";
-  if (kaokaoPending && (preferred === "why" || preferred === "retell") && !steps.some((step) => step.id === preferred)) {
-    root.innerHTML = `<p class="small">正在读取可考句…</p>`;
-    return;
-  }
-  const stepId = currentLearnStep(meta.id, steps);
-  if (stepId !== "read") destroyQaPanels();
-  root.dataset.chunkId = meta.id;
-  writeLearnMemory(meta.id, stepId);
-  const stepIndex = Math.max(0, steps.findIndex((step) => step.id === stepId));
-  const showReturn = !!(app.ui.returnTo && stepId === "read");
-  if (showReturn) document.body.classList.add("has-learn-return");
-  let body = "";
-  if (stepId === "preview") body = previewStepHtml(meta);
-  else if (stepId === "read") body = readStepHtml(meta);
-  else if (stepId === "why") body = whyStepHtml(meta);
-  else if (stepId === "recall") body = recallStepHtml(meta);
-  else if (stepId === "retell") body = retellStepHtml(meta);
-  else if (stepId === "quiz") body = quizStepHtml(meta);
-  else body = doneStepHtml(meta);
-  root.innerHTML = `
-    <div class="learn-top">
-      <div class="button-row"><button id="learn-back" class="btn btn-secondary tap-target" type="button">← 今天</button></div>
-      <h1 class="h1" id="learn-title">${escapeHtml(meta.title || meta.id)}</h1>
-      <p class="small" id="learn-source">${escapeHtml(bookName(meta.book))} · 印刷页 ${escapeHtml(printedRange(meta))}</p>
-    </div>
-    <ol class="learn-steps" id="learn-steps" data-step-count="${steps.length}">
-      ${steps.map((step) => `
-        <li>
-          <button type="button" class="step-jump${step.id === stepId ? " is-current" : ""}" data-step="${escapeHtml(step.id)}" aria-label="${escapeHtml(step.label)}"${step.id === stepId ? ` aria-current="step"` : ""}>
-            <span class="step-dot" aria-hidden="true"></span>
-            <span class="step-label">${escapeHtml(step.label)}</span>
-          </button>
-        </li>
-      `).join("")}
-    </ol>
-    <div id="learn-step-body">${body}</div>
-    <div class="learn-bar">
-      <button id="learn-prev" class="btn btn-secondary tap-target" type="button" ${stepIndex === 0 ? "disabled" : ""}>上一步</button>
-      <button id="learn-next" class="btn btn-primary tap-target" type="button" ${stepIndex >= steps.length - 1 ? "disabled" : ""}>下一步</button>
-    </div>
-    ${showReturn ? `<button id="learn-return" class="learn-return" type="button">${escapeHtml(app.ui.returnTo.label || "返回")}</button>` : ""}
-  `;
-  document.getElementById("learn-back").addEventListener("click", () => navigateTo("today"));
-  const prev = document.getElementById("learn-prev");
-  const next = document.getElementById("learn-next");
-  if (prev) prev.addEventListener("click", () => { if (stepIndex > 0) goLearnStep(meta, steps[stepIndex - 1].id); });
-  if (next) next.addEventListener("click", () => { if (stepIndex < steps.length - 1) goLearnStep(meta, steps[stepIndex + 1].id); });
-  root.querySelectorAll("[data-step]").forEach((button) => {
-    button.addEventListener("click", () => goLearnStep(meta, button.dataset.step));
-  });
-  const returnBtn = document.getElementById("learn-return");
-  if (returnBtn) returnBtn.addEventListener("click", followReturnTo);
-  root.querySelectorAll("[data-doubt-jump]").forEach((button) => {
-    button.addEventListener("click", () => {
-      app.ui.kaokaoFocus = {
-        chunkId: meta.id,
-        blockId: button.dataset.doubtJump,
-        src: ""
-      };
-      goLearnStep(meta, "read");
-    });
-  });
-  const settingsBtn = document.getElementById("learn-go-settings");
-  if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
-  root.querySelectorAll("[data-point]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const answer = root.querySelector(`[data-point-answer="${button.dataset.point}"]`);
-      if (answer) answer.hidden = false;
-      button.hidden = true;
-    });
-  });
-  const reveal = document.getElementById("learn-reveal");
-  if (reveal) reveal.addEventListener("click", () => { app.ui.learnReveal = true; render(); });
-  const recallPrev = document.getElementById("learn-recall-prev");
-  if (recallPrev) recallPrev.addEventListener("click", () => { app.ui.learnRecall -= 1; app.ui.learnReveal = false; render(); });
-  const recallNext = document.getElementById("learn-recall-next");
-  if (recallNext) recallNext.addEventListener("click", () => { app.ui.learnRecall += 1; app.ui.learnReveal = false; render(); });
-  const finish = document.getElementById("learn-finish");
-  if (finish) finish.addEventListener("click", () => { completeLearnChunk(meta); navigateTo("today"); });
-  const finishNext = document.getElementById("learn-finish-next");
-  if (finishNext) {
-    finishNext.addEventListener("click", () => {
-      const nextId = finishNext.dataset.nextChunk;
-      completeLearnChunk(meta);
-      app.ui.learnBoundChunk = "";
-      writeLearnMemory(nextId, "");
-      openLearn(nextId);
-    });
-  }
-  wireLearnQuiz(meta);
-  wireKaokao(meta);
-  wireDoubts(meta);
-  if (stepId === "read") applyKaokaoFocus(meta);
-}
 
 function wireDoubts(meta) {
   const root = document.getElementById("page-learn");
@@ -6935,138 +6710,9 @@ function wireLearnQuiz(meta) {
   noteEl.addEventListener("blur", () => savePracticeNote(current.id, noteEl.value.trim()));
 }
 
-function renderToday(today, weekCtx) {
-  const root = document.getElementById("page-today");
-  if (!app.data) {
-    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
-    return;
-  }
-  if (app.error) {
-    root.innerHTML = `<div class="app-error">${app.error}</div>`;
-    return;
-  }
-  const weekUnits = weekCtx.units || [];
-  weekUnits.forEach((unitId) => kickUnitIndex(unitId));
-  const review = todayReviewView(today);
-  const chunks = unitChunks(weekUnits);
-  const indexReady = weekUnits.some((unitId) => app.study.indexes[unitId]);
-  const indexSettled = weekUnits.every((unitId) => {
-    const state = app.study.indexState[unitId];
-    return state === "ready" || state === "missing" || state === "error";
-  });
-  const doneToday = chunks.filter((chunk) => {
-    const rec = app.state.chunks && app.state.chunks[chunk.id];
-    return rec && rec.doneAt === today;
-  }).sort((a, b) => ((app.state.chunks[b.id] || {}).updatedAt || 0) - ((app.state.chunks[a.id] || {}).updatedAt || 0));
-  const firstOpen = chunks.find((chunk) => !chunkDone(chunk.id)) || null;
-  const shown = doneToday[0] || firstOpen;
-  const learnedCount = chunks.filter((chunk) => chunkDone(chunk.id)).length;
-  const remainMin = chunks.filter((chunk) => !chunkDone(chunk.id)).reduce((sum, chunk) => sum + chunkEstMinutes(chunk), 0);
-  const currentWeek = weekCtx.week;
-  const weekDoc = currentWeek ? app.state.weeks[currentWeek.start] || {} : {};
-  const daysLeft = daysLeftInWeek(today, currentWeek);
-  const submitted = weekDoc.submittedAt ? "已交" : "未交";
-  const weekLine = indexReady
-    ? `${formatUnitNames(weekUnits)} · 已学 ${learnedCount}/${chunks.length} 块 · 剩约 ${remainMin} 分钟 · 本周还剩 ${daysLeft} 天 · ${submitted}`
-    : `${formatUnitNames(weekUnits)} · 本周还剩 ${daysLeft} 天 · ${submitted}`;
-  const answered = questionsAnsweredOn(today);
-  let foot = "";
-  if (review.done && doneToday.length) {
-    foot = `<p class="today-foot is-ok" id="today-complete">今天完成了 ✓ &nbsp; 复习 ${review.reviewed} 张 · 学了 ${doneToday.length} 块 · 做题 ${answered} 道</p>`;
-  } else if (review.done) {
-    foot = `<p class="today-foot" id="today-complete">复习完成，今天也算完成。时间够的话学一块。</p>`;
-  }
-  let reviewBody = "";
-  if (review.remaining > 0) {
-    const eta = Math.round(review.remaining * 0.6);
-    reviewBody = `
-      <p class="small" id="today-review-status">到期 ${review.remaining} 张 · 约 ${eta} 分钟</p>
-      <div class="button-row"><button id="today-go-review" class="btn btn-primary tap-target" type="button">开始复习</button></div>
-    `;
-  } else if (review.backlog > 0) {
-    reviewBody = `
-      <p class="small" id="today-review-status">${escapeHtml(reviewCapMessage(review.backlog))}</p>
-      <div class="button-row"><button id="today-go-review" class="btn btn-secondary tap-target" type="button">去复习</button></div>
-    `;
-  } else if (review.reviewed > 0) {
-    reviewBody = `<p class="today-check" id="today-review-status">✓ 复习完成（答对 ${review.stats.remember || 0} / 答错 ${review.stats.wrong || 0} / 没印象 ${review.stats.blank || 0}）</p>`;
-  } else {
-    reviewBody = `<p class="small" id="today-review-status">今天没有到期的卡片</p>`;
-  }
-  let chunkBody = "";
-  if (!indexReady && !indexSettled) {
-    chunkBody = `<p class="small">正在读取学习内容…</p>`;
-  } else if (!indexReady && !canReadRepo()) {
-    chunkBody = `
-      <p id="today-chunk-missing">连接 GitHub 后才能看到学习内容</p>
-      <div class="button-row"><button id="today-go-settings" class="btn btn-secondary tap-target" type="button">去设置</button></div>
-    `;
-  } else if (!indexReady) {
-    chunkBody = `<p id="today-chunk-missing">学习内容暂时没读到。</p>`;
-  } else if (!shown) {
-    chunkBody = `<p class="small">本周的块都学完了。</p>`;
-  } else if (doneToday.length) {
-    const next = nextChunkAfter(chunks, shown);
-    chunkBody = `
-      <p id="today-chunk-title">${escapeHtml(shown.title || shown.id)}</p>
-      <p class="small">${escapeHtml(chunkMetaLine(shown))}</p>
-      <p class="today-check" id="today-chunk-done">✓ 已学完</p>
-      <div class="button-row"><button id="today-review-again" class="btn btn-secondary tap-target" type="button" data-chunk="${escapeHtml(shown.id)}">再看一遍</button></div>
-      ${next ? `<div class="button-row"><button id="today-learn-next" class="btn btn-secondary tap-target" type="button" data-chunk="${escapeHtml(next.id)}">再学一块：${escapeHtml(next.title || next.id)}</button></div>` : `<p class="small">本周的块都学完了。</p>`}
-    `;
-  } else {
-    chunkBody = `
-      <p id="today-chunk-title">${escapeHtml(shown.title || shown.id)}</p>
-      <p class="small">${escapeHtml(chunkMetaLine(shown))}</p>
-      <div class="button-row"><button id="today-start-learn" class="btn btn-primary tap-target" type="button" data-chunk="${escapeHtml(shown.id)}">开始学</button></div>
-    `;
-  }
-  const baseline = weekCtx.phase === "pre" ? `
-    <label class="check-row baseline-line" for="baseline-done">
-      <input id="baseline-done" type="checkbox" ${app.state.baselineDone ? "checked" : ""}>
-      <span class="small">这周找一套综合能力真题，不计时做一遍，只看题型。做完了</span>
-    </label>
-  ` : "";
-  root.innerHTML = `
-    <h1 class="h1">今天</h1>
-    ${todayFlowLine()}
-    <section class="today-board">
-      <article class="today-task">
-        <h2 class="today-kicker">① 复习</h2>
-        ${reviewBody}
-      </article>
-      <article class="today-task" id="today-chunk-card">
-        <h2 class="today-kicker">② 今天这一块</h2>
-        ${chunkBody}
-        <p class="today-all"><button id="today-all-chunks" class="text-link" type="button">全部学习块 →</button></p>
-      </article>
-    </section>
-    ${baseline}
-    ${foot}
-    <p class="small today-week" id="today-week-line">${escapeHtml(weekLine)}</p>
-  `;
-  const baselineInput = document.getElementById("baseline-done");
-  if (baselineInput) {
-    baselineInput.addEventListener("change", () => store.save("baselineDone", baselineInput.checked));
-  }
-  const reviewBtn = document.getElementById("today-go-review");
-  if (reviewBtn) reviewBtn.addEventListener("click", () => navigateTo("review"));
-  const settingsBtn = document.getElementById("today-go-settings");
-  if (settingsBtn) settingsBtn.addEventListener("click", () => navigateTo("settings"));
-  const startBtn = document.getElementById("today-start-learn");
-  if (startBtn) startBtn.addEventListener("click", () => openLearn(startBtn.dataset.chunk));
-  const againBtn = document.getElementById("today-review-again");
-  if (againBtn) againBtn.addEventListener("click", () => openLearn(againBtn.dataset.chunk));
-  const nextBtn = document.getElementById("today-learn-next");
-  if (nextBtn) nextBtn.addEventListener("click", () => openLearn(nextBtn.dataset.chunk));
-  const allBtn = document.getElementById("today-all-chunks");
-  if (allBtn) allBtn.addEventListener("click", () => openWeekMap());
-  const flowBtn = document.getElementById("today-open-flow");
-  if (flowBtn) flowBtn.addEventListener("click", () => openFlow(flowBtn.dataset.chunk));
-}
 
 function practiceQuestionLists(unitId) {
-  const unitQuestions = app.data.questions.questions.filter((q) => q.unit === unitId);
+  const unitQuestions = app.data.questions.questions.filter((q) => q.unit === unitId && latestTry(q.id));
   const normal = unitQuestions.filter((q) => q.verify?.status !== "doubt");
   const doubts = unitQuestions.filter((q) => q.verify?.status === "doubt");
   return { normal, doubts };
@@ -7132,7 +6778,7 @@ function renderPractice(today, weekCtx) {
   app.ui.practiceView = "list";
 
   root.innerHTML = `
-    <h1 class="h1">做题</h1>
+    <h1 class="h1">错题和做过的题</h1>
     <section class="panel">
       <label for="practice-unit-select" class="label">单元</label>
       <select id="practice-unit-select" class="tap-target">
@@ -7151,7 +6797,7 @@ function renderPractice(today, weekCtx) {
           ${doubts.map(renderPracticeListRow).join("")}
         </ul>
       </details>` : ""}` : `
-      <div class="empty">这个单元的真题还没整理，先读教材、做骨架卡。</div>`}
+      <div class="empty">还没有做过的题。</div>`}
     </section>
   `;
 
@@ -7198,7 +6844,7 @@ function renderPracticeQuestion(root, current, normal, doubts) {
   const nextQ = nextPracticeQuestion(current, normal, doubts);
 
   root.innerHTML = `
-    <h1 class="h1">做题</h1>
+    <h1 class="h1">错题和做过的题</h1>
     <div class="button-row">
       <button id="practice-back" class="btn btn-secondary tap-target" type="button">← 题目列表</button>
     </div>
@@ -7209,12 +6855,12 @@ function renderPracticeQuestion(root, current, normal, doubts) {
       <ul class="option-list">
         ${options.map(([key, value]) => `
           <li>
-            <button class="${optionButtonClass(key, current, lastTry)}" data-choice="${key}" type="button">
+            <button class="${optionButtonClass(key, current, lastTry)}" data-choice="${key}" type="button" disabled>
               <span class="mono">${key}.</span>&nbsp;<span>${value}</span>
             </button>
           </li>`).join("")}
       </ul>
-      ${multi ? `<div class="button-row"><button id="practice-submit" class="btn btn-primary tap-target" type="button">提交答案</button></div>` : ""}
+
       ` : `<p class="small">该题暂无结构化选项，可直接看解析。</p>`}
       ${lastTry ? `
       <section class="panel">
@@ -7261,31 +6907,6 @@ function renderPracticeQuestion(root, current, normal, doubts) {
     });
   }
 
-  root.querySelectorAll("[data-choice]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const key = btn.dataset.choice;
-      if (isMultiSelect(current.type)) {
-        const set = new Set(app.ui.practiceChoice.split("").filter(Boolean));
-        if (set.has(key)) set.delete(key); else set.add(key);
-        app.ui.practiceChoice = [...set].sort().join("");
-        render();
-      } else {
-        app.ui.practiceChoice = "";
-        submitAnswer(current, key);
-      }
-    });
-  });
-
-  const submitBtn = document.getElementById("practice-submit");
-  if (submitBtn) {
-    submitBtn.addEventListener("click", () => {
-      if (!app.ui.practiceChoice) return;
-      const choice = app.ui.practiceChoice;
-      app.ui.practiceChoice = "";
-      submitAnswer(current, choice);
-    });
-  }
-
   root.querySelectorAll("[data-err]").forEach((btn) => {
     btn.addEventListener("click", () => setPracticeErr(current.id, btn.dataset.err));
   });
@@ -7309,6 +6930,7 @@ function reviewCardContent(card) {
     const verify = q.verify || {};
     const answerLine = String(q.answer || "").trim() ? `正确答案：${q.answer}` : "答案存疑，见说明";
     const backParts = [answerLine];
+    if (q.explanation) backParts.push(q.explanation);
     if (verify.note) backParts.push(verify.note);
     if (verify.excerpt) backParts.push(verify.excerpt);
     return {
@@ -7333,6 +6955,7 @@ function reviewRichText(text) {
 function reviewDueCount(today) {
   const dueIds = reviewQueueToday(today).map((card) => card.id);
   const session = app.ui.review;
+  if (app.ui.flowReviewBatch) return dueIds.length;
   if (session && session.sessionDate === today && Array.isArray(session.order) && session.order.length) {
     app.ui.review = reconcileReviewSession(session, today, dueIds, app.state.cards, reviewSessionQuota(today));
     const remaining = countReviewRemaining(app.ui.review, today, app.state.cards);
@@ -7395,12 +7018,32 @@ function gradeCurrentReview(action) {
   render();
 }
 
+function gradeRevealedReview(action) {
+  const session = app.ui.review;
+  if (!session || session.phase !== "front") return;
+  const id = session.currentId;
+  // Session statistics retain their existing wrong bucket; card scheduling uses forget.
+  const result = gradeReview(session, app.state.cards, shanghaiToday(), action === "forget" ? "wrong" : action,
+    (card, _grade, today) => applyReviewGrade(card, action, today));
+  if (!result.card) return;
+  result.session.currentId = id;
+  result.session.doneIds = session.doneIds.slice();
+  result.session.phase = "revealed";
+  app.ui.review = result.session;
+  app.sync.sessionReviews += 1;
+  store.save(`cards/${id}`, result.card);
+  render();
+}
+
 function undoCurrentReview() {
+  flowReviewPending = true;
   const result = undoReview(app.ui.review);
   if (!result.card || !result.session || !result.session.currentId) return;
   const id = result.session.currentId;
   app.ui.review = result.session;
+  if (!app.ui.flowReviewBatch) app.ui.flowReviewBatch = result.session.order.slice();
   app.ui.reviewHint = null;
+  if (app.ui.reviewChoices) delete app.ui.reviewChoices[id];
   if (app.sync.sessionReviews > 0) app.sync.sessionReviews -= 1;
   const keepIntroStamp = !!(result.card && result.card.intro);
   store.save(`cards/${id}`, result.card, keepIntroStamp ? { keepUpdatedAt: true } : undefined);
@@ -7469,71 +7112,16 @@ function skeletonAnswerExtra(cardId, base) {
   return `${whyHtml}${quoteHtml}<button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>`;
 }
 
-function openSkeletonFromReview(cardId) {
-  const meta = prepareSkeletonSource(cardId);
-  const base = app.derived.cardById.get(cardId);
-  if (!meta) {
-    const unit = skeletonUnit(cardId);
-    const state = unit && app.study.indexState[unit];
-    if (!state || state === "loading") return;
-    app.ui.reviewSourceNote = "原文暂时没读到。";
-    app.ui.reviewSourceFor = cardId;
-    render();
-    return;
-  }
-  app.ui.reviewSourceNote = "";
-  setReturnTo({ tab: "review", label: "回到复习" }, { tab: "learn", chunkId: meta.id });
-  app.ui.kaokaoFocus = {
-    chunkId: meta.id,
-    blockId: anchorBlockId(base && base.anchor),
-    src: ""
-  };
-  writeLearnMemory(meta.id, "read");
-  openLearn(meta.id);
-}
 
-function openKaokaoFromReview(item) {
-  const cardId = app.ui.review && app.ui.review.currentId ? app.ui.review.currentId : "";
-  if (!item || !item.chunk) {
-    app.ui.reviewSourceNote = item && item.src ? item.src : "这张可考句暂时没读到。";
-    app.ui.reviewSourceFor = cardId;
-    render();
-    return;
-  }
-  const meta = findChunkMeta(item.chunk);
-  if (!meta) {
-    const unit = (String(item.id || "").match(/U\d+/) || [])[0] || "";
-    if (unit) kickUnitIndex(unit);
-    const state = unit && app.study.indexState[unit];
-    if (!state || state === "loading") return;
-    app.ui.reviewSourceNote = item.src || "";
-    app.ui.reviewSourceFor = cardId;
-    render();
-    return;
-  }
-  app.ui.reviewSourceNote = "";
-  setReturnTo({ tab: "review", label: "回到复习" }, { tab: "learn", chunkId: item.chunk });
-  app.ui.kaokaoFocus = {
-    chunkId: item.chunk,
-    blockId: anchorBlockId(item.anchor),
-    src: item.src || ""
-  };
-  writeLearnMemory(item.chunk, "read");
-  openLearn(item.chunk);
-}
 
 function poolIntroFrontHtml(item, tryItem) {
-  const options = (item.recog && item.recog.options) || [];
-  return `
-    <p id="review-pool-stem">${escapeHtml((item.recog && item.recog.stem) || "")}</p>
-    <ul class="option-list">
-      ${options.map((text, index) => `
-        <li>
-          <button type="button" class="${kkOptionClass(index, item, tryItem)}" data-pool-choice="${index}" ${tryItem ? "disabled" : ""}>
-            <span class="mono">${escapeHtml(String.fromCharCode(65 + index))}.</span>&nbsp;<span>${escapeHtml(text)}</span>
-          </button>
-        </li>`).join("")}
-    </ul>`;
+  const options = item.recog?.options || [];
+  return `<p id="review-pool-stem">${escapeHtml(item.recog?.stem || "")}</p><div class="flow-options">${options.map((text, index) => {
+    const good = tryItem && index === Number(item.recog.answer);
+    const chosen = tryItem && index === Number(tryItem.choice);
+    const bad = chosen && !good;
+    return `<button type="button" class="flow-option${good ? " is-ok" : bad ? " is-bad" : tryItem ? " is-dim" : ""}" data-pool-choice="${index}" aria-pressed="${!!chosen}" ${tryItem ? "disabled" : ""}><span>${String.fromCharCode(65 + index)}.</span><span class="flow-option-text">${escapeHtml(text)}</span>${chosen ? '<span class="flow-selected">已选</span>' : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
+  }).join("")}</div>`;
 }
 
 function poolIntroAnswerHtml(item, tryItem) {
@@ -7549,17 +7137,13 @@ function poolIntroAnswerHtml(item, tryItem) {
 function answerPoolIntro(choiceIndex) {
   const session = app.ui.review;
   if (!session || !session.currentId) return;
-  if (session.phase !== "front" && session.phase !== "pool") return;
+  if (session.phase !== "front") return;
   if (!Number.isInteger(choiceIndex)) return;
   const card = app.state.cards[session.currentId];
   if (!card || card.pool !== true || card.src !== "kaokao") return;
   const item = kaokaoItemById(card.kid);
   const options = item && item.recog && Array.isArray(item.recog.options) ? item.recog.options : [];
-  if (!item || !options.length || choiceIndex < 0 || choiceIndex >= options.length) return;
-  if (latestKaokaoTry(item.id, "recog")) return;
-  const next = cloneReviewSession(session);
-  next.phase = "pool";
-  app.ui.review = next;
+  if (!item || !options.length || choiceIndex < -1 || choiceIndex >= options.length) return;
   const shown = app.ui.kaokaoShown && app.ui.kaokaoShown[item.id];
   recordKaokaoTry(item, {
     at: shanghaiIso(),
@@ -7568,6 +7152,17 @@ function answerPoolIntro(choiceIndex) {
     ok: choiceIndex === Number(item.recog.answer),
     ms: Math.max(0, Date.now() - (shown || Date.now()))
   });
+  const action = choiceIndex === Number(item.recog.answer) ? "remember" : "forget";
+  const result = gradeReview(session, app.state.cards, shanghaiToday(), action === "forget" ? "wrong" : action,
+    (card, _grade, today) => applyReviewGrade(card, action, today));
+  result.session.currentId = session.currentId;
+  result.session.doneIds = session.doneIds.slice();
+  result.session.phase = "pool";
+  result.session.lastUndo = null;
+  app.ui.review = result.session;
+  app.sync.sessionReviews += 1;
+  store.save(`cards/${session.currentId}`, result.card);
+
 }
 
 function advancePoolIntro() {
@@ -7579,70 +7174,58 @@ function advancePoolIntro() {
   if (!card || card.pool !== true) return;
   const item = kaokaoItemById(card.kid);
   if (!item || !latestKaokaoTry(item.id, "recog")) return;
-  const nextCard = { ...card, box: 0, due: addDaysYmd(today, 1), streak: 0, reviewedOn: today };
-  const cards = { ...app.state.cards, [id]: nextCard };
-  const advanced = advanceReview(session, cards, today);
-  advanced.lastUndo = null;
-  app.ui.review = advanced;
-  store.save(`cards/${id}`, nextCard);
+  app.ui.review = advanceReview(session, app.state.cards, today);
+  render();
 }
 
-function renderReview(today) {
-  const root = document.getElementById("page-review");
+function renderFlowReview(root, today) {
   if (!app.data) {
     root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
     return;
   }
-  if (app.ui.tab !== "review") return;
   ensureKaokaoLoaded(today);
   releasePoolCards(today);
 
-  const backlog = getReviewQueue(today);
-  const dueIds = capReviewQueue(backlog, reviewedTodayCount(today), REVIEW_DAILY_CAP, reviewExtraCount(today)).map((card) => card.id);
-  const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards, reviewSessionQuota(today));
-  app.ui.review = session;
-  const undo = reviewUndoHtml();
-  const stats = session.stats || emptyReviewStats();
-  const pauseNote = reviewPoolPauseText(today);
-  const pauseHtml = pauseNote ? `<p class="small" id="review-pool-hold">${escapeHtml(pauseNote)}</p>` : "";
-
-  if (!session.currentId) {
-    const cappedOut = backlog.length > 0;
-    const doneText = cappedOut
-      ? `<p id="review-cap-note">${escapeHtml(reviewCapMessage(backlog.length))}</p>
-         <div class="button-row"><button id="review-more" class="btn btn-secondary tap-target" type="button">再来 10 张</button></div>`
-      : `<p>今天复习完了：答对 ${stats.remember} 张，答错 ${stats.wrong} 张，没印象 ${stats.blank} 张。明天到期 ${getTomorrowDueCount(today)} 张。</p>`;
-    root.innerHTML = `
-      <h1 class="h1">复习</h1>
-      <section class="panel">
-        ${undo ? `<div class="review-meta"><span></span>${undo}</div>` : ""}
-        <div class="empty">
-          ${doneText}
-        </div>
-      </section>
-      ${pauseHtml}
-    `;
-    bindReviewButton("review-undo", undoCurrentReview);
-    const more = document.getElementById("review-more");
-    if (more) more.addEventListener("click", () => {
-      bumpReviewExtra(today);
-      render();
-    });
-    app.ui.reviewArmedAt = Date.now() + 300;
-    return;
+  // Do not dismiss startup review while due skeleton cards' indexes are still loading.
+  const waitingUnits = new Set(Object.entries(app.state.cards || {}).filter(([id, card]) => {
+    if (card.src === "wrong" || card.src === "kaokao" || card.cleared || !card.due || card.due > today) return false;
+    const unit = card.unit || skeletonUnit(id);
+    return unit && !app.study.indexes[unit] && !["missing", "error"].includes(app.study.indexState[unit]);
+  }).map(([id, card]) => card.unit || skeletonUnit(id)));
+  if (waitingUnits.size) {
+    for (const unit of waitingUnits) kickUnitIndex(unit);
+    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+    return true;
   }
 
+  if (!app.ui.flowReviewBatch || app.ui.review?.sessionDate !== today) {
+    app.ui.flowReviewBatch = reviewQueueToday(today).slice(0, 10).map(card => card.id);
+    app.ui.review = createReviewSession(today, app.ui.flowReviewBatch, 10);
+  }
+  const dueIds = app.ui.flowReviewBatch;
+  const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards,
+    Math.min(reviewSessionQuota(today), Math.max(0, 10 - app.ui.review.doneIds.length)));
+  app.ui.review = session;
+
+  if (!session.currentId) { flowReviewPending = false; app.ui.flowReviewBatch = null; return false; }
+  const total = session.order.length;
+  const position = session.order.indexOf(session.currentId) + 1;
   if (app.ui.reviewSourceFor && app.ui.reviewSourceFor !== session.currentId) {
     app.ui.reviewSourceNote = "";
     app.ui.reviewSourceFor = "";
+  }
+  if (app.ui.reviewActiveId !== session.currentId) {
+    app.ui.reviewActiveId = session.currentId;
+    app.ui.reviewQaOpen = false;
+    if (app.ui.reviewChoices) delete app.ui.reviewChoices[session.currentId];
   }
   const stored = app.state.cards[session.currentId];
   const card = stored ? { id: session.currentId, ...stored } : { id: session.currentId, src: "skeleton" };
   const kkItem = card.src === "kaokao" ? kaokaoItemById(card.kid) : null;
   const content = card.src === "kaokao" ? null : reviewCardContent(card);
+  const exam = card.src === "wrong" ? app.derived.questionById.get(card.qid) : null;
+  const choiceCard = exam && Object.keys(exam.options || {}).length > 0;
   const showAnswer = session.phase === "checking" || session.phase === "revealed";
-  const reviewed = reviewedTodayCount(today);
-  const todayNo = stored && stored.reviewedOn === today ? reviewed : reviewed + 1;
   const hintUsed = !!(app.ui.reviewHint && app.ui.reviewHint.cardId === card.id && app.ui.reviewHint.used);
   if (card.src !== "kaokao" && card.src !== "wrong") prepareSkeletonSource(card.id);
   const poolOptions = kkItem && kkItem.recog && Array.isArray(kkItem.recog.options) ? kkItem.recog.options : [];
@@ -7654,13 +7237,6 @@ function renderReview(today) {
     if (!app.ui.kaokaoShown) app.ui.kaokaoShown = {};
     if (!app.ui.kaokaoShown[kkItem.id]) app.ui.kaokaoShown[kkItem.id] = Date.now();
   }
-  const srcTag = (poolReady || poolAnswered || (poolFirst && !kkItem))
-    ? `<p class="review-src" id="review-src-tag">新句子</p>`
-    : card.src === "kaokao"
-      ? `<p class="review-src" id="review-src-tag">小测里的句子</p>`
-      : card.src === "wrong"
-        ? ""
-        : `<p class="review-src" id="review-src-tag">教材要点</p>`;
   let poolHold = false;
   let frontHtml = "";
   if (poolReady || poolAnswered) {
@@ -7673,12 +7249,27 @@ function renderReview(today) {
       frontHtml = `<p>${missing ? "这张可考句暂时没读到。" : "正在读取可考句…"}</p>`;
       if (poolFirst && !missing) poolHold = true;
     } else {
-      frontHtml = `<p id="review-cloze">${clozeHtml(kkItem.cloze && kkItem.cloze.text)}</p>`;
+      let blank = 0;
+      const draft = app.ui.reviewDrafts?.[card.id] || [];
+      const input = escapeHtml(kkItem.cloze?.text || "").replace(/_{3,}/g, () => {
+        const index = blank++;
+        return `<input class="review-input" data-review-blank="${index}" aria-label="填空 ${index + 1}" value="${escapeHtml(draft[index] || "")}"${showAnswer ? " readonly" : ""}>`;
+      });
+      frontHtml = `<p id="review-cloze">${input}</p>`;
       if (hintUsed) frontHtml += `<p class="small" id="review-hint-text">${escapeHtml((kkItem.cloze && kkItem.cloze.hint) || "")}</p>`;
       else if (session.phase === "front") frontHtml += `<div class="button-row"><button id="review-hint" class="btn btn-secondary tap-target" type="button">提示</button></div>`;
     }
   } else {
     frontHtml = `<p>${reviewRichText(content.front)}</p>`;
+    if (exam?.options) {
+      const selected = app.ui.reviewChoices?.[card.id] || "";
+      frontHtml = `<p>${escapeHtml(exam.stem)}</p><div class="flow-options">${Object.entries(exam.options).map(([key, text]) => {
+        const good = showAnswer && String(exam.answer || "").includes(key);
+        const bad = showAnswer && selected.includes(key) && !good;
+        const style = good ? " is-ok" : bad ? " is-bad" : showAnswer ? " is-dim" : selected.includes(key) ? " is-on" : "";
+        return `<button class="flow-option${style}" data-review-choice="${key}" aria-pressed="${selected.includes(key)}" type="button"${showAnswer ? " disabled" : ""}><span>${key}.</span><span class="flow-option-text">${escapeHtml(text)}</span>${selected.includes(key) ? `<span class="flow-selected">已选</span>` : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
+      }).join("")}</div>`;
+    }
   }
   let answerHtml = "";
   if (poolAnswered) {
@@ -7708,54 +7299,57 @@ function renderReview(today) {
   } else if (showAnswer) {
     answerHtml = `<section class="panel"><p>${reviewRichText(content.back)}</p>${anchorPrintedHtml(content.anchor)}</section>`;
   }
-  const mark = session.phase === "revealed" ? `<p class="review-mark">已记为没印象，明天会再出现。</p>` : "";
-  let actions = "";
-  if (poolAnswered) {
-    actions = `
-      <div class="review-actions">
-        <button id="review-pool-next" class="btn btn-primary tap-target" type="button">下一张</button>
-      </div>`;
-  } else if (poolReady || poolHold) {
-    actions = "";
-  } else if (session.phase === "checking") {
-    actions = `
-      <p class="small review-hint">和你心里的答案一样吗？</p>
-      <div class="review-actions">
-        <button id="review-remember" class="btn btn-ok" type="button">答对了</button>
-        <button id="review-wrong" class="btn btn-bad" type="button">答错了</button>
-      </div>`;
-  } else if (session.phase === "revealed") {
-    actions = `
-      <div class="review-actions">
-        <button id="review-next" class="btn btn-primary" type="button">下一张</button>
-      </div>`;
-  } else {
-    actions = `
-      <p class="small review-hint">先在心里答一遍。</p>
-      <div class="review-actions">
-        <button id="review-blank" class="btn btn-bad" type="button">没印象</button>
-        <button id="review-show" class="btn btn-primary" type="button">想好了，看答案</button>
-      </div>`;
-  }
+  let actions;
+  if (poolAnswered) actions = `<button id="review-pool-next" class="flow-next" type="button">下一张</button>`;
+  else if (session.phase === "revealed") actions = `<button id="review-next" class="flow-next" type="button">下一张</button>`;
+  else if (session.phase === "checking") actions = `<div class="flow-grade"><button id="review-remember" class="flow-next" type="button">答对了</button><button id="review-wrong" class="flow-next" type="button">答错了</button></div>`;
+  else if (choiceCard && !isMultiSelect(exam.type)) actions = `<button id="review-next" class="flow-next" type="button" disabled>下一张</button>`;
+  else if (choiceCard) actions = `<button id="review-submit" class="flow-next" type="button" ${!isMultiSelect(exam.type) || !app.ui.reviewChoices?.[card.id] ? "disabled" : ""}>提交</button>`;
+  else actions = `<button id="review-show" class="flow-next" type="button" ${poolReady || poolHold ? "disabled" : ""}>想好了，看答案</button>`;
 
+  root.classList.add("flow");
+  root.dataset.mode = "review";
+  root.dataset.item = session.currentId;
   root.innerHTML = `
-    <h1 class="h1">复习</h1>
-    <section class="panel">
-      <div class="review-meta">
-        <p class="small mono" id="review-today-count">今天 ${todayNo} / ${REVIEW_DAILY_CAP}</p>
-        ${poolAnswered ? "" : undo}
-      </div>
-      <article class="review-card" data-phase="${session.phase}" data-src="${escapeHtml(card.src || "skeleton")}">
-        ${srcTag}
-        ${mark}
-        ${frontHtml}
-        ${answerHtml}
-        ${actions}
-      </article>
-    </section>
-    ${pauseHtml}
-  `;
+    <header class="flow-top"><p class="flow-count" id="flow-count">复习 ${position} / ${total}</p><button id="flow-menu-open" class="flow-ask" type="button">菜单</button></header>
+    <div class="flow-progress"><span style="width:${Math.round(position / total * 100)}%"></span></div>
+    <article class="flow-copy review-card" data-phase="${session.phase}" data-src="${escapeHtml(card.src || "skeleton")}">
+      ${frontHtml}${answerHtml}
+      ${session.phase === "front" ? `<button id="review-blank" class="flow-ask review-forget" type="button">没印象</button>` : ""}
+    </article>
+    <div id="review-qa" class="flow-qa" ${app.ui.reviewQaOpen ? "" : "hidden"}></div>
+    <div class="flow-bar"><button id="review-undo" class="flow-ask" type="button" ${session.lastUndo ? "" : "disabled"}>撤销</button>${actions}<button id="flow-ask" class="flow-ask" type="button">问一下</button></div>`;
+  document.getElementById("flow-ask").addEventListener("click", () => { app.ui.reviewQaOpen = !app.ui.reviewQaOpen; render(); });
+  if (app.ui.reviewQaOpen) {
+    const meta = exam ? findChunkMeta(exam.chunk) || Object.values(app.study.indexes).flatMap(index => index.chunks || []).find(chunk => (chunk.questions || []).includes(card.qid)) : kkItem ? findChunkMeta(kkItem.chunk) : chunkForCardId(card.id);
+    if (meta) {
+      kickChunkBody(meta);
+      mountFlowQa(document.getElementById("review-qa"), meta, app.study.bodies[meta.id]?.blocks || [], exam ? {id: exam.id || card.qid, kind: "exam"} : null);
+    }
+  }
+  const gradeChoice = () => {
+    if (app.ui.review.phase !== "front") return;
+    const selected = app.ui.reviewChoices?.[card.id] || "";
+    const ok = compareAnswer(selected, exam.answer, exam.type);
+    gradeRevealedReview(ok ? "remember" : "forget");
+  };
 
+  document.getElementById("flow-menu-open").addEventListener("click", openFlowMenu);
+  root.querySelectorAll("[data-review-blank]").forEach(input => input.addEventListener("input", () => {
+    app.ui.reviewDrafts ||= {};
+    app.ui.reviewDrafts[card.id] ||= [];
+    app.ui.reviewDrafts[card.id][Number(input.dataset.reviewBlank)] = input.value;
+  }));
+  root.querySelectorAll("[data-review-choice]").forEach(button => button.addEventListener("click", () => {
+    app.ui.reviewChoices ||= {};
+    const exam = app.derived.questionById.get(card.qid);
+    const choices = new Set((app.ui.reviewChoices[card.id] || "").split(""));
+    const key = button.dataset.reviewChoice;
+    if (isMultiSelect(exam.type)) { if (choices.has(key)) choices.delete(key); else choices.add(key); }
+    else { choices.clear(); choices.add(key); }
+    app.ui.reviewChoices[card.id] = [...choices].sort().join("");
+    if (!isMultiSelect(exam.type)) gradeChoice(); else render();
+  }));
   root.querySelectorAll("[data-pool-choice]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.disabled) return;
@@ -7770,14 +7364,16 @@ function renderReview(today) {
     render();
   });
   bindReviewButton("review-source", () => {
-    const current = app.state.cards[session.currentId];
-    if (current && current.src === "kaokao") {
-      openKaokaoFromReview(kaokaoItemById(current.kid));
-      return;
-    }
-    openSkeletonFromReview(session.currentId);
+    const meta = kkItem ? findChunkMeta(kkItem.chunk) : chunkForCardId(session.currentId);
+    if (!meta) return;
+    kickChunkBody(meta);
+    const body = app.study.bodies[meta.id];
+    app.ui.reviewSourceFor = session.currentId;
+    app.ui.reviewSourceNote = body ? pagePlain(body.blocks) : "正在读取原文…";
+    render();
   });
-  bindReviewButton("review-blank", () => gradeCurrentReview("blank"));
+  bindReviewButton("review-submit", gradeChoice);
+  bindReviewButton("review-blank", () => choiceCard ? gradeRevealedReview("forget") : poolReady ? answerPoolIntro(-1) : gradeCurrentReview("blank"));
   bindReviewButton("review-show", () => {
     const current = app.ui.review;
     if (!current || current.phase !== "front") return;
@@ -7790,10 +7386,12 @@ function renderReview(today) {
     const current = app.ui.review;
     if (!current || current.phase !== "revealed") return;
     app.ui.review = advanceReview(current, app.state.cards, today);
+    app.ui.reviewQaOpen = false;
     render();
   });
   bindReviewButton("review-undo", undoCurrentReview);
   app.ui.reviewArmedAt = Date.now() + 300;
+  return true;
 }
 
 function renderMap() {
@@ -7804,12 +7402,6 @@ function renderMap() {
   }
   ensureMapWeekOpen();
   const rows = app.data.map.rows;
-  const total = rows.length;
-  const count0 = rows.filter((r) => getSectionStatus(r.id) === 0).length;
-  const count1 = rows.filter((r) => getSectionStatus(r.id) === 1).length;
-  const count2 = rows.filter((r) => getSectionStatus(r.id) === 2).length;
-  const count3 = rows.filter((r) => getSectionStatus(r.id) === 3).length;
-  const missing = rows.filter((r) => !r.unit);
   root.innerHTML = `
     <h1 class="h1">地图</h1>
     <section class="panel">
@@ -7817,8 +7409,6 @@ function renderMap() {
         <button id="map-view-unit" class="btn ${app.ui.mapView === "unit" ? "btn-primary" : "btn-secondary"} tap-target">按单元</button>
         <button id="map-view-book" class="btn ${app.ui.mapView === "book" ? "btn-primary" : "btn-secondary"} tap-target">按书</button>
       </div>
-      <p class="small">总行数 ${total}；未学 ${count0} / 学过 ${count1} / 做过题 ${count2} / 达标 ${count3}</p>
-      ${missing.length === 0 ? `<p class="small">没有遗漏：${total} 行全部有归属</p>` : `<p class="small danger">缺少 unit 归属：${missing.map((m) => m.id).join("，")}</p>`}
     </section>
     <section id="map-groups" class="panel"></section>
   `;
@@ -7928,7 +7518,7 @@ function renderMap() {
     btn.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      openLearn(btn.dataset.chunkOpen);
+      openFlow(btn.dataset.chunkOpen);
     });
   });
 }
@@ -8151,7 +7741,23 @@ let flowModules = null;
 let flowLoadPromise = null;
 let flowRunner = null;
 let flowQa = null;
-const flowOpened = new Set();
+let flowVisit = null;
+let flowReturnHash = "";
+let flowReviewPending = true;
+let flowReviewDate = "";
+
+function openFlowMenu() { document.getElementById("flow-menu").showModal(); }
+function resumeFlowChunk() {
+  const recent = Object.entries(app.state.flow || {}).sort((a, b) => (b[1].updatedAt || 0) - (a[1].updatedAt || 0))[0];
+  if (recent && !chunkDone(recent[0])) {
+    const meta = ensureChunkMeta(recent[0]);
+    if (meta) return meta;
+    if (!chunkLookupSettled()) return null;
+  }
+  return nextFlowChunk();
+}
+function returnToFlow() { location.hash = flowReturnHash || "#today"; }
+
 let flowShown = { key: "", at: 0 };
 
 function loadFlowModules() {
@@ -8191,14 +7797,10 @@ function nextFlowChunk() {
   return null;
 }
 
-function todayFlowLine() {
-  const chunk = nextFlowChunk();
-  if (!chunk) return "";
-  return `<p class="today-flow"><button id="today-open-flow" class="text-link tap-target" type="button" data-chunk="${escapeHtml(chunk.id)}">继续新学习流 · ${escapeHtml(chunk.title || chunk.id)}</button></p>`;
-}
 
 function openFlow(chunkId) {
   if (!chunkId) return;
+  if (app.ui.tab !== "flow" || chunkId !== app.ui.routeChunkId) flowVisit = null;
   const next = `#flow-${encodeURIComponent(chunkId)}`;
   if (location.hash !== next) location.hash = next;
   else render();
@@ -8224,7 +7826,6 @@ function chunkLookupSettled() {
 
 function flowRecord(chunkId) {
   const rec = app.state.flow && app.state.flow[chunkId];
-  const runs = rec && rec.agentRuns && typeof rec.agentRuns === "object" ? rec.agentRuns : {};
   return {
     seen: Array.isArray(rec && rec.seen) ? rec.seen.slice() : [],
     queue: Array.isArray(rec && rec.queue) ? rec.queue.slice() : [],
@@ -8232,7 +7833,6 @@ function flowRecord(chunkId) {
     reason: rec && typeof rec.reason === "string" ? rec.reason : "",
     rule: rec && typeof rec.rule === "string" ? rec.rule : "",
     events: Array.isArray(rec && rec.events) ? rec.events.map((item) => ({ ...item })) : [],
-    agentRuns: { date: typeof runs.date === "string" ? runs.date : "", n: Number(runs.n) || 0 },
     pagesKey: rec && typeof rec.pagesKey === "string" ? rec.pagesKey : ""
   };
 }
@@ -8247,7 +7847,6 @@ function saveFlow(chunkId, patch, options) {
     reason: has("reason") ? patch.reason : prev.reason,
     rule: has("rule") ? patch.rule : prev.rule,
     events: has("events") ? patch.events : prev.events,
-    agentRuns: has("agentRuns") ? patch.agentRuns : prev.agentRuns,
     pagesKey: has("pagesKey") ? patch.pagesKey : prev.pagesKey
   };
   if (!Array.isArray(next.seen)) next.seen = [];
@@ -8464,11 +8063,6 @@ function flowNextChunk(meta) {
   return nextChunkAfter(list, meta);
 }
 
-function flowRunCount(chunkId) {
-  const rec = flowRecord(chunkId);
-  return rec.agentRuns.date === shanghaiToday() ? rec.agentRuns.n : 0;
-}
-
 function flowNotes() {
   return Object.entries(app.state.agentNotes || {}).map(([id, note]) => ({ id, ...note }));
 }
@@ -8501,6 +8095,7 @@ function flowAgentContext(chunkId) {
     events: rec.events,
     pages,
     questions,
+    answered: catalog ? catalog.answered : [],
     notes: flowNotes()
   };
 }
@@ -8515,7 +8110,7 @@ function flowRunSnapshot() {
   };
 }
 
-function flowLlm(snap) {
+function flowLlm(snap, chunkId) {
   if (!flowModules) return null;
   const cfg = snap && typeof snap === "object" ? snap : flowRunSnapshot();
   const apiKey = typeof cfg.apiKey === "string" ? cfg.apiKey : "";
@@ -8523,7 +8118,11 @@ function flowLlm(snap) {
     provider: cfg.provider,
     model: cfg.model,
     baseUrl: cfg.baseUrl,
-    getApiKey: () => apiKey
+    getApiKey: () => apiKey,
+    onError(error) {
+      if (chunkId && !chunkDone(chunkId))
+        appendFlowEvent(chunkId, { type: "error", channel: "agent", ...error, at: Date.now() });
+    }
   });
 }
 
@@ -8535,21 +8134,22 @@ function jobChunk(job) {
 function ensureFlowRunner() {
   if (flowRunner || !flowModules) return flowRunner;
   flowRunner = flowModules.agent.createStudyRunner({
+    prepare(job) { if (flowVisit?.id === jobChunk(job)) flowVisit.quiet = 0; },
     getContext(job) {
       return flowAgentContext(jobChunk(job));
     },
     captureRun() {
       return flowRunSnapshot();
     },
-    getLlm(snap) {
-      return flowLlm(snap);
+    getLlm(snap, job) {
+      return flowLlm(snap, jobChunk(job));
     },
     hasKey: () => !!loadDirectConfig().apiKey,
     provider: () => loadDirectConfig().provider,
     secret: () => loadDirectConfig().apiKey,
     saveQueue(queue, reason, job) {
       const chunkId = jobChunk(job);
-      if (!chunkId) return;
+      if (!chunkId || chunkDone(chunkId)) return;
       const rec = flowRecord(chunkId);
       const text = redactFlowText(reason);
       const events = rec.events.concat([{ type: "decide", text, at: Date.now() }]);
@@ -8557,12 +8157,14 @@ function ensureFlowRunner() {
         saveFlow(chunkId, { reason: text, events });
         return;
       }
-      const nextQueue = flowModules.pages.replaceUnseen(rec.queue, rec.cursor, queue);
+      const catalog = flowCatalog(findChunkMeta(chunkId));
+      if (!catalog || chunkDone(chunkId)) return;
+      const nextQueue = flowModules.pages.replaceUnseen(rec.queue, rec.cursor, queue, catalog.pages, catalog.questions, catalog.answered);
       saveFlow(chunkId, { queue: nextQueue, reason: text, events });
     },
     saveReason(reason, job) {
       const chunkId = jobChunk(job);
-      if (!chunkId) return;
+      if (!chunkId || chunkDone(chunkId)) return;
       const text = redactFlowText(reason);
       if (!text) return;
       const rec = flowRecord(chunkId);
@@ -8574,23 +8176,11 @@ function ensureFlowRunner() {
         store.save(`agentNotes/${id}`, { ...note, text: redactFlowText(note.text) });
       }
     },
-    bumpRun(job) {
-      const today = shanghaiToday();
-      const prev = normalizeAgentRuns(app.state.agentRuns);
-      const n = prev.date === today ? prev.n + 1 : 1;
-      store.save("agentRuns", { date: today, n }, { silent: true });
+    saveError(error, job) {
       const chunkId = jobChunk(job);
-      if (!chunkId) return;
-      const rec = flowRecord(chunkId);
-      const count = rec.agentRuns.date === today ? rec.agentRuns.n + 1 : 1;
-      saveFlow(chunkId, { agentRuns: { date: today, n: count } }, { silent: true });
-    },
-    runsToday() {
-      const runs = normalizeAgentRuns(app.state.agentRuns);
-      return runs.date === shanghaiToday() ? runs.n : 0;
-    },
-    ranToday(job) {
-      return flowRunCount(jobChunk(job)) > 0;
+      if (!chunkId || chunkDone(chunkId)) return;
+      appendFlowEvent(chunkId, { type: "error", code: error.code || "NETWORK", status: error.status || 0,
+        finish_reason: error.finish_reason || null, snippet: redactFlowText(error.snippet || ""), at: Date.now() });
     },
     notes: () => ({ ...(app.state.agentNotes || {}) }),
     now: () => Date.now()
@@ -8599,20 +8189,17 @@ function ensureFlowRunner() {
 }
 
 function triggerFlow(chunkId, kind, extra) {
-  if (!chunkId || !flowModules) return;
+  if (!chunkId || !flowModules || chunkDone(chunkId) || (flowVisit?.id === chunkId && flowVisit.readOnly)) return;
   const runner = ensureFlowRunner();
   if (!runner) return;
+  if (flowVisit?.id === chunkId && kind !== "wrong") flowVisit.quiet = 0;
   void runner.trigger(kind, { ...(extra || {}), chunkId });
 }
 
-function maybeOpenFlow(chunkId) {
-  const key = `${chunkId}:${shanghaiToday()}`;
-  if (flowOpened.has(key)) return;
-  flowOpened.add(key);
-  triggerFlow(chunkId, "open", { chunkId });
-}
+function flowAdvance(meta, sec) {
+  if (flowVisit?.browse >= 0) { flowVisit.browse = -1; render(); return; }
+  if (flowVisit?.readOnly) { flowVisit.cursor++; render(); return; }
 
-function flowAdvance(meta, sec, streak) {
   const catalog = flowCatalog(meta);
   if (!catalog) return;
   const rec = flowRecord(meta.id);
@@ -8634,11 +8221,11 @@ function flowAdvance(meta, sec, streak) {
     cursor,
     events: rec.events.concat([{ type: "read", id, sec, at: Date.now() }])
   });
-  if (streak) triggerFlow(meta.id, "streak", { chunkId: meta.id });
+  if (flowVisit && ++flowVisit.quiet >= 8) triggerFlow(meta.id, "streak", { chunkId: meta.id });
 }
 
 function answerFlowQuestion(meta, question, choice) {
-  if (!question) return;
+  if (!question || flowVisit?.readOnly || flowVisit?.browse >= 0) return;
   if (question.kind === "kaokao") {
     const item = kaokaoItemById(question.id);
     if (!item || latestKaokaoTry(item.id, "recog")) return;
@@ -8665,7 +8252,7 @@ function answerFlowQuestion(meta, question, choice) {
   if (!ok) triggerFlow(meta.id, "wrong", { id: exam.id, chunkId: meta.id });
 }
 
-function flowQaContext(meta, blocks) {
+function flowQaContext(meta, blocks, question) {
   const usable = (blocks || []).filter((block) => Number.isFinite(Number(block.page)));
   if (!usable.length) return null;
   const primary = usable.find((block) => block.kind === "figure") || usable[0];
@@ -8680,18 +8267,23 @@ function flowQaContext(meta, blocks) {
   return {
     unit: meta.unit,
     chunkId: meta.id,
-    blockId: String(primary.id),
+    blockId: question ? `q:${question.id}` : String(primary.id),
+    ...(question ? { exercise: (() => {
+      const q = flowQuestionView(meta, question);
+      return { stem: q.stem, options: q.options, answered: !!q.result,
+        ...(q.result ? { choice: q.options.filter(o => q.result.choiceKeys.includes(o.key)).map(o => `${o.label}. ${o.text}`).join("；"), ok: q.result.ok } : {}) };
+    })() } : {}),
     book: meta.book,
     context,
     label: `${bookName(meta.book)} · ${meta.title || meta.id} · 原文第 ${primary.printed ?? primary.page} 页`
   };
 }
 
-function mountFlowQa(slot, meta, blocks) {
+function mountFlowQa(slot, meta, blocks, question) {
   if (!qaApi || !slot) return null;
-  const context = flowQaContext(meta, blocks);
+  const context = flowQaContext(meta, blocks, question);
   if (!context) return null;
-  const signature = `${qaApi.contextKey(context)}\n${qaDirectSignature()}`;
+  const signature = `${qaApi.contextKey(context)}\n${JSON.stringify(context.exercise || null)}\n${qaDirectSignature()}`;
   if (flowQa && flowQa.signature === signature && flowQa.handle) {
     slot.replaceWith(flowQa.root);
     flowQa.handle.refresh();
@@ -8708,17 +8300,23 @@ function mountFlowQa(slot, meta, blocks) {
     model: cfg.model,
     baseUrl: cfg.baseUrl,
     getApiKey: () => loadDirectConfig().apiKey,
-    getImages: qaImagesFor
+    getImages: qaImagesFor,
+    getNotes: () => app.state.agentNotes || {},
+    onError(error) {
+      if (!flowVisit?.readOnly && flowVisit?.browse < 0)
+        appendFlowEvent(meta.id, { type: "error", channel: "qa", ...error, at: Date.now() });
+    }
   });
-  const limited = limitClient(raw, () => qaTodayTurnCount() <= loadDirectConfig().dailyLimit);
   const client = {
-    get configured() { return limited.configured; },
+    get configured() { return raw.configured; },
     answer(request, options) {
-      return Promise.resolve(limited.answer(request, options)).then((response) => {
+      return Promise.resolve(raw.answer(request, options)).finally(() => {
         const text = redactFlowText(request && request.question || "");
-        appendFlowEvent(meta.id, { type: "ask", text, at: Date.now() });
-        triggerFlow(meta.id, "ask", { text, chunkId: meta.id });
-        return response;
+        if (flowVisit?.id === meta.id && !flowVisit.readOnly && flowVisit.browse < 0 && !chunkDone(meta.id)
+          && !flowRecord(meta.id).events.some(event => event.type === "ask" && event.requestId === request.requestId)) {
+          appendFlowEvent(meta.id, { type: "ask", text, requestId: request.requestId, at: Date.now() });
+          triggerFlow(meta.id, "ask", { text, chunkId: meta.id });
+        }
       });
     }
   };
@@ -8769,6 +8367,8 @@ function qaFigureFiles(request) {
       files.push(file);
     }
   };
+  const contextIds = new Set((request?.context || []).map(part => (String(part.anchor || "").match(/:b(\d+)$/) || [])[1]).filter(Boolean));
+  for (const block of blocks) if (contextIds.has(String(block.id))) add(block);
   if (asked && asked.kind === "figure") add(asked);
   for (const block of blocks) {
     if (page != null && block.page === page) add(block);
@@ -8832,11 +8432,17 @@ function flowBodyStatus(meta) {
 function renderFlowPage() {
   const root = document.getElementById("page-flow");
   if (!root || app.ui.tab !== "flow") return;
-  const chunkId = app.ui.routeChunkId || "";
-  const leave = () => {
-    if ((location.hash || "") !== "#today") location.hash = "#today";
-    else render();
-  };
+  let chunkId = app.ui.routeChunkId || "";
+  if (!chunkId && app.data) {
+    const next = resumeFlowChunk();
+    if (next) {
+      chunkId = next.id;
+      history.replaceState(null, "", `#flow-${encodeURIComponent(chunkId)}`);
+      app.ui.routeChunkId = chunkId;
+    }
+  }
+  if (chunkId) flowReturnHash = `#flow-${encodeURIComponent(chunkId)}`;
+  const leave = openFlowMenu;
   if (!flowModules) {
     root.replaceChildren();
     const note = document.createElement("p");
@@ -8844,11 +8450,18 @@ function renderFlowPage() {
     note.textContent = "正在准备学习流…";
     const exit = document.createElement("button");
     exit.type = "button";
-    exit.id = "flow-exit";
-    exit.textContent = "退出";
+    exit.id = "flow-menu-open";
+    exit.textContent = "菜单";
     exit.addEventListener("click", leave);
     root.append(note, exit);
     loadFlowModules();
+    return;
+  }
+  if (flowReviewDate !== shanghaiToday()) { flowReviewDate = shanghaiToday(); flowReviewPending = true; app.ui.flowReviewBatch = null; }
+  if ((!chunkId || !chunkDone(chunkId) || app.ui.forceReview) && flowReviewPending && renderFlowReview(root, shanghaiToday())) return;
+  app.ui.forceReview = false;
+  if (!chunkId && chunkLookupSettled()) {
+    flowModules.view.renderFlow(root, {status:"ready", mode:"done", onMenu:leave, refresh:render});
     return;
   }
   const meta = ensureChunkMeta(chunkId);
@@ -8857,7 +8470,7 @@ function renderFlowPage() {
       chunkId,
       status: chunkLookupSettled() ? "missing" : "loading",
       message: chunkLookupSettled() ? "没有这一块。" : "正在读取目录…",
-      onExit: leave
+      onMenu: leave
     });
     return;
   }
@@ -8867,26 +8480,35 @@ function renderFlowPage() {
       chunkId: meta.id,
       status: readiness,
       message: "这一块的原文暂时没读到。",
-      onExit: leave
+      onMenu: leave
     });
     return;
   }
+  if (!flowVisit || flowVisit.id !== meta.id) {
+    flowVisit = { id: meta.id, readOnly: chunkDone(meta.id), cursor: 0, history: [], browse: -1, quiet: 0, opened: false };
+  }
   const catalog = flowCatalog(meta);
-  const rec = prepareFlowQueue(meta, catalog);
+  const rec = flowVisit.readOnly ? {
+    ...flowRecord(meta.id), queue: flowModules.pages.buildBrowseQueue(catalog.pages, catalog.questions, catalog.answered),
+    cursor: flowVisit.cursor, seen: catalog.pages.map(p => p.id)
+  } : prepareFlowQueue(meta, catalog);
+  if (!flowVisit.history.length && !flowVisit.readOnly) flowVisit.history = rec.queue.slice(0, rec.cursor);
   const total = rec.queue.length;
   const finished = !!(catalog && flowModules.pages.flowFinished(catalog.pages, rec.seen, rec.queue, rec.cursor));
-  const currentId = finished ? "" : (rec.queue[rec.cursor] || "");
+  const browsing = flowVisit.browse >= 0;
+  const currentId = browsing ? flowVisit.history[flowVisit.browse] : finished ? "" : (rec.queue[rec.cursor] || "");
+  if (!browsing && currentId && flowVisit.history.at(-1) !== currentId) flowVisit.history.push(currentId);
   const pageById = new Map((catalog ? catalog.pages : []).map((page) => [page.id, page]));
   const questionById = new Map((catalog ? catalog.questions : []).map((question) => [question.id, question]));
   const page = pageById.get(currentId) || null;
   const question = questionById.get(currentId) || null;
-  const mode = finished ? "done" : (question ? "question" : "read");
-  const itemId = finished ? "done" : currentId;
+  const mode = finished && !browsing ? "done" : (question ? "question" : "read");
+  const itemId = mode === "done" ? "done" : currentId;
   const shownKey = `${meta.id}:${itemId}`;
   if (flowShown.key !== shownKey) flowShown = { key: shownKey, at: Date.now() };
   const sourcePage = question && question.pageId ? pageById.get(question.pageId) : null;
   const readBlocks = page ? blocksForPage(catalog, page) : [];
-  const qaBlocks = mode === "question" && sourcePage ? blocksForPage(catalog, sourcePage) : readBlocks;
+  const qaBlocks = mode === "question" ? blocksForPage(catalog, sourcePage || catalog.pages.at(-1)) : readBlocks;
   const questionView = question ? flowQuestionView(meta, question) : null;
   const nextChunk = flowNextChunk(meta);
   const activeNotes = flowNotes().filter((note) => note && !note.removed && note.text);
@@ -8895,7 +8517,8 @@ function renderFlowPage() {
     status: "ready",
     mode,
     itemId,
-    cursor: finished ? total : Math.min(total, rec.cursor + 1),
+    cursor: browsing ? flowVisit.browse + 1 : finished ? total : Math.min(total, rec.cursor + 1),
+    progressCursor: flowVisit.readOnly || finished ? total : Math.min(total, rec.cursor + 1),
     total,
     reason: rec.reason,
     rule: rec.rule,
@@ -8909,8 +8532,18 @@ function renderFlowPage() {
     nextTitle: nextChunk ? (nextChunk.title || nextChunk.id) : "",
     decisions: rec.events.filter((event) => event && event.type === "decide" && event.text).slice(-8),
     notes: activeNotes,
-    onExit: leave,
+    errors: rec.events.filter(event => event.type === "error").slice(-5),
+    moreReview: !flowVisit.readOnly && getReviewQueue(shanghaiToday()).length > 0 && reviewSessionQuota(shanghaiToday()) === 0,
+    onMoreReview() { bumpReviewExtra(shanghaiToday()); flowReviewPending = true; render(); },
+    onMenu: leave,
     onOpen: (id) => openFlow(id),
+    canPrevious: browsing ? flowVisit.browse > 0 : flowVisit.history.length > (finished ? 0 : 1),
+    browsing: browsing || flowVisit.readOnly,
+    animation: browsing || (page && rec.seen.includes(currentId)) ? "back" : "forward",
+    onPrevious() {
+      flowVisit.browse = browsing ? flowVisit.browse - 1 : flowVisit.history.length - (finished ? 1 : 2);
+      render();
+    },
     onNext: ({ sec, streak }) => flowAdvance(meta, sec, streak),
     onAnswer: (choice) => answerFlowQuestion(meta, question, choice),
     onDeleteNote(id) {
@@ -8919,71 +8552,75 @@ function renderFlowPage() {
       store.save(`agentNotes/${id}`, { ...note, removed: true });
     },
     refresh: () => render(),
-    mountQa: (slot) => mountFlowQa(slot, meta, qaBlocks)
+    mountQa: (slot) => mountFlowQa(slot, meta, qaBlocks, question)
   });
-  if (mode !== "done") maybeOpenFlow(meta.id);
-  if (mode === "done" && !chunkDone(meta.id)) completeLearnChunk(meta);
+  if (app.ui.review?.lastUndo && !flowVisit.readOnly) {
+    const undo = document.createElement("button");
+    undo.id = "review-undo"; undo.className = "flow-ask"; undo.textContent = "撤销上一张";
+    undo.addEventListener("click", undoCurrentReview); root.append(undo);
+  }
+  if (mode !== "done" && !flowVisit.readOnly && !flowVisit.opened) {
+    flowVisit.opened = true; triggerFlow(meta.id, "open", { chunkId: meta.id });
+  }
+  if (mode === "done" && !flowVisit.readOnly && !chunkDone(meta.id)) {
+    flowReviewPending = true;
+    app.ui.forceReview = true;
+    completeLearnChunk(meta);
+  }
 }
 
-function renderNav() {
-  const tab = app.ui.tab;
-  document.querySelectorAll("[data-tab-link]").forEach((link) => {
-    const on = link.dataset.tabLink === tab;
-    link.classList.toggle("active", on);
-  });
-}
 
 function renderPages() {
   const tab = app.ui.tab;
-  VALID_TABS.concat(["learn", "flow"]).forEach((name) => {
+  VALID_TABS.concat(["flow"]).forEach((name) => {
     const el = document.getElementById(`page-${name}`);
     if (el) el.hidden = tab !== name;
   });
 }
 
 function render() {
+  if ((location.hash || "").startsWith("#learn-")) history.replaceState(null, "", location.hash.replace("#learn-", "#flow-"));
+  if (location.hash === "#review") { app.ui.forceReview = true; flowReviewPending = true; history.replaceState(null, "", "#today"); }
   const route = hashRoute();
   app.ui.tab = route.tab;
   app.ui.routeChunkId = route.chunkId;
   syncReturnTo(route);
-  document.body.classList.toggle("is-learn", route.tab === "learn");
-  document.body.classList.toggle("is-flow", route.tab === "flow");
+  document.body.classList.add("is-flow");
+  document.getElementById("flow-return").hidden = route.tab === "flow";
   renderPages();
-  renderNav();
   renderSettings();
   const today = shanghaiToday();
   if (!app.data) {
-    document.getElementById("status-center").textContent = "加载中";
     const countdown = document.getElementById("exam-countdown");
     if (countdown) countdown.innerHTML = `距考试 <span class="mono">--</span> 天`;
     renderSyncStatus();
-    renderToday(today, { phase: "pre", week: null, weekLabel: "加载中", units: [] });
-    renderLearn();
     renderFlowPage();
     return;
   }
-  if (shouldActivateSkeletons(hasToken(), app.sync.initialPullSettled)) {
+  if (!(route.tab === "flow" && route.chunkId && chunkDone(route.chunkId)) && shouldActivateSkeletons(hasToken(), app.sync.initialPullSettled)) {
     ensureSkeletonActivation(today);
   }
   const weekCtx = getWeekContext(today);
   renderStatusBar(today, weekCtx);
-  renderToday(today, weekCtx);
-  renderPractice(today, weekCtx);
-  renderReview(today);
-  renderMap();
-  renderWeek(today, weekCtx);
-  renderPlan(today, weekCtx);
-  renderLearn();
+  if (route.tab === "practice") renderPractice(today, weekCtx);
+  if (route.tab === "map") renderMap();
+  if (route.tab === "week") renderWeek(today, weekCtx);
+  if (route.tab === "plan") renderPlan(today, weekCtx);
   renderFlowPage();
 }
 
 function knownHash(hash) {
   let key = String(hash || "").replace(/^#/, "");
   try { key = decodeURIComponent(key); } catch (_) {}
-  return VALID_TABS.includes(key) || key.startsWith("learn-") || key.startsWith("flow-");
+  return !key || key === "today" || key === "review" || VALID_TABS.includes(key) || key.startsWith("learn-") || key.startsWith("flow-");
 }
 
 function wireRouting() {
+  const menu = document.getElementById("flow-menu");
+  document.getElementById("flow-menu-close").addEventListener("click", () => menu.close());
+  document.getElementById("flow-return").addEventListener("click", returnToFlow);
+  menu.querySelectorAll("a").forEach(link => link.addEventListener("click", () => menu.close()));
+  menu.addEventListener("click", event => { if (event.target === menu && event.clientX < menu.getBoundingClientRect().left) menu.close(); });
   window.addEventListener("hashchange", () => {
     if (!knownHash(location.hash)) {
       location.hash = "#today";
@@ -8994,6 +8631,7 @@ function wireRouting() {
   const syncStatus = document.getElementById("sync-status");
   if (syncStatus) {
     syncStatus.addEventListener("click", () => {
+      menu.close();
       if ((location.hash || "") !== "#settings") location.hash = "#settings";
       else render();
     });

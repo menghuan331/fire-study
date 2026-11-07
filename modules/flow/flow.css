@@ -3,6 +3,8 @@ body.is-flow {
   --flow-ink: #1c1915;
   --flow-muted: #5c564c;
   --flow-line: #e4dccf;
+  --flow-accent: #326957;
+  --flow-wrong: #8c5e55;
   background: var(--flow-bg);
   color: var(--flow-ink);
 }
@@ -41,6 +43,8 @@ body.is-flow .main-column {
     --flow-ink: #f3efe6;
     --flow-muted: #c3bbae;
     --flow-line: #3a342c;
+    --flow-accent: #9bc8b4;
+    --flow-wrong: #c3968c;
   }
 }
 
@@ -49,6 +53,8 @@ body.is-flow .main-column {
   --flow-ink: #f3efe6;
   --flow-muted: #c3bbae;
   --flow-line: #3a342c;
+  --flow-accent: #9bc8b4;
+  --flow-wrong: #c3968c;
 }
 
 body.is-flow .nav,
@@ -75,20 +81,13 @@ body.is-flow .app-shell {
   color: var(--flow-muted);
 }
 
-.flow-exit,
 .flow-ask,
-.flow-reason,
 .flow-source {
   min-height: 44px;
   border: 0;
   background: transparent;
   color: var(--flow-ink);
   cursor: pointer;
-}
-
-.flow-exit {
-  margin-left: auto;
-  padding: 0 4px;
 }
 
 .flow-progress {
@@ -101,17 +100,6 @@ body.is-flow .app-shell {
   display: block;
   height: 100%;
   background: var(--flow-ink);
-}
-
-.flow-reason {
-  display: block;
-  width: 100%;
-  margin: 0 0 12px;
-  padding: 0;
-  text-align: left;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--flow-muted);
 }
 
 .flow-copy {
@@ -136,13 +124,13 @@ body.is-flow .app-shell {
 
 .flow-title {
   margin: 0 0 0.6em;
-  font-size: 1.35em;
+  font-size: 22px;
 }
 
 .flow-copy h6,
 .flow-heading {
   margin: 0 0 0.5em;
-  font-size: 1.15em;
+  font-size: 22px;
 }
 
 .flow-copy p {
@@ -151,7 +139,7 @@ body.is-flow .app-shell {
 
 .flow-src {
   font-weight: 700;
-  font-size: 1.1em;
+  font-size: 22px;
   line-height: 1;
 }
 
@@ -162,7 +150,7 @@ body.is-flow .app-shell {
   border: 0;
   background: transparent;
   color: var(--flow-muted);
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.4;
   min-height: 0;
   text-decoration: underline;
@@ -173,7 +161,7 @@ body.is-flow .app-shell {
 .flow-rule {
   margin: 0 0 8px;
   color: var(--flow-muted);
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
@@ -218,17 +206,24 @@ body.is-flow .app-shell {
 }
 
 .flow-option.is-on {
-  border-color: var(--flow-ink);
+  border-color: var(--flow-accent);
+  background: color-mix(in srgb, var(--flow-accent) 12%, var(--flow-bg));
 }
 
 .flow-option.is-ok {
-  border-color: var(--flow-ink);
+  border-color: var(--flow-accent);
+  color: var(--flow-accent);
+  background: color-mix(in srgb, var(--flow-accent) 12%, var(--flow-bg));
   font-weight: 700;
 }
 
 .flow-option.is-bad {
-  color: var(--flow-muted);
+  color: var(--flow-wrong);
 }
+.flow-option-text { flex: 1 1 auto; text-align: left; }
+.flow-option.is-bad .flow-option-text { text-decoration: line-through; }
+.flow-option.is-dim { opacity: .45; }
+.flow-verdict { margin-left: auto; }
 
 .flow-option:disabled {
   cursor: default;
@@ -240,11 +235,11 @@ body.is-flow .app-shell {
 }
 
 .flow-result.is-ok {
-  color: var(--flow-ink);
+  color: var(--flow-accent);
 }
 
 .flow-result.is-bad {
-  color: var(--flow-muted);
+  color: var(--flow-wrong);
 }
 
 .flow-source {
@@ -253,7 +248,7 @@ body.is-flow .app-shell {
   padding: 8px 0;
   text-align: left;
   font: inherit;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.6;
   color: var(--flow-muted);
   text-decoration: underline;
@@ -263,7 +258,7 @@ body.is-flow .app-shell {
 .flow-notes {
   max-width: 38em;
   margin: 0 auto 16px;
-  font-size: 15px;
+  font-size: 14px;
   line-height: 1.6;
 }
 
@@ -306,7 +301,7 @@ body.is-flow .app-shell {
   background: var(--flow-ink);
   color: var(--flow-bg);
   font: inherit;
-  font-size: 17px;
+  font-size: 19px;
   cursor: pointer;
 }
 
@@ -330,3 +325,80 @@ body.is-flow .app-shell {
 .today-flow .text-link {
   min-height: 44px;
 }
+
+/* The same quiet shell is used for the menu's secondary pages. */
+body.is-flow { --paper: var(--flow-bg); --ink: var(--flow-ink); --muted: var(--flow-muted); --line: var(--flow-line); --accent: var(--flow-accent); }
+body.is-flow .panel, body.is-flow .qa-panel, body.is-flow .qa-turn, body.is-flow .review-card {
+  background: transparent; color: var(--flow-ink); border: 0; box-shadow: none; border-radius: 0;
+}
+body.is-flow .panel .panel { padding: 0; }
+body.is-flow .h1 { font-family: "Songti SC", serif; font-size: 22px; }
+body.is-flow .h2 { font-size: 19px; }
+body.is-flow .page { overflow-wrap: anywhere; min-width: 0; }
+body.is-flow .text-input, body.is-flow select, body.is-flow textarea { background: var(--flow-bg); color: var(--flow-ink); max-width: 100%; }
+body.is-flow .btn-primary { background: var(--flow-accent); color: var(--flow-bg); }
+body.is-flow .btn-secondary { background: transparent; color: var(--flow-ink); }
+.flow-bar { flex-wrap: wrap; }
+.flow-bar > * { min-width: 0; }
+.flow-bar .flow-ask { padding: 0 8px; font-size: 14px; }
+.flow-bar #flow-ask-figure { flex-basis: 100%; }
+body.is-flow:has(#flow-ask-figure) .app-shell { padding-bottom: calc(132px + env(safe-area-inset-bottom, 0px)); }
+.flow-ask:disabled { opacity: .4; cursor: default; }
+.flow-copy table { display: block; max-width: 100%; overflow-x: auto; }
+.flow-copy .katex-display { overflow-x: auto; overflow-y: hidden; }
+.flow-decisions { margin-bottom: 24px; }
+.flow-menu {
+  position: fixed; inset: 0 0 0 auto; margin: 0; width: min(340px, 90vw); max-width: 90vw;
+  height: 100dvh; max-height: 100dvh; padding: 24px; border: 0;
+  background: var(--flow-bg); color: var(--flow-ink); box-shadow: -8px 0 30px #0002;
+}
+.flow-menu[open] { display: flex; flex-direction: column; gap: 12px; animation: flow-forward .18s ease-out; }
+.flow-menu::backdrop { background: #0003; }
+.flow-menu a { display: block; min-height: 44px; padding: 10px 0; color: inherit; font-size: 19px; text-decoration: none; }
+.flow-menu-status { margin-top: auto; font-size: 14px; line-height: 1.8; }
+.flow-menu-status .sync-status { font: inherit; color: inherit; }
+.flow-menu #flow-menu-close { align-self: flex-end; }
+#flow-return { margin-bottom: 16px; }
+.flow-slide-forward { animation: flow-forward .18s ease-out; }
+.flow-slide-back { animation: flow-back .18s ease-out; }
+@keyframes flow-forward { from { opacity: .5; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes flow-back { from { opacity: .5; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+@media (prefers-reduced-motion: reduce) { .flow-slide-forward, .flow-slide-back, .flow-menu[open] { animation: none; } }
+.review-actions { align-items: center; }
+.review-actions > .review-actions { display: contents; }
+.review-actions .review-hint { display: none; }
+.review-actions button { min-height: 44px; }
+.review-card { padding: 0; }
+.review-input { width: 8em; max-width: 100%; font: inherit; color: var(--flow-ink); background: transparent; border: 0; border-bottom: 1px solid var(--flow-line); }
+
+body.is-flow {
+  --bg: var(--flow-bg); --panel: var(--flow-bg); --fg: var(--flow-ink); --ink-2: var(--flow-muted);
+  --ok: var(--flow-accent); --bad: var(--flow-wrong); --warn: var(--flow-muted);
+  --lamp-read: var(--flow-accent); --lamp-done: var(--flow-accent); --lamp-pass: var(--flow-accent);
+  --font-display: "Iowan Old Style", "Songti SC", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+body.is-flow .page:not(#page-flow) { font-size: 19px; }
+body.is-flow .small, body.is-flow .label, body.is-flow .q-meta { font-size: 14px; }
+body.is-flow .qa-heading, body.is-flow .qa-turn-heading { font-size: 19px; }
+body.is-flow .panel { padding-inline: 0; }
+body.is-flow .btn { box-shadow: none; }
+
+/* Four sizes across reading, review, QA and the secondary pages. */
+body.is-flow .page { font-size: 19px; }
+body.is-flow .page * { font-size: inherit; }
+body.is-flow .page :is(h1, h2, h3, h4, h5, h6), body.is-flow .page .flow-src { font-size: 22px; }
+body.is-flow .page :is(button, input, select, textarea) { font-size: 16px; }
+body.is-flow .page :is(.small, .label, .q-meta, .flow-count, .flow-notes, .flow-rule, .flow-why-entry, .flow-source,
+.qa-source, .qa-input-hint, .qa-answer-meta, .qa-image-note, .qa-anchor, .qa-count, .qa-badge, .qa-status, .qa-waiting, .qa-empty, .qa-still-hint, .qa-old-context, .qa-legacy-note, .qa-input-label) { font-size: 14px; }
+body.is-flow .page .flow-option, body.is-flow .page .flow-result { font-size: 19px; }
+body.is-flow .qa-button-primary { color: var(--flow-bg); }
+body.is-flow { --accent-ink: var(--flow-bg); }
+
+body.is-flow .page { border: 0; border-radius: 0; box-shadow: none; margin: 0; }
+.flow-top-tools { display: flex; gap: 12px; }
+.flow-bar .flow-ask { flex: 0 0 88px; min-width: 88px; white-space: nowrap; }
+.flow-bar .flow-next, .flow-grade { flex: 1 1 0; min-width: 0; }
+.flow-grade { display: flex; gap: 8px; }
+.flow-selected { margin-left: auto; font-size: 14px; white-space: nowrap; }
+.review-forget { color: var(--flow-muted); }

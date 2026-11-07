@@ -1,7 +1,7 @@
-import { QaError } from './errors.js';
+import { QaError, failureDetails } from './errors.js';
 import { stableStringify, validateRequest, validateResponse } from './state.js';
 
-export const SYSTEM_PROMPT = `你是注册消防工程师备考的讲解老师。读者 Billy 是在职的电信设计工程师：火灾报警、供配电、应急照明比较熟，建筑防火和水系统比较弱。他不爱读大段文字，看不太懂图，需要你把道理讲透，而不是复述教材。
+export const SYSTEM_PROMPT = `你是注册消防工程师备考的讲解老师。读者 Billy 是在职的电信设计工程师：先参考关于这位学习者的笔记，不要按职业假定他已经懂得基本概念。他不爱读大段文字，看不太懂图，需要你把道理讲透，而不是复述教材。
 
 回答要求：
 1. 第一句直接回答他问的，用大白话。
@@ -86,25 +86,23 @@ function imageContent(style, text, images) {
   return [{ type: 'text', text }, ...shots];
 }
 
-const VISION_REJECTION = /image|vision|unsupported/i;
-
 function historyMessages(history) {
   return history.map(message => ({ role: message.role, content: message.content }));
 }
 
-function openaiBody(model, messages, jsonMode) {
+function openaiBody(model, messages, jsonMode, system, maxTokens) {
   const body = {
     model,
-    messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+    messages: [{ role: 'system', content: system }, ...messages],
     temperature: 0.3,
-    max_tokens: 2000
+    max_tokens: maxTokens
   };
   if (jsonMode) body.response_format = { type: 'json_object' };
   return body;
 }
 
-function anthropicBody(model, messages) {
-  return { model, system: SYSTEM_PROMPT, messages, max_tokens: 2000, temperature: 0.3 };
+function anthropicBody(model, messages, system, maxTokens) {
+  return { model, system, messages, max_tokens: maxTokens, temperature: 0.3 };
 }
 
 function headersFor(style, key) {
@@ -469,8 +467,8 @@ async function send(fetchImpl, url, headers, body, signal, stopOf) {
 
 /** Browser-direct model client. Same answer() contract as createClient. The key stays in memory for the request only. */
 export function createDirectClient({ provider, model, baseUrl, getApiKey = () => '', fetchImpl = globalThis.fetch,
-  timeoutMs = 60000, now = () => Date.now(), getImages } = {}) {
-  const timeout = Math.max(1, Number(timeoutMs) || 60000);
+  timeoutMs = 120000, now = () => Date.now(), getImages, getNotes = () => [], onError = () => {} } = {}) {
+  const timeout = Math.max(1, Number(timeoutMs) || 120000);
   const inFlight = new Map();
   const name = providerName(provider);
   const modelName = trimmed(model);
@@ -536,7 +534,19 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
           : name === 'anthropic' ? ANTHROPIC_URL : OPENAI_URL[name];
         if (!url) throw new QaError('NOT_CONFIGURED');
         const headers = headersFor(style, key);
-        const promptText = userContent(payload);
+        const noteList = Object.values(getNotes() || {}).filter(note => note && !note.removed && note.text)
+          .sort((a, b) => (Number(a.at) || 0) - (Number(b.at) || 0)).slice(-20);
+        const memory = noteList.map(note => String(note.text)).join("\n");
+        const guard = payload.exercise && !payload.exercise.answered
+          ? "\n这道题还没作答：不能给答案，不能说出答案或排除选项，只能帮助理解题意和相关原文。"
+          : "";
+        const system = (SYSTEM_PROMPT + guard + (memory ? `\n【关于这位学习者】\n${memory}` : "")).split(key).join("[REDACTED]");
+        let promptText = userContent(payload);
+        if (payload.exercise) {
+          const q = payload.exercise;
+          promptText += `\n【当前题目】${q.stem}\n${q.options.map(o => `${o.label}. ${o.text}`).join("\n")}`;
+          if (q.answered) promptText += `\n【他的作答】${q.choice}；${q.ok ? "对了" : "错了"}`;
+        }
         let images = [];
         let imagesMissing = false;
         let imagesPartial = false;
@@ -561,46 +571,61 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
         let raw = '';
         let status = 0;
         let ok = false;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-          if (stop || signal?.aborted) failStop();
-          const content = !dropImages && images.length ? imageContent(style, promptText, images) : promptText;
-          const messages = [...historyMessages(payload.history), { role: 'user', content }];
-          const body = style === 'anthropic' ? anthropicBody(modelName, messages) : openaiBody(modelName, messages, jsonMode);
-          const result = await send(fetchImpl, url, headers, body, controller.signal, stopOf);
-          raw = result.raw;
-          status = result.status;
-          ok = result.ok;
-          if (ok) break;
-          const lower = String(raw).toLowerCase();
-          let retry = false;
-          if (attempt < 2 && jsonMode && status === 400 && lower.includes('response_format')) {
-            jsonMode = false;
-            retry = true;
+        let maxTokens = 8192;
+        let finish = null;
+        try {
+          for (let attempt = 0; attempt < 4; attempt += 1) {
+            if (stop || signal?.aborted) failStop();
+            const content = !dropImages && images.length ? imageContent(style, promptText, images) : promptText;
+            const messages = [...historyMessages(payload.history), { role: 'user', content }];
+            const body = style === 'anthropic' ? anthropicBody(modelName, messages, system, maxTokens) : openaiBody(modelName, messages, jsonMode, system, maxTokens);
+            const result = await send(fetchImpl, url, headers, body, controller.signal, stopOf);
+            raw = result.raw;
+            status = result.status;
+            ok = result.ok;
+            if (ok) break;
+            const details = failureDetails(status, null, raw, key);
+            onError({ code: 'HTTP', ...details });
+            const lower = String(raw).toLowerCase();
+            let retry = false;
+            if (jsonMode && status === 400 && lower.includes('response_format')) {
+              jsonMode = false;
+              retry = true;
+            }
+            if (!dropImages && images.length && status >= 400 && status < 500) {
+              dropImages = true;
+              retry = true;
+            }
+            if (status === 400 && maxTokens === 8192) {
+              maxTokens = 4096;
+              retry = true;
+            }
+            if (retry) continue;
+            const failure = httpFailure(status, raw);
+            if (failure) throw failure;
+            if (BALANCE.test(raw)) throw new QaError('NO_BALANCE', undefined, { status });
+            throw new QaError('UNAVAILABLE', undefined, { status });
           }
-          if (attempt < 2 && !dropImages && images.length && status === 400 && VISION_REJECTION.test(lower)) {
-            dropImages = true;
-            retry = true;
+          if (!ok) throw new QaError('INVALID_RESPONSE');
+          let data = null;
+          try { data = JSON.parse(raw); }
+          catch { throw new QaError('INVALID_RESPONSE'); }
+          finish = style === 'anthropic' ? data?.stop_reason ?? null : data?.choices?.[0]?.finish_reason ?? null;
+          const text = modelOutput(style, data);
+          if (finish === 'length' || finish === 'max_tokens' || !stripThink(text).trim()) {
+            throw new QaError('TRUNCATED');
           }
-          if (retry) continue;
-          const failure = httpFailure(status, raw);
-          if (failure) throw failure;
-          if (BALANCE.test(raw)) throw new QaError('NO_BALANCE', undefined, { status });
-          throw new QaError('INVALID_RESPONSE');
+          const extracted = extractJsonObject(text);
+          const assembled = assemble(payload, extracted.parsed, name, modelName, now, key, extracted.recovered);
+          if (dropImages || imagesMissing) assembled.answer.imageNote = '这次模型没看到图';
+          else if (imagesPartial) assembled.answer.imageNote = '这次模型没看到全部的图';
+          return assembled;
+        } catch (error) {
+          const safe = error instanceof QaError ? error : new QaError('NETWORK_ERROR');
+          Object.assign(safe, failureDetails(status || safe.status, finish, raw, key));
+          onError({ code: safe.code, ...failureDetails(safe.status, finish, raw, key) });
+          throw safe;
         }
-        if (!ok) throw new QaError('INVALID_RESPONSE');
-        let data = null;
-        try { data = JSON.parse(raw); }
-        catch { data = null; }
-        const text = modelOutput(style, data);
-        if (!text) {
-          if (BALANCE.test(raw)) throw new QaError('NO_BALANCE', undefined, { status });
-          throw new QaError('INVALID_RESPONSE');
-        }
-        const extracted = extractJsonObject(text);
-        const assembled = assemble(payload, extracted.parsed, name, modelName, now, key, extracted.recovered);
-        if (dropImages || imagesMissing) assembled.answer.imageNote = '这次模型没看到图';
-        else if (imagesPartial) assembled.answer.imageNote = '这次模型没看到全部的图';
-        return assembled;
       })();
 
       const promise = Promise.race([operation, canceled]).finally(() => {

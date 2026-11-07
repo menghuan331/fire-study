@@ -231,12 +231,6 @@ export function planKeywordMarks(text, items) {
   return { ranges: dedupeRanges(ranges), hits, total, skipped };
 }
 
-function agentReason(model) {
-  const text = String(model && model.reason || "").trim();
-  if (!text || ruleSet.has(text)) return "";
-  return text;
-}
-
 function ruleText(model) {
   const explicit = String(model && model.rule || "").trim();
   if (explicit) return explicit;
@@ -304,8 +298,9 @@ function optionButton(option, question) {
   if (!question.result) return node;
   const correct = new Set(question.result.correctKeys || []);
   const chosen = new Set(question.result.choiceKeys || []);
-  if (correct.has(option.key)) node.classList.add("is-ok");
-  else if (chosen.has(option.key)) node.classList.add("is-bad");
+  if (correct.has(option.key)) { node.classList.add("is-ok"); node.append(el("span", "flow-verdict", "✓")); }
+  else if (chosen.has(option.key)) { node.classList.add("is-bad"); node.append(el("span", "flow-verdict", "✕")); }
+  else node.classList.add("is-dim");
   node.disabled = true;
   return node;
 }
@@ -316,7 +311,8 @@ function drawQuestion(host, question) {
   const list = el("div", "flow-options");
   for (const option of question.options || []) {
     const node = optionButton(option, question);
-    if (!question.result && !question.multi) {
+    if (!question.result && host.browsing) node.disabled = true;
+    else if (!question.result && !question.multi) {
       node.addEventListener("click", () => host.onAnswer(option.key));
     } else if (!question.result && question.multi) {
       const on = ui.choice.includes(option.key);
@@ -333,7 +329,7 @@ function drawQuestion(host, question) {
     list.append(node);
   }
   wrap.append(list);
-  if (question.multi && !question.result) {
+  if (question.multi && !question.result && !host.browsing) {
     const submit = button("flow-next flow-submit", "提交");
     submit.id = "flow-submit";
     submit.disabled = !ui.choice;
@@ -341,7 +337,7 @@ function drawQuestion(host, question) {
     wrap.append(submit);
   }
   if (question.result) {
-    const line = el("p", `flow-result${question.result.ok ? " is-ok" : " is-bad"}`, question.result.ok ? "对了" : "答错了");
+    const line = el("p", `flow-result${question.result.ok ? " is-ok" : " is-bad"}`, question.result.ok ? "对了" : "错了");
     wrap.append(line);
     if (question.result.why) wrap.append(el("p", "flow-why", question.result.why));
     if (question.source && question.source.text) {
@@ -359,21 +355,24 @@ function drawQuestion(host, question) {
 
 function drawBar(host, model) {
   const bar = el("div", "flow-bar");
+  const previous = button("flow-ask", "上一页");
+  previous.id = "flow-previous";
+  previous.disabled = !model.canPrevious;
+  previous.addEventListener("click", () => { ui.qaOpen = false; ui.peek = false; host.onPrevious(); });
+  bar.append(previous);
   const next = button("flow-next", model.mode === "done" ? "下一块" : "下一页");
   next.id = model.mode === "done" ? "flow-next-chunk" : "flow-next";
   if (model.mode === "done" && !model.nextId) next.disabled = true;
+  if (model.mode === "question" && !model.question?.result && !model.browsing) next.disabled = true;
   next.addEventListener("click", () => {
     if (model.mode === "done") {
       if (model.nextId) host.onOpen(model.nextId);
       return;
     }
     const sec = Math.max(0, Math.round((Date.now() - ui.shownAt) / 1000));
-    ui.quiet += 1;
-    const streak = ui.quiet >= 8;
-    if (streak) ui.quiet = 0;
     ui.qaOpen = false;
     ui.peek = false;
-    host.onNext({ sec, streak });
+    host.onNext({ sec });
   });
   const ask = button("flow-ask", "问一下");
   ask.id = "flow-ask";
@@ -383,9 +382,8 @@ function drawBar(host, model) {
     ui.pendingAsk = "";
     host.refresh();
   });
-  bar.append(next);
-  if (model.mode === "done") return bar;
-  bar.append(ask);
+  bar.append(next, ask);
+  if (model.mode === "done") { ask.disabled = true; return bar; }
   if (model.figure && model.mode === "read") {
     const figure = button("flow-ask", "这张图在讲什么");
     figure.id = "flow-ask-figure";
@@ -402,6 +400,12 @@ function drawBar(host, model) {
 function drawNotes(host, model) {
   const panel = el("section", "flow-notes");
   panel.id = "flow-notes";
+  if (model.moreReview) {
+    const more = button("flow-ask", "再来 10 张");
+    more.id = "review-more";
+    more.addEventListener("click", () => host.onMoreReview());
+    panel.append(more);
+  }
   const rule = ruleText(model);
   if (rule) {
     const line = el("p", "flow-rule", rule);
@@ -410,12 +414,14 @@ function drawNotes(host, model) {
   }
   const decisions = (model.decisions || []).filter((decision) => decision && decision.text && decision.text !== rule);
   if (decisions.length) {
-    panel.append(el("h2", "flow-notes-title", "最近的决定"));
+    const group = el("div", "flow-decisions");
+    panel.append(group);
     for (const decision of decisions) {
-      panel.append(el("p", "flow-note", decision.text || ""));
+      group.append(el("p", "flow-note", decision.text || ""));
     }
   }
-  panel.append(el("h2", "flow-notes-title", "笔记"));
+  for (const error of model.errors || []) panel.append(el("p", "flow-rule",
+    `状态 ${error.status || "—"} · ${error.code || "ERROR"}${error.finish_reason ? ` · ${error.finish_reason}` : ""}`));
   const notes = model.notes || [];
   if (!notes.length) panel.append(el("p", "flow-note", "还没有笔记"));
   for (const note of notes) {
@@ -442,7 +448,8 @@ export function renderFlow(root, model) {
     ui.shownAt = Date.now();
     ui.pendingAsk = "";
   }
-  if (model.itemId !== ui.itemId) {
+  const changed = model.itemId !== ui.itemId;
+  if (changed) {
     ui.itemId = model.itemId || "";
     ui.qaOpen = false;
     ui.choice = "";
@@ -461,39 +468,32 @@ export function renderFlow(root, model) {
   const head = el("header", "flow-top");
   const count = el("p", "flow-count", model.total ? `${model.cursor} / ${model.total}` : "");
   count.id = "flow-count";
-  const exit = button("flow-exit", "退出");
-  exit.id = "flow-exit";
-  exit.addEventListener("click", () => model.onExit());
+  const exit = button("flow-ask", "菜单");
+  exit.id = "flow-menu-open";
+  exit.addEventListener("click", () => model.onMenu());
   head.append(count, exit);
   const progress = el("div", "flow-progress");
   const fill = el("span");
-  const ratio = model.total ? Math.min(1, (model.cursor || 0) / model.total) : 0;
+  const ratio = model.total ? Math.min(1, (model.progressCursor ?? model.cursor ?? 0) / model.total) : 0;
   fill.style.width = `${Math.round(ratio * 100)}%`;
   progress.append(fill);
   progress.setAttribute("aria-hidden", "true");
   root.append(head, progress);
 
-  const reasonText = agentReason(model);
-  if (reasonText) {
-    const reason = button("flow-reason", reasonText);
-    reason.id = "flow-reason";
-    reason.addEventListener("click", () => {
-      ui.notesOpen = !ui.notesOpen;
-      model.refresh();
-    });
-    root.append(reason);
-  }
-  const why = button("flow-why-entry", "为什么是这页");
+  const why = button("flow-ask", "笔记");
   why.id = "flow-why";
   why.addEventListener("click", () => {
     ui.notesOpen = !ui.notesOpen;
     model.refresh();
   });
-  root.append(why);
+  const tools = el("div", "flow-top-tools");
+  tools.append(why, exit);
+  head.append(tools);
   if (ui.notesOpen) root.append(drawNotes(model, model));
 
   const article = el("article", "flow-copy");
   article.id = "flow-copy";
+  if (changed) article.classList.add(model.animation === "back" ? "flow-slide-back" : "flow-slide-forward");
   if (model.status === "loading") {
     article.append(el("p", "flow-stem", "正在读取原文…"));
   } else if (model.status === "missing") {

@@ -3,23 +3,20 @@ import { runAgent } from "../agent/kernel.js";
 
 export const STUDY_SYSTEM = `你是学习流的自适应内核，不是讲解老师。目标是让 Billy 考试通过，并且真的懂。
 
-Billy 是电信设计工程师：火灾报警、供配电、应急照明比较熟，建筑防火和水系统比较弱。他不爱读大段文字，要靠题知道重点。
+Billy 是电信设计工程师：先看 read_learner 和笔记，再判断他哪里熟、哪里弱，不要根据职业预设他的基础。他不爱读大段文字，要靠题知道重点。
 
-你只能调整题目出现的时机，以及让他重看已经读过的页。不要讲解。讲解由他提问时的另一个通道负责。做不到更好就不要改队列。先用工具读情况，再改。不要编造页 id 或题 id。
+你只能调整题目出现的时机，以及让他重看已经读过的页。不要讲解。讲解由他提问时的另一个通道负责。做不到更好就不要改队列。先用工具读情况，再改。不要编造页 id 或题 id。未作答的题不能删除，未读原文不能丢或改顺序。
 
 理由用一句中文，20 字以内，写给 Billy 看。`;
 
 export const RULE_NO_KEY = "没配钥匙，按规则排";
 export const RULE_ANTHROPIC = "这个模型不跑自适应";
-export const RULE_CAP = "今天次数用完，按规则排";
 export const RULE_OFFLINE = "这次没连上，按规则排";
-export const RULE_REASONS = Object.freeze([RULE_NO_KEY, RULE_ANTHROPIC, RULE_CAP, RULE_OFFLINE]);
+export const RULE_REASONS = Object.freeze([RULE_NO_KEY, RULE_ANTHROPIC, RULE_OFFLINE]);
 
-export function agentGate({ trigger, ranToday = false, runs = 0, hasKey = false, provider = "" } = {}) {
-  if (trigger === "open" && ranToday) return { run: false, reason: "" };
+export function agentGate({ trigger, hasKey = false, provider = "" } = {}) {
   if (!hasKey) return { run: false, reason: RULE_NO_KEY };
   if (provider === "anthropic") return { run: false, reason: RULE_ANTHROPIC };
-  if (Number(runs) >= 20) return { run: false, reason: RULE_CAP };
   if (trigger === "open" || trigger === "wrong" || trigger === "ask" || trigger === "streak") return { run: true, reason: "" };
   return { run: false, reason: "" };
 }
@@ -146,7 +143,7 @@ function buildTools(host) {
         if (chars(reason).length > 20) return { error: "reason 要在 20 字以内" };
         if (!Array.isArray(args.items) || args.items.some((id) => typeof id !== "string")) return { error: "items 必须是字符串数组" };
         const current = ctx();
-        const plan = applyPlan({ items: args.items, reason }, current.pages || [], current.questions || [], current.seen || []);
+        const plan = applyPlan({ items: args.items, reason }, current.pages || [], current.questions || [], current.seen || [], current.queue || [], current.answered || []);
         if (!plan.ok) return { error: plan.error };
         host.saveQueue(plan.queue, reason, host.currentJob);
         return { ok: true, queue: plan.queue, fixes: plan.fixes, reason };
@@ -181,9 +178,7 @@ export function createStudyRunner({
   saveQueue,
   saveNote,
   saveReason,
-  bumpRun = () => {},
-  runsToday = () => 0,
-  ranToday = () => false,
+  saveError = () => {},
   notes = () => ({}),
   now = () => Date.now(),
   prepare,
@@ -194,6 +189,7 @@ export function createStudyRunner({
   if (typeof getContext !== "function" || typeof saveQueue !== "function" || typeof saveReason !== "function") {
     throw new TypeError("学习流内核缺少读写");
   }
+  const wrongCounts = new Map();
   let running = false;
   let pending = null;
   let abortCurrent = null;
@@ -211,8 +207,6 @@ export function createStudyRunner({
     const key = snap ? String(snap.apiKey || "").trim() : "";
     const decision = agentGate({
       trigger: job.kind,
-      ranToday: ranToday(job),
-      runs: runsToday(job),
       hasKey: snap ? !!key : hasKey(),
       provider: snap ? String(snap.provider || "") : provider()
     });
@@ -220,14 +214,13 @@ export function createStudyRunner({
       if (decision.reason) saveReason(decision.reason, job);
       return;
     }
-    const llm = typeof getLlm === "function" ? getLlm(snap) : null;
+    const llm = typeof getLlm === "function" ? getLlm(snap, job) : null;
     if (typeof llm !== "function") {
       saveReason(RULE_OFFLINE, job);
       return;
     }
     const previousSecret = host.secret;
     if (snap) host.secret = () => key;
-    bumpRun(job);
     const controller = new AbortController();
     abortCurrent = controller;
     try {
@@ -239,8 +232,8 @@ export function createStudyRunner({
         maxSteps,
         signal: controller.signal
       });
-    } catch {
-      if (!controller.signal.aborted) saveReason(RULE_OFFLINE, job);
+    } catch (error) {
+      if (!controller.signal.aborted) { saveError(error, job); saveReason(RULE_OFFLINE, job); }
     } finally {
       if (abortCurrent === controller) abortCurrent = null;
       host.secret = previousSecret;
@@ -251,6 +244,12 @@ export function createStudyRunner({
     get running() { return running; },
     abort,
     async trigger(kind, extra) {
+      if (kind === "wrong") {
+        const chunk = extra?.chunkId || "";
+        const count = (wrongCounts.get(chunk) || 0) + 1;
+        wrongCounts.set(chunk, count % 2);
+        if (count < 2) return { queued: false, skipped: true };
+      }
       const job = { kind, extra: extra || {} };
       if (running) {
         pending = job;

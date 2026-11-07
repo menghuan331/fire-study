@@ -30,6 +30,7 @@ function pageKind(blocks) {
   const solos = blocks.filter((block) => SOLO.has(block.kind));
   if (solos.length !== 1) return "text";
   const solo = solos[0];
+  if (solo.kind === "equation") return "equation";
   const restOk = blocks.every((block) => (
     block === solo
     || HEADINGS.has(block.kind || "")
@@ -67,12 +68,29 @@ export function paginateBlocks(blocks) {
   for (let index = 0; index < list.length; index += 1) {
     const block = list[index];
     const kind = block && block.kind || "para";
+    if (kind === "equation") {
+      // Keep the preceding introduction and the complete definition run together.
+      const lead = buf.at(-1);
+      if (lead && (lead.kind || "para") === "para") {
+        buf.pop();
+        if (buf.length && !headingsOnly(buf)) flush();
+        buf.push(lead);
+      } else if (buf.length && !headingsOnly(buf)) flush();
+      buf.push(block);
+      if (/^式中/.test(plainText(list[index + 1]?.md))) {
+        do {
+          buf.push(list[++index]);
+        } while (list[index + 1]?.kind === "para" &&
+          /^(?:式中|[A-Za-z\u0370-\u03ff]|\$|[—－])/.test(String(list[index + 1].md).trim()));
+      }
+      flush();
+      continue;
+    }
     if (SOLO.has(kind)) {
       if (buf.length && !headingsOnly(buf)) flush();
       buf.push(block);
       if (kind === "figure" && isFigureCaption(list[index + 1])) {
-        buf.push(list[index + 1]);
-        index += 1;
+        buf.push(list[++index]);
       }
       flush();
       continue;
@@ -133,7 +151,7 @@ export function questionsForChunk(chunk, kaokaoItems, questionsById) {
   const byId = asMap(questionsById);
   for (const id of (chunk && chunk.questions) || []) {
     const question = byId.get(id);
-    if (!question || !question.id) continue;
+    if (!question || !question.id || !String(question.answer || "").trim()) continue;
     const anchor = (question.verify && question.verify.anchor) || question.anchor || "";
     const pageId = locate.get(anchorBlockId(anchor)) || null;
     questions.push({ id: question.id, kind: "exam", pageId });
@@ -202,7 +220,15 @@ export function buildDefaultQueue(pages, questions, answered) {
   return queue;
 }
 
-/** Page id plus every block on that page. Adding a block keeps the page id but must not count as already read. */
+/** Completed browsing includes all original pages and every question already answered, without touching state. */
+export function buildBrowseQueue(pages, questions, answered) {
+  const done = answeredSet(answered);
+  const prior = pages.flatMap(page => [page.id, ...questions.filter(q => q.pageId === page.id && done.has(q.id)).map(q => q.id)]);
+  prior.push(...questions.filter(q => !q.pageId && done.has(q.id)).map(q => q.id));
+  return applyPlan(buildDefaultQueue(pages, questions, []), pages, questions, [], prior).queue;
+}
+
+/** Page id plus every block on that page: used to remap reading history when pagination changes. */
 export function flowPagesKey(pages) {
   return (pages || []).map((page) => {
     const id = String(page && page.id || "");
@@ -211,20 +237,32 @@ export function flowPagesKey(pages) {
   }).join("\n");
 }
 
-/** Missing or different pagesKey rebuilds the queue from the first page. Events stay with the caller. */
+/** Repartition by block identity, preserving reading already done on this or another device. */
 export function reconcileFlowRecord(record, pages, questions, answered) {
   const key = flowPagesKey(pages);
   const prev = record && typeof record === "object" ? record : {};
   const stored = typeof prev.pagesKey === "string" ? prev.pagesKey : "";
   if (stored !== key) {
-    return {
-      queue: buildDefaultQueue(pages, questions, answered),
-      cursor: 0,
-      seen: [],
-      rule: "",
-      pagesKey: key,
-      rebuilt: true
-    };
+    const oldSeen = new Set(prev.seen || []);
+    const readBlocks = new Set();
+    for (const line of stored.split("\n")) {
+      const [id, ids = ""] = line.split(":");
+      if (oldSeen.has(id)) for (const block of ids.split(",")) if (block) readBlocks.add(block);
+    }
+    // Pre-pagesKey records still name the first block of every visited page.
+    if (!stored) for (const id of oldSeen) if (/^p\d+$/.test(id)) readBlocks.add(id.slice(1));
+    const seen = pages.filter(page => (page.blockIds || []).some(id => readBlocks.has(String(id)))
+      || (!stored && oldSeen.has(page.id))).map(page => page.id);
+    let queue = buildDefaultQueue(pages, questions, answered);
+    // Older agent plans may contain additional unanswered questions. Keep those too.
+    queue = applyPlan(queue, pages, questions, [], prev.queue || [], answered).queue;
+    const have = new Set(seen);
+    const future = queue.filter(id => !have.has(id));
+    // Continue at the first unread original page, keeping any still-unanswered questions next to it.
+    const firstUnread = future.findIndex(id => pages.some(page => page.id === id));
+    if (firstUnread > 0) future.unshift(...future.splice(firstUnread, 1));
+    queue = seen.concat(future);
+    return { queue, cursor: seen.length, seen, rule: "", pagesKey: key, rebuilt: true };
   }
   return {
     queue: Array.isArray(prev.queue) ? prev.queue.slice() : [],
@@ -274,9 +312,9 @@ function planItems(plan) {
  * Unknown ids reject the whole plan.
  * Unread pages stay in their original order. Missing ones are inserted back into that order.
  * Questions and reread pages stay where they were relative to the unread pages around them.
- * Questions may move or drop. A seen page may be reread at most twice.
+ * Unanswered questions from the previous queue must remain. A seen page may be reread at most twice.
  */
-export function applyPlan(plan, pages, questions, seen) {
+export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQueue(pages, questions, []), answered = []) {
   const items = planItems(plan);
   if (!items) return { ok: false, error: "队列格式不对", queue: null, fixes: [] };
   const pageList = pages || [];
@@ -335,28 +373,40 @@ export function applyPlan(plan, pages, questions, seen) {
     queue.push(unread[i]);
     queue.push(...slots[i + 1]);
   }
+  restoreQuestions(queue, oldQueue, pageSet, questionSet, answeredSet(answered), fixes);
   return { ok: true, queue, fixes, error: "" };
 }
 
-/** Keep the current item where it is. Only the tail may change. */
-export function replaceUnseen(queue, cursor, nextQueue) {
-  const list = Array.isArray(queue) ? queue : [];
-  const planned = Array.isArray(nextQueue) ? nextQueue : [];
-  if (!list.length) return planned.slice();
-  const index = Math.max(0, Math.min(Number(cursor) || 0, list.length - 1));
-  const head = list.slice(0, index + 1);
-  const current = head[index];
-  const need = head.filter((id) => id === current).length;
-  let found = 0;
-  let at = -1;
-  for (let i = 0; i < planned.length; i += 1) {
-    if (planned[i] !== current) continue;
-    found += 1;
-    if (found === need) {
-      at = i;
-      break;
+/** Restore a missing question after its preceding original page (or at the head if it is already behind us). */
+function restoreQuestions(queue, previous, pages, questions, answered, fixes = []) {
+  let anchor = "";
+  const restored = new Map();
+  for (const id of previous) {
+    if (pages.has(id)) { anchor = id; continue; }
+    if (!questions.has(id) || answered.has(id)) continue;
+    if (!queue.includes(id)) {
+      const after = restored.get(anchor) || anchor;
+      const at = after ? queue.lastIndexOf(after) + 1 : 0;
+      queue.splice(at, 0, id);
+      restored.set(anchor, id);
+      fixes.push(`补上未答题：${id}`);
     }
   }
-  const tail = at >= 0 ? planned.slice(at + 1) : planned.filter((id) => !head.includes(id));
+}
+
+/** The displayed prefix is immutable. Plans cannot move pending questions behind that prefix. */
+export function replaceUnseen(queue, cursor, nextQueue, pages = [], questions = [], answered = []) {
+  const list = Array.isArray(queue) ? queue : [];
+  const index = Math.max(0, Math.min(Number(cursor) || 0, list.length));
+  if (index >= list.length) return list.slice();
+  const head = list.slice(0, index + 1);
+  const pageSet = new Set(pages.map(page => page.id));
+  const questionSet = new Set(questions.map(question => question.id));
+  const done = answeredSet(answered);
+  const tail = (nextQueue || []).filter(id => id !== list[index] &&
+    !(questionSet.has(id) && head.includes(id)) &&
+    (!head.includes(id) || pageSet.has(id)));
+  // applyPlan has already ordered all unread pages; keep each pending question even if the model moved it ahead.
+  restoreQuestions(tail, list.slice(index + 1), pageSet, questionSet, done);
   return head.concat(tail);
 }

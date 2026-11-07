@@ -266,6 +266,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     } else if (turn.status === 'error') {
       const error = element('p', 'qa-error', turn.error?.message || '请求未完成，问题已保留。');
       error.setAttribute('role', 'note'); item.append(error);
+      item.append(element('p', 'qa-answer-meta', `状态 ${turn.error?.status || '—'} · ${turn.error?.code || 'ERROR'}${turn.error?.finish_reason ? ` · ${turn.error.finish_reason}` : ''}`));
       if (!sameContext) item.append(button('带入问题重新提问', 'copy', turn.requestId));
       else if (turn.error?.retryable !== false) item.append(button('重试这个问题', 'retry', turn.requestId));
       else item.append(button('带入输入框修改', 'copy', turn.requestId));

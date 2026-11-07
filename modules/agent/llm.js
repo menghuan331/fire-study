@@ -1,3 +1,4 @@
+import { QaError, failureDetails } from "../qa/errors.js";
 import { chatCompletionsUrl } from "../qa/direct.js";
 
 const AGENT_PROVIDERS = new Set(["deepseek", "dashscope", "openai-compatible"]);
@@ -60,12 +61,12 @@ function readKeyOnce(getApiKey) {
 }
 
 /** Anthropic is not an agent provider in this version. Returns null so the caller uses the rule queue. */
-export function createAgentLlm({ provider, model, baseUrl, getApiKey = () => "", fetchImpl = globalThis.fetch, timeoutMs = 30000 } = {}) {
+export function createAgentLlm({ provider, model, baseUrl, getApiKey = () => "", fetchImpl = globalThis.fetch, timeoutMs = 120000, onError = () => {} } = {}) {
   const name = trimmed(provider);
   const modelName = trimmed(model);
   const root = trimmed(baseUrl);
   if (!AGENT_PROVIDERS.has(name) || !modelName) return null;
-  const timeout = Math.max(1, Number(timeoutMs) || 30000);
+  const timeout = Math.max(1, Number(timeoutMs) || 120000);
   const keyPromise = readKeyOnce(getApiKey);
   return async function llm({ system, messages, tools, signal }) {
     const key = await keyPromise;
@@ -95,66 +96,49 @@ export function createAgentLlm({ provider, model, baseUrl, getApiKey = () => "",
       model: modelName,
       messages: [{ role: "system", content: String(system || "") }, ...(messages || [])],
       tools: toolSpecs(tools),
+      max_tokens: 8192,
       temperature: 0.3
     };
-    if (name === "deepseek") body.thinking = { type: "disabled" };
     const linked = linkSignals(signal, timeout);
-    let response;
+    let status = 0;
+    let raw = "";
+    let finish = null;
     try {
-      response = await fetchImpl(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-        body: JSON.stringify(body),
-        signal: linked.signal,
-        credentials: "omit",
-        redirect: "error",
-        cache: "no-store",
-        referrerPolicy: "no-referrer"
-      });
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const response = await fetchImpl(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+          body: JSON.stringify(body), signal: linked.signal,
+          credentials: "omit", redirect: "error", cache: "no-store", referrerPolicy: "no-referrer"
+        });
+        status = response.status;
+        raw = await response.text();
+        if (!response.ok) {
+          if (status === 400 && attempt === 0) {
+            onError({ code: "HTTP", ...failureDetails(status, null, raw, key) });
+            body.max_tokens = 4096; continue;
+          }
+          throw new QaError("HTTP", "模型请求失败");
+        }
+        let data;
+        try { data = JSON.parse(raw); }
+        catch { throw new QaError("BAD_RESPONSE", "模型没有返回"); }
+        finish = data?.choices?.[0]?.finish_reason ?? null;
+        const message = data?.choices?.[0]?.message;
+        if (finish === "length" || (message && !String(message.content || "").trim() && !message.tool_calls?.length))
+          throw new QaError("TRUNCATED");
+        if (!message || typeof message !== "object") throw new QaError("BAD_RESPONSE", "模型没有返回");
+        return assistantMessage(message);
+      }
     } catch (error) {
-      linked.done();
-      if (signal && signal.aborted) {
-        const aborted = new Error("已取消");
+      if (signal?.aborted) {
+        const aborted = new QaError("ABORTED");
         aborted.name = "AbortError";
         throw aborted;
       }
-      if (linked.timedOut() || (error && error.name === "AbortError")) {
-        const timeoutError = new Error("超时");
-        timeoutError.code = "TIMEOUT";
-        throw timeoutError;
-      }
-      const network = new Error("网络不通");
-      network.code = "NETWORK";
-      throw network;
-    }
-    let raw = "";
-    try { raw = await response.text(); }
-    catch {
-      linked.done();
-      const network = new Error("网络不通");
-      network.code = "NETWORK";
-      throw network;
-    }
-    linked.done();
-    if (!response.ok) {
-      const error = new Error("模型请求失败");
-      error.code = "HTTP";
-      error.status = response.status;
-      throw error;
-    }
-    let data = null;
-    try { data = JSON.parse(raw); }
-    catch {
-      const error = new Error("模型没有返回");
-      error.code = "BAD_RESPONSE";
-      throw error;
-    }
-    const message = data && data.choices && data.choices[0] && data.choices[0].message;
-    if (!message || typeof message !== "object") {
-      const error = new Error("模型没有返回");
-      error.code = "BAD_RESPONSE";
-      throw error;
-    }
-    return assistantMessage(message);
+      const safe = error instanceof QaError ? error : new QaError(linked.timedOut() ? "TIMEOUT" : "NETWORK");
+      Object.assign(safe, failureDetails(status, finish, raw, key));
+      throw safe;
+    } finally { linked.done(); }
   };
 }

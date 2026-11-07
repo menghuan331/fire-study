@@ -15,6 +15,12 @@ export function stableStringify(value) {
   return JSON.stringify(value);
 }
 
+function exerciseSnapshot(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  return { stem: String(value.stem || ''), options: (value.options || []).map(o => ({ label: String(o.label), text: String(o.text) })),
+    answered: !!value.answered, ...(value.answered ? { choice: String(value.choice || ''), ok: !!value.ok } : {}) };
+}
+
 /** Copy the source data, never the formatted DOM. Validation happens before a request. */
 export function snapshotContext(value) {
   const source = object(value);
@@ -23,6 +29,7 @@ export function snapshotContext(value) {
     chunkId: String(source.chunkId || ''),
     blockId: String(source.blockId ?? ''),
     book: String(source.book || ''),
+    ...(source.exercise ? { exercise: exerciseSnapshot(source.exercise) } : {}),
     context: (Array.isArray(source.context) ? source.context : []).map(part => ({
       anchor: String(part?.anchor || ''), kind: String(part?.kind || ''), text: String(part?.text ?? '')
     })),
@@ -32,6 +39,8 @@ export function snapshotContext(value) {
 
 export function contextKey(value) {
   const { label, ...context } = snapshotContext(value);
+  // Answering a question updates its prompt, not its conversation identity.
+  if (context.exercise) context.exercise = { stem: context.exercise.stem, options: context.exercise.options };
   return stableStringify(context);
 }
 
@@ -68,6 +77,7 @@ export function validateRequest(request) {
     chunkId: request.chunkId,
     blockId: request.blockId,
     book: request.book,
+    ...(request.exercise ? { exercise: exerciseSnapshot(request.exercise) } : {}),
     question: request.question,
     context: request.context.map(part => ({ anchor: part.anchor, kind: part.kind, text: part.text })),
     history: request.history.map(message => ({ role: message.role, content: message.content })),
