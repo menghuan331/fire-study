@@ -86,11 +86,13 @@ export function createConsolidator({ getState, saveMeta, saveProfile, getLlm, ha
   let running = false;
   return async function consolidate() {
     const state = getState(), meta = state.memoryState?.daily || {};
-    if (running || !hasKey() || meta.attemptDate === today()) return { skipped: true };
-    running = true;
     const at = now();
-    // Claim the day before awaiting any network work; failures wait until tomorrow.
-    saveMeta({ ...meta, attemptDate: today(), updatedAt: at });
+    // A failed run may retry after 30 minutes; a successful one waits until tomorrow.
+    const retry = meta.failed && at - (meta.updatedAt || 0) > 30 * 60e3;
+    if (running || !hasKey() || (meta.attemptDate === today() && !retry)) return { skipped: true };
+    running = true;
+    // Claim the day before awaiting any network work.
+    saveMeta({ ...meta, attemptDate: today(), failed: false, updatedAt: at });
     try {
       const evidence = memoryEvidence(state, meta.consolidatedAt || 0);
       const old = structuredClone(state.learnerProfile || {});
@@ -101,10 +103,11 @@ export function createConsolidator({ getState, saveMeta, saveProfile, getLlm, ha
       const live = getState().learnerProfile || {};
       const next = consolidateProfile(result.entries, { ...old, ...live }, evidence, now());
       saveProfile(next);
-      saveMeta({ ...meta, attemptDate: today(), consolidatedAt: at, updatedAt: now() });
+      saveMeta({ ...meta, attemptDate: today(), failed: false, consolidatedAt: at, updatedAt: now() });
       log({ name: 'consolidate_profile', result: { ok: true, entries: profileEntries(next).length } });
       return { ok: true };
     } catch (error) {
+      saveMeta({ ...meta, attemptDate: today(), failed: true, updatedAt: now() });
       log({ name: 'consolidate_profile', result: { error: String(error.message || error) } });
       return { ok: false };
     } finally { running = false; }

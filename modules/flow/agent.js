@@ -148,7 +148,7 @@ function buildTools(host) {
       }
     },
     ...[
-      ["insert_lesson", "发现前置知识缺口，在 before 页或题前插入补课。", { concept: {type:"string"}, reason: {type:"string"}, before: {type:"string"} }],
+      ["insert_lesson", "发现前置知识缺口，在 before 页或题前插入补课。concept 只写概念名，12 字以内，不要写讲解。", { concept: {type:"string"}, reason: {type:"string"}, before: {type:"string"} }],
       ["retire_question", "停用有问题的考点题；真题不可停用。", { id: {type:"string"}, reason: {type:"string"} }],
       ["rewrite_explanation", "改写考点题的解释，不能改真题。", { id: {type:"string"}, text: {type:"string"} }],
       ["flag_question", "为题目记一条存疑，不改答案。", { id: {type:"string"}, reason: {type:"string"} }]
