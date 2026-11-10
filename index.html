@@ -2732,7 +2732,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-10.6";
+const APP_VERSION = "2026-11-10.7";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -5473,6 +5473,53 @@ function renderModelInline(text) {
   return String(text).split(/`([^`\n]+)`/).map((part, index) => index % 2 ? `<code>${escapeHtml(part)}</code>` : renderRich(part, true)).join("");
 }
 
+// Z1N-196: [图:流程] / [图:包含] blocks in model text become a flat diagram. Any bad line or limit overrun returns null and the block stays text.
+const DIAGRAM_START = /^\s*\[图:(流程|包含)\]\s*$/;
+function renderModelDiagram(kind, rows) {
+  if (!rows.length) return null;
+  const node = text => `<span class="qa-diagram-node">${escapeHtml(text)}</span>`;
+  if (kind === "流程") {
+    if (rows.length > 6) return null;
+    const chains = [];
+    for (const row of rows) {
+      const cut = row.search(/\s[:：]\s/);
+      const chain = (cut < 0 ? row : row.slice(0, cut)).split("->").map(part => part.trim());
+      const note = cut < 0 ? "" : row.slice(cut + 3).trim();
+      if (chain.length < 2 || chain.length > 6 || chain.some(part => !part)) return null;
+      chains.push(`<div class="qa-diagram-row"><div class="qa-diagram-chain">${node(chain[0])}${chain.slice(1).map(part => `<span class="qa-diagram-step"><span class="qa-diagram-arrow" aria-hidden="true">→</span>${node(part)}</span>`).join("")}</div>${note ? `<div class="qa-diagram-note">${escapeHtml(note)}</div>` : ""}</div>`);
+    }
+    return `<div class="qa-diagram qa-diagram-flow" role="figure">${chains.join("")}</div>`;
+  }
+  const kids = new Map(), parentOf = new Map(), order = [];
+  const see = name => { if (!kids.has(name)) { kids.set(name, []); order.push(name); } };
+  for (const row of rows) {
+    const cut = row.indexOf(">");
+    if (cut < 0) return null;
+    const parent = row.slice(0, cut).trim();
+    const children = row.slice(cut + 1).split(/[,，、]/).map(part => part.trim());
+    if (!parent || children.some(part => !part)) return null;
+    see(parent);
+    for (const child of children) {
+      if (parentOf.has(child) || child === parent) return null;
+      parentOf.set(child, parent); see(child); kids.get(parent).push(child);
+    }
+  }
+  const roots = order.filter(name => !parentOf.has(name));
+  if (order.length > 12 || !roots.length) return null;
+  let reached = 0;
+  const box = (name, depth) => {
+    if (depth > 3) return null;
+    reached++;
+    if (!kids.get(name).length) return node(name);
+    const inner = kids.get(name).map(child => box(child, depth + 1));
+    if (inner.includes(null)) return null;
+    return `<div class="qa-nest"><div class="qa-nest-name">${escapeHtml(name)}</div><div class="qa-nest-body">${inner.join("")}</div></div>`;
+  };
+  const parts = roots.map(root => box(root, 1));
+  if (parts.includes(null) || reached !== order.length) return null;
+  return `<div class="qa-diagram qa-diagram-nest" role="figure">${parts.join("")}</div>`;
+}
+
 function renderModelText(md) {
   const lines = String(md || "").replace(/\r\n?/g, "\n").split("\n");
   const out = [];
@@ -5480,6 +5527,16 @@ function renderModelText(md) {
   for (let i = 0; i < lines.length;) {
     const line = lines[i];
     if (!line.trim()) { i++; continue; }
+    const diagram = line.match(DIAGRAM_START);
+    if (diagram) {
+      const end = lines.findIndex((item, index) => index > i && item.trim() === "[/图]");
+      if (end > 0) {
+        const block = lines.slice(i, end + 1);
+        out.push(renderModelDiagram(diagram[1], block.slice(1, -1).filter(row => row.trim())) || `<p>${renderModelInline(block.join("\n"))}</p>`);
+        i = end + 1;
+        continue;
+      }
+    }
     const heading = line.match(/^\s*#{1,6}\s+(.*)$/);
     if (heading) { out.push(`<p><strong>${renderModelInline(heading[1].replace(/\*\*/g, ""))}</strong></p>`); i++; continue; }
     if (/^\s*\|/.test(line) && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] || "")) {
@@ -5499,7 +5556,7 @@ function renderModelText(md) {
       continue;
     }
     const para = [lines[i++]];
-    for (; i < lines.length && lines[i].trim() && !bullet.test(lines[i]) && !ordered.test(lines[i]) && !/^\s*#{1,6}\s/.test(lines[i]) && !/^\s*\|/.test(lines[i]); i++) para.push(lines[i]);
+    for (; i < lines.length && lines[i].trim() && !bullet.test(lines[i]) && !ordered.test(lines[i]) && !/^\s*#{1,6}\s/.test(lines[i]) && !/^\s*\|/.test(lines[i]) && !DIAGRAM_START.test(lines[i]); i++) para.push(lines[i]);
     out.push(`<p>${renderModelInline(para.join("\n"))}</p>`);
   }
   return out.join("");

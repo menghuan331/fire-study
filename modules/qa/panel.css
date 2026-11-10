@@ -84,3 +84,16 @@
 .qa-panel :is(.qa-answer-text, .qa-quote-text, .qa-follow-text) table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
 .qa-panel :is(.qa-answer-text, .qa-quote-text, .qa-follow-text) :is(td, th) { padding: 2px 8px; border: 1px solid var(--qa-line); }
 .qa-panel code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+/* Z1N-196: diagrams in model text. Flat: thin lines, one accent for arrows, no fills. */
+.qa-panel .qa-diagram { margin: 4px 0 .8em; font-size: 16px; line-height: 1.5; white-space: normal; }
+.qa-panel .qa-diagram-node { display: inline-block; max-width: 100%; padding: 3px 8px; border: 1px solid var(--qa-line); color: var(--qa-ink); }
+.qa-panel .qa-diagram-row + .qa-diagram-row { margin-top: 16px; }
+.qa-panel .qa-diagram-chain { display: flex; flex-wrap: wrap; align-items: center; row-gap: 6px; }
+.qa-panel .qa-diagram-step { display: inline-flex; align-items: center; max-width: 100%; }
+.qa-panel .qa-diagram-arrow { flex: none; padding: 0 6px; color: var(--qa-accent); }
+.qa-panel .qa-diagram-note { margin-top: 2px; color: var(--qa-muted); font-size: 14px; }
+.qa-panel .qa-diagram-nest { display: grid; gap: 8px; }
+.qa-panel .qa-nest { margin-top: .75em; padding: 0 8px 8px; border: 1px solid var(--qa-line); }
+.qa-panel .qa-nest-name { width: fit-content; max-width: 100%; margin: -.75em 0 4px -2px; padding: 0 4px; background: var(--qa-bg); color: var(--qa-ink); font-weight: 600; }
+.qa-panel .qa-nest-body { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.qa-panel .qa-nest-body > .qa-nest { flex: 1 1 100%; }

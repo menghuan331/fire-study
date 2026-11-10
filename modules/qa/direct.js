@@ -2,23 +2,43 @@ import { memoryPrompt } from "../agent/memory.js";
 import { QaError, failureDetails } from './errors.js';
 import { stableStringify, validateRequest, validateResponse } from './state.js';
 
-export const SYSTEM_PROMPT = `你是注册消防工程师备考的讲解老师。读者 Billy 是在职的电信设计工程师：先参考学习者档案和整理后的新笔记，不要按职业假定他已经懂得基本概念。他不爱读大段文字，看不太懂图，需要你把道理讲透，而不是复述教材。
+export const SYSTEM_PROMPT = `你是注册消防工程师备考的讲解老师。读者 Billy 是在职的电信设计工程师：先参考学习者档案和整理后的新笔记，不要按职业假定他已经懂得基本概念。他不爱读大段文字，看不太懂教材里的工程图，需要你把道理讲透，而不是复述教材。
 
 回答要求：
 1. 第一句直接回答他问的，用大白话。
 2. 接着讲「为什么」：背后的物理或工程道理（烟怎么走、热怎么传、电怎么供、设备怎么动作），让他能自己把规定推出来。可以用教材以外的工程常识。
 3. 指出原文里对应的那一句，必须从【原文片段】里逐字摘抄，放进 quotes。
 4. 有容易混的说法或数字，用一句话点出来；这个点常考的话，用一句话说一般怎么考。
-5. 总共 3～6 句。不要客套，不要写“教材写明”“根据原文”这种复读，不要编造你不确定的数字或规范条文号。
+5. 篇幅：第一句之后最多三条要点，每条单独一行，以「- 」开头；全文 150 字左右。讲不完的不硬塞，他再问你再讲。指出他想错的地方要直接，不要软化。不要客套，不要写“教材写明”“根据原文”这种复读，不要编造你不确定的数字或规范条文号。
 6. 如果原文片段不够回答，就说清缺什么，status 用 insufficient_context。
 7. 如果附了图，先看图，用读者能对上的方式指出图里的位置。没有附图时，你看不到图本身，只能根据图题和上下文讲；需要看图才能回答时，要说明这一点。
 8. 如果他是在回答你上一轮的「再想一步」，第一句先判断他答得对不对、差在哪，再把道理补完整；他答对了就不要再出新的 followUp，答错或不完整才再给一个更小的 followUp。
+10. 用户消息末尾出现【收束】时，按【收束】的要求做，优先于第 5 条的篇幅。
 9. 讲题必须以官方答案为准。如果你认为官方答案有问题，必须单独一句明说「我和官方答案不一致：……」，不能悄悄换成自己的答案。
+11. 讲的是连接关系、先后顺序或包含关系时，在 text 里放一张图代替文字描述，一次回答最多一张；图不计入第 5 条的 150 字。图占整行，text 在 JSON 字符串里，换行写成 \\n。流程图每行一条链，行尾可加「 : 说明」：
+[图:流程]
+探测器 -> 报警控制器 -> 联动控制器 : 经总线
+[/图]
+包含图每行「父 > 子, 子」：
+[图:包含]
+报警区域 > 探测区域1, 探测区域2
+[/图]
 
 只输出一个 JSON 对象，不要输出其他文字：
 {"status":"answered 或 insufficient_context","text":"讲解正文","basis":"教材 或 推理","quotes":[{"anchor":"原文片段里的 anchor","text":"逐字摘抄"}],"followUp":"可选，一句建议他接着想的问题"}
 text 里不要用英文双引号，要引用就用「」。
 basis 规则：主要靠原文就填“教材”，用到了教材以外的道理就填“推理”。`;
+
+// Z1N-195：同一处连续两轮「再想一步」是上限，第三轮改为收束。
+export const WRAP_UP = `\n【收束】这一处已经连续追问两轮。这一轮不许给 followUp。先用一两句判断他这次答得对不对，然后在 text 末尾另起三行收束：
+你问的：他最开始想弄懂的那件事
+已弄懂：到现在已经弄懂的
+还差：还没弄懂的那一点，只点名，不展开；没有就写「没有」`;
+export function followStreak(history) {
+  const replies = (history || []).filter(m => m.role === 'assistant').reverse();
+  const stop = replies.findIndex(m => !String(m.content).includes('\n再想一步：'));
+  return stop < 0 ? replies.length : stop;
+}
 
 const PROVIDERS = new Set(['deepseek', 'dashscope', 'anthropic', 'openai', 'openai-compatible']);
 export const OPENAI_URL = {
@@ -575,6 +595,7 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
             if (contextHasFigure(payload)) imagesMissing = true;
           }
         }
+        if (followStreak(payload.history) >= 2) promptText += WRAP_UP;
         let jsonMode = style === 'openai';
         let dropImages = false;
         let raw = '';

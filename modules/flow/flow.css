@@ -388,10 +388,10 @@ body.is-flow .btn { box-shadow: none; }
 body.is-flow .page { font-size: 19px; }
 body.is-flow .page * { font-size: inherit; }
 body.is-flow .page :is(h1, h2, h3, h4, h5, h6), body.is-flow .page :is(.flow-src, .flow-lesson-line) { font-size: 22px; }
-body.is-flow .page :is(button, input, select, textarea) { font-size: 16px; }
+body.is-flow .page :is(button, input, select, textarea, .qa-diagram) { font-size: 16px; }
 body.is-flow .page :is(.small, .label, .q-meta, .flow-count, .flow-notes, .flow-rule, .flow-why-entry, .flow-source,
 .flow-lesson-label, .flow-lesson-citation, .flow-provenance,
-.qa-answer-meta, .qa-image-note, .qa-quote, .qa-quote-text, .qa-footnote, .qa-error, .qa-insufficient, .qa-anchor, .qa-count, .qa-badge, .qa-status, .qa-waiting, .qa-empty, .qa-still-hint, .qa-old-context, .qa-legacy-note) { font-size: 14px; }
+.qa-answer-meta, .qa-image-note, .qa-quote, .qa-quote-text, .qa-footnote, .qa-error, .qa-insufficient, .qa-anchor, .qa-count, .qa-badge, .qa-status, .qa-waiting, .qa-empty, .qa-still-hint, .qa-old-context, .qa-legacy-note, .qa-diagram-note) { font-size: 14px; }
 body.is-flow .page .flow-option, body.is-flow .page .flow-result { font-size: 19px; }
 body.is-flow .qa-button-primary { color: var(--flow-bg); }
 body.is-flow { --accent-ink: var(--flow-bg); }
