@@ -2728,7 +2728,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-10.3";
+const APP_VERSION = "2026-11-10.4";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -4576,7 +4576,7 @@ function ensureSkeletonActivation(today) {
 function reviewCardVisible(card, map) {
   if (!card) return false;
   if (card.src === "lesson") return !!app.state.lessons?.[card.lessonId]?.validated && !app.state.lessons[card.lessonId].disabled;
-  if (card.src === "kaokao" && app.state.questionOverrides?.[card.kid]?.retired) return false;
+  if (card.src === "kaokao" && kaokaoRetired(card.kid)) return false;
   if (card.src === "wrong") return !billyFlaggedQuestion(card.qid);
   if (card.src === "kaokao") {
     if (!card.kid) return true;
@@ -5033,6 +5033,7 @@ function releasePoolCards(today) {
       const items = doc && Array.isArray(doc.items) ? doc.items : [];
       for (const item of items) {
         if (!item || !item.id || !item.chunk) continue;
+        if (kaokaoRetired(item.id)) continue;
         if (!item.recog || !Array.isArray(item.recog.options)) continue;
         if (!chunkDone(item.chunk)) continue;
         if (latestKaokaoTry(item.id, "recog")) continue;
@@ -5673,6 +5674,12 @@ function markdownPlain(md) {
 
 function kaokaoDocs() {
   return app.study && app.study.kaokao ? app.study.kaokao : {};
+}
+
+function kaokaoRetired(itemId) {
+  if (app.state.questionOverrides?.[itemId]?.retired) return true;
+  return Object.values(kaokaoDocs()).some(doc =>
+    (doc && Array.isArray(doc.items) ? doc.items : []).some(item => item?.id === itemId && item.retired === true));
 }
 
 function triedKaokaoIds(items) {
@@ -7345,7 +7352,7 @@ function renderFlowReview(root, today) {
   const dueIds = app.ui.flowReviewBatch.filter(id => {
     const card = app.state.cards[id];
     return !(card?.src === "wrong" && billyFlaggedQuestion(card.qid)) &&
-      !(card?.src === "kaokao" && app.state.questionOverrides?.[card.kid]?.retired) &&
+      !(card?.src === "kaokao" && kaokaoRetired(card.kid)) &&
       !(card?.src === "lesson" && app.state.lessons?.[card.lessonId]?.disabled);
   });
   const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards,
@@ -7924,7 +7931,7 @@ function startMemoryConsolidation() {
 }
 function applyQuestionOverlay(item) {
   const overlay = app.state.questionOverrides?.[item.id];
-  if (overlay?.retired) return null;
+  if (item.retired === true || overlay?.retired) return null;
   return overlay?.explanation ? { ...item, recog: { ...item.recog, why: overlay.explanation } } : item;
 }
 function lessonSources(meta) {

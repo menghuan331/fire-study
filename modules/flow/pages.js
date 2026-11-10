@@ -183,6 +183,7 @@ export function questionsForChunk(chunk, kaokaoItems, questionsById) {
   const questions = [];
   for (const item of kaokaoItems || []) {
     if (!item || !item.id || !item.recog || !Array.isArray(item.recog.options)) continue;
+    if (item.retired === true) continue;
     if (item.chunk && chunk && chunk.id && item.chunk !== chunk.id) continue;
     const pageId = locate.get(anchorBlockId(item.anchor)) || "";
     if (!pageId) continue;
