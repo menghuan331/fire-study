@@ -58,7 +58,7 @@ function aborted(signal, error) {
  * Domain-neutral tool loop. The assistant message is appended as the model returned it, including tool_calls.
  * Bad arguments and tool failures go back to the model as tool results.
  */
-export async function runAgent({ llm, system, messages, tools, maxSteps = 6, signal } = {}) {
+export async function runAgent({ llm, system, messages, tools, maxSteps = 6, signal, onTool = () => {} } = {}) {
   const thread = Array.isArray(messages) ? messages.slice() : [];
   const steps = [];
   const toolLog = [];
@@ -84,7 +84,9 @@ export async function runAgent({ llm, system, messages, tools, maxSteps = 6, sig
       const result = await runCall(tools, call);
       const toolMessage = { role: "tool", tool_call_id: call && call.id, content: JSON.stringify(result) };
       thread.push(toolMessage);
-      toolLog.push({ id: call && call.id, name: call && call.function && call.function.name, result });
+      const entry = { id: call && call.id, name: call && call.function && call.function.name, arguments: call?.function?.arguments, result };
+      toolLog.push(entry);
+      onTool(entry);
     }
   }
   return { text: textOf(steps.at(-1)), steps, toolLog, stopped: "maxSteps" };

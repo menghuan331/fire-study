@@ -48,6 +48,46 @@ function emitPage(pages, blocks) {
   });
 }
 
+// Style and consecutive numbers identify a list; a new (1) starts another list.
+export function listMarker(block) {
+  if (!block || (block.kind || "para") !== "para") return null;
+  const text = plainText(block.md).normalize("NFKC");
+  const circled = String(block.md || "").replace(/^[\s*_]+/, "").match(/^([①-⑳])/);
+  if (circled) return { style: "circle", number: circled[1].codePointAt(0) - 0x2460 + 1 };
+  const match = /^(?:\((\d+)\)|(\d+)\.(?!\d))/.exec(text);
+  return match ? { style: match[1] ? "paren" : "dot", number: Number(match[1] || match[2]) } : null;
+}
+
+function sameList(a, b) {
+  const left = listMarker(a), right = listMarker(b);
+  return left && right && left.style === right.style && right.number === left.number + 1;
+}
+
+function keepListTails(pages, blocks) {
+  const byId = new Map(blocks.map((block, index) => [block.id, index]));
+  const groups = pages.map(page => page.blockIds.map(id => blocks[byId.get(id)]));
+  for (let i = 1; i < groups.length; i++) {
+    const prev = groups[i - 1], next = groups[i];
+    const tail = next[0], at = byId.get(tail?.id);
+    if (!sameList(prev.at(-1), tail) || sameList(tail, blocks[at + 1])) continue;
+    const combined = prev.reduce((sum, block) => sum + charCount(block), 0) + charCount(tail);
+    // Small overruns are preferable to an orphan; otherwise keep the last pair together.
+    // Never detach a formula's introduction from its equation/definitions.
+    if (!next.some(block => block.kind === "equation") &&
+        (combined <= PAGE_CHAR_LIMIT + 90 || headingsOnly(prev.slice(0, -1)) || prev.length === 1)) {
+      prev.push(next.shift());
+      if (!next.length) { groups.splice(i, 1); i--; }
+    } else {
+      next.unshift(prev.pop());
+      if (headingsOnly(prev)) next.unshift(...prev.splice(0));
+      if (!prev.length) { groups.splice(i - 1, 1); i--; }
+    }
+  }
+  const result = [];
+  for (const group of groups) emitPage(result, group);
+  return result;
+}
+
 /**
  * One block, one place, original order. Page ids stay stable for the same blocks.
  * Consecutive headings share a page and keep the following body.
@@ -112,7 +152,7 @@ export function paginateBlocks(blocks) {
     chars += add;
   }
   flush();
-  return pages;
+  return keepListTails(pages, list);
 }
 
 function anchorBlockId(anchor) {
@@ -152,6 +192,7 @@ export function questionsForChunk(chunk, kaokaoItems, questionsById) {
   for (const id of (chunk && chunk.questions) || []) {
     const question = byId.get(id);
     if (!question || !question.id || !String(question.answer || "").trim()) continue;
+    if (question.verify?.status === "doubt" && String(question.verify.note || "").includes("缺题干背景")) continue;
     const anchor = (question.verify && question.verify.anchor) || question.anchor || "";
     const pageId = locate.get(anchorBlockId(anchor)) || null;
     questions.push({ id: question.id, kind: "exam", pageId });
@@ -225,7 +266,9 @@ export function buildBrowseQueue(pages, questions, answered) {
   const done = answeredSet(answered);
   const prior = pages.flatMap(page => [page.id, ...questions.filter(q => q.pageId === page.id && done.has(q.id)).map(q => q.id)]);
   prior.push(...questions.filter(q => !q.pageId && done.has(q.id)).map(q => q.id));
-  return applyPlan(buildDefaultQueue(pages, questions, []), pages, questions, [], prior).queue;
+  const queue = buildDefaultQueue(pages, questions, []);
+  restoreQuestions(queue, prior, new Set(pages.map(p => p.id)), new Set(questions.map(q => q.id)), new Set());
+  return applyPlan(queue, pages, questions, [], prior, answered).queue;
 }
 
 /** Page id plus every block on that page: used to remap reading history when pagination changes. */
@@ -254,15 +297,25 @@ export function reconcileFlowRecord(record, pages, questions, answered) {
     const seen = pages.filter(page => (page.blockIds || []).some(id => readBlocks.has(String(id)))
       || (!stored && oldSeen.has(page.id))).map(page => page.id);
     let queue = buildDefaultQueue(pages, questions, answered);
-    // Older agent plans may contain additional unanswered questions. Keep those too.
-    queue = applyPlan(queue, pages, questions, [], prev.queue || [], answered).queue;
+    const origins = { ...prev.questionOrigins };
+    for (const id of queue) if (questions.some(q => q.id === id)) origins[id] = { addedBy: "default" };
+    // Keep historical answers and pending additions while remapping their page anchors.
+    const qset = new Set(questions.map(q => q.id));
+    for (const id of prev.queue || []) {
+      if (!qset.has(id) || queue.includes(id)) continue;
+      const q = questions.find(q => q.id === id);
+      const at = q.pageId ? queue.lastIndexOf(q.pageId) + 1 : queue.length;
+      queue.splice(at, 0, id);
+    }
+    const limited = limitAgentQuestions(queue, pages, questions, answered, origins);
+    queue = limited.queue;
     const have = new Set(seen);
     const future = queue.filter(id => !have.has(id));
     // Continue at the first unread original page, keeping any still-unanswered questions next to it.
     const firstUnread = future.findIndex(id => pages.some(page => page.id === id));
     if (firstUnread > 0) future.unshift(...future.splice(firstUnread, 1));
     queue = seen.concat(future);
-    return { queue, cursor: seen.length, seen, rule: "", pagesKey: key, rebuilt: true };
+    return { queue, cursor: seen.length, seen, rule: "", pagesKey: key, rebuilt: true, fixes: limited.fixes, origins: limited.origins };
   }
   return {
     queue: Array.isArray(prev.queue) ? prev.queue.slice() : [],
@@ -312,9 +365,9 @@ function planItems(plan) {
  * Unknown ids reject the whole plan.
  * Unread pages stay in their original order. Missing ones are inserted back into that order.
  * Questions and reread pages stay where they were relative to the unread pages around them.
- * Unanswered questions from the previous queue must remain. A seen page may be reread at most twice.
+ * Unanswered default questions must remain; agent additions can be removed. A seen page may be reread at most twice.
  */
-export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQueue(pages, questions, []), answered = []) {
+export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQueue(pages, questions, []), answered = [], origins = {}) {
   const items = planItems(plan);
   if (!items) return { ok: false, error: "队列格式不对", queue: null, fixes: [] };
   const pageList = pages || [];
@@ -373,8 +426,14 @@ export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQ
     queue.push(unread[i]);
     queue.push(...slots[i + 1]);
   }
-  restoreQuestions(queue, oldQueue, pageSet, questionSet, answeredSet(answered), fixes);
-  return { ok: true, queue, fixes, error: "" };
+  const defaults = buildDefaultQueue(pages, questions, []);
+  for (const [id, origin] of Object.entries(origins)) if (origin.addedBy === "default" && questionSet.has(id) && !defaults.includes(id)) defaults.push(id);
+  const protectedIds = new Set(defaults);
+  const protectedOld = oldQueue.filter(id => pageSet.has(id) || protectedIds.has(id));
+  restoreQuestions(queue, protectedOld, pageSet, questionSet, answeredSet(answered), fixes);
+  restoreQuestions(queue, defaults, pageSet, questionSet, answeredSet(answered), fixes);
+  const limited = limitAgentQuestions(queue, pages, questions, answered, origins);
+  return { ok: true, queue: limited.queue, origins: limited.origins, fixes: fixes.concat(limited.fixes), error: "" };
 }
 
 /** Restore a missing question after its preceding original page (or at the head if it is already behind us). */
@@ -395,7 +454,7 @@ function restoreQuestions(queue, previous, pages, questions, answered, fixes = [
 }
 
 /** The displayed prefix is immutable. Plans cannot move pending questions behind that prefix. */
-export function replaceUnseen(queue, cursor, nextQueue, pages = [], questions = [], answered = []) {
+export function replaceUnseen(queue, cursor, nextQueue, pages = [], questions = [], answered = [], origins = {}) {
   const list = Array.isArray(queue) ? queue : [];
   const index = Math.max(0, Math.min(Number(cursor) || 0, list.length));
   if (index >= list.length) return list.slice();
@@ -407,6 +466,87 @@ export function replaceUnseen(queue, cursor, nextQueue, pages = [], questions = 
     !(questionSet.has(id) && head.includes(id)) &&
     (!head.includes(id) || pageSet.has(id)));
   // applyPlan has already ordered all unread pages; keep each pending question even if the model moved it ahead.
-  restoreQuestions(tail, list.slice(index + 1), pageSet, questionSet, done);
-  return head.concat(tail);
+  const defaults = buildDefaultQueue(pages, questions, []);
+  defaults.push(...Object.keys(origins).filter(id => origins[id]?.addedBy === "default" && !defaults.includes(id)));
+  restoreQuestions(tail, defaults.filter(id => !head.includes(id)), pageSet, questionSet, done);
+  return limitAgentQuestions(head.concat(tail), pages, questions, answered, origins).queue;
+}
+
+/** Segments only group complete reading pages. The queue and block identity stay intact. */
+export function segmentPages(pages) {
+  pages = pages.filter(page => page.kind !== "lesson");
+  if (pages.length <= 12) return [pages.slice()];
+  const segments = [];
+  const count = Math.round(pages.length / 8);
+  const size = Math.floor(pages.length / count);
+  const extra = pages.length % count;
+  let start = 0;
+  for (let index = 0; index < count; index++) {
+    const end = start + size + (index < extra ? 1 : 0);
+    segments.push(pages.slice(start, end));
+    start = end;
+  }
+  return segments;
+}
+
+/** A landing is due after its last page and the queued questions before the next new page. */
+export function flowSegment(pages, queue, cursor, seen, completed = []) {
+  const segments = segmentPages(pages);
+  const consumed = new Set(seen);
+  const acknowledged = new Set(completed);
+  const before = new Set(queue.slice(0, cursor));
+  for (let index = 0; index < segments.length; index++) {
+    const part = segments[index];
+    const next = segments[index + 1]?.[0]?.id;
+    const boundary = next ? queue.indexOf(next) : queue.length;
+    const complete = part.every(page => consumed.has(page.id)) && cursor >= boundary;
+    if (segments.length > 1 && complete && !acknowledged.has(part.at(-1).id)) {
+      return { pages: part, index, landing: true, count: part.length, end: part.at(-1).id };
+    }
+    if (!complete || index === segments.length - 1) {
+      const count = part.filter(page => before.has(page.id)).length;
+      const current = part.some(page => page.id === queue[cursor]);
+      return { pages: part, index, landing: false,
+        count: Math.min(part.length, count + (current ? 1 : 0)), end: part.at(-1)?.id };
+    }
+  }
+}
+
+/** Provenance is separate from string queue ids, so existing navigation stays compatible.
+ * Answered items are historical evidence and are never removed by the quota. */
+export function limitAgentQuestions(queue, pages, questions, answered = [], origins = {}) {
+  const defaults = new Set(buildDefaultQueue(pages, questions, []));
+  for (const [id, origin] of Object.entries(origins)) if (origin?.addedBy === "default") defaults.add(id);
+  const byId = new Map(questions.map(q => [q.id, q]));
+  const pageIds = new Set(pages.map(p => p.id));
+  const done = answeredSet(answered);
+  const nextOrigins = { ...origins }, fixes = [], counts = new Map();
+  const limit = Math.floor(pages.length / 2);
+  let anchor = "", total = 0;
+  const next = queue.filter(id => {
+    if (pageIds.has(id)) { anchor = id; return true; }
+    const q = byId.get(id);
+    if (!q || q.kind === "lesson") return true;
+    // Default membership wins even if an older model tagged this question as added.
+    const addedBy = defaults.has(id) ? "default" : (origins[id]?.addedBy || "agent");
+    nextOrigins[id] = { addedBy };
+    if (addedBy !== "agent") return true;
+    const page = anchor || q.pageId || "tail";
+    const count = counts.get(page) || 0;
+    if (!done.has(id) && (count >= 2 || total >= limit)) {
+      fixes.push(`追加题 ${id} 超过${count >= 2 ? "每页 2 道" : "本块原文页数一半"}，已截掉`);
+      return false;
+    }
+    total++; counts.set(page, count + 1);
+    return true;
+  });
+  return { queue: next, origins: nextOrigins, fixes };
+}
+
+export function migrateQuestionQueue(record, pages, questions, answered = []) {
+  const limited = limitAgentQuestions(record.queue || [], pages, questions, answered, record.questionOrigins);
+  const kept = new Set(limited.queue);
+  const cursor = (record.queue || []).slice(0, record.cursor).filter(id => kept.has(id)).length;
+  return { ...limited, cursor, changed: limited.fixes.length > 0 ||
+    JSON.stringify(limited.origins) !== JSON.stringify(record.questionOrigins || {}) };
 }

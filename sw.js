@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-v20";
+const CACHE_VERSION = "study-v25";
 const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [
@@ -22,9 +22,12 @@ const PRECACHE = [
   "./modules/flow/pages.js",
   "./modules/flow/agent.js",
   "./modules/flow/view.js",
+  "./modules/flow/reading.js",
   "./modules/flow/flow.css",
   "./modules/agent/kernel.js",
-  "./modules/agent/llm.js"
+  "./modules/agent/llm.js",
+  "./modules/agent/memory.js",
+  "./modules/flow/lessons.js"
 ];
 
 function relativePath(url) {

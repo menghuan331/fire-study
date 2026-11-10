@@ -8,6 +8,7 @@ const messages = {
   TIMEOUT: '等待回答超时。问题已保留，可以重试同一个问题。',
   UNAVAILABLE: '答疑服务暂时不可用，请稍后重试。',
   NETWORK_ERROR: '网络连接中断，或答疑服务暂时无法连接。问题已保留，请稍后重试。',
+  EMPTY: '模型这次没回答，再问一次',
   TRUNCATED: '回答太长被截断了，再问一次',
   INVALID_RESPONSE: '模型这次没返回能用的内容，问题已保留，可以再试一次。',
   INVALID_CITATION: '回答的教材引用未通过核对，未将它作为有效回答保存。请重试。',

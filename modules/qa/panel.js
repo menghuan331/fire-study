@@ -15,19 +15,6 @@ const uuid = () => {
   return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
 };
 
-function questionPreview(question) {
-  const chars = Array.from(String(question || '').replace(/\s+/g, ' ').trim());
-  if (chars.length <= 24) return chars.join('');
-  return `${chars.slice(0, 24).join('')}…`;
-}
-
-function chainMark(turns) {
-  const last = turns.at(-1);
-  if (last?.resolved === 'got') return '懂了';
-  if (last?.resolved === 'still') return '还是不懂';
-  return '未标记';
-}
-
 function buildThreads(turns) {
   const byId = new Map(turns.map(turn => [turn.requestId, turn]));
   const children = new Map();
@@ -80,10 +67,8 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
   mounts.get(root)?.destroy();
   const doc = root.ownerDocument;
   let current = snapshotContext(context), epoch = 0, disposed = false, notice = '', noticeError = false;
-  let composerOpen = false;
   const pending = new Map();
   const replies = new Map();
-  const userThreads = new Map();
   const element = (tag, className, text) => {
     const node = doc.createElement(tag);
     if (className) node.className = className;
@@ -98,35 +83,28 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     return node;
   };
   const wrapper = element('section', 'qa-content');
-  const headingId = `qa-title-${++panelSequence}`;
-  wrapper.setAttribute('aria-labelledby', headingId);
-  const heading = element('h4', 'qa-heading', '即时答疑'); heading.id = headingId;
-  const sourceLabel = element('p', 'qa-source');
-  const configHint = element('p', 'qa-config-hint', '答疑服务尚未接通。可以先保存问题，配置后再请求回答。');
-  configHint.hidden = client.configured !== false;
+  wrapper.setAttribute('aria-label', '答疑');
+  panelSequence += 1;
   const turnsHost = element('div', 'qa-turns');
   const status = element('p', 'qa-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-  const askAgain = element('button', 'qa-button qa-button-primary qa-ask', '再问一个');
-  askAgain.type = 'button'; askAgain.dataset.qaAction = 'ask';
   const form = element('form', 'qa-form');
-  const inputId = `qa-input-${panelSequence}`;
-  const label = element('label', 'qa-input-label', '你的问题或追问'); label.htmlFor = inputId;
-  const input = element('textarea', 'qa-input'); input.id = inputId; input.rows = 3;
-  input.placeholder = '写下哪里没看懂，也可以围绕回答继续追问。';
-  const hintId = `${inputId}-hint`;
-  const hint = element('p', 'qa-input-hint'); hint.id = hintId;
-  input.setAttribute('aria-describedby', hintId);
-  const controls = element('div', 'qa-controls');
-  const send = element('button', 'qa-button qa-button-primary', client.configured === false ? '保存问题' : '保存并提问');
+  const input = element('textarea', 'qa-input'); input.id = `qa-input-${panelSequence}`; input.rows = 1;
+  input.placeholder = '问点什么';
+  input.setAttribute('aria-label', '问点什么');
+  const send = element('button', 'qa-button qa-button-primary', '问');
   send.type = 'submit';
   const count = element('span', 'qa-count'); count.setAttribute('aria-live', 'off');
-  controls.append(send, count);
-  form.append(label, input, hint, controls);
-  wrapper.append(heading, sourceLabel, configHint, turnsHost, status, form);
+  form.append(input, send, count);
+  wrapper.append(turnsHost, status, form);
   root.classList.add('qa-panel'); root.replaceChildren(wrapper);
   const threadId = () => `${current.chunkId}:${current.blockId}`;
 
-  function read() { return getRecord(); }
+  function read() {
+    const record = getRecord();
+    if (record && ((record.chunk !== undefined && String(record.chunk) !== current.chunkId)
+      || (record.block !== undefined && String(record.block) !== current.blockId))) return undefined;
+    return record;
+  }
   function commit(update) {
     const result = saveRecord(update);
     if (result?.then) throw new QaError('SAVE_FAILED');
@@ -135,7 +113,10 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
   function flash(message, isError = false) { notice = message; noticeError = isError; }
   function updateCounter() {
     const length = characterCount(input.value);
-    count.textContent = `${length} / ${LIMITS.question} 字`;
+    count.hidden = length <= 900;
+    count.textContent = `剩余 ${LIMITS.question - length} 字`;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(164, Math.max(44, input.scrollHeight + 2))}px`;
     count.classList.toggle('qa-over-limit', length > LIMITS.question);
     input.setAttribute('aria-invalid', length > LIMITS.question ? 'true' : 'false');
   }
@@ -149,9 +130,8 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     try {
       const now = Date.now();
       commit(latest => setDraft(latest, current, input.value, now));
-      hint.textContent = '输入已在本机保存。最多 1000 字；回答后可继续追问。';
     } catch {
-      hint.textContent = '输入暂未成功保存。请保留当前页面，重试保存后再发送。';
+      flash('输入暂未成功保存，请重试。', true); render();
     }
     updateCounter();
   }
@@ -162,20 +142,9 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
   function focusReply(requestId) {
     turnsHost.querySelector(`[data-reply-for="${CSS.escape(requestId)}"]`)?.focus();
   }
-  function threadList(record) {
-    return buildThreads(visibleTurns(record).filter(turn => turn.threadId === threadId()));
-  }
-  function syncComposer(removed, visibleCount) {
-    const collapsed = !removed && visibleCount > 0 && input.value === '' && !composerOpen && doc.activeElement !== input;
+  function syncComposer(removed) {
     input.disabled = removed;
     send.disabled = removed;
-    if (collapsed) {
-      if (form.parentNode) form.remove();
-      if (!askAgain.parentNode) status.after(askAgain);
-      return;
-    }
-    if (askAgain.parentNode) askAgain.remove();
-    if (!form.parentNode) wrapper.append(form);
   }
   function appendQuote(host, quote, index, turn) {
     const block = element('blockquote', 'qa-quote');
@@ -189,10 +158,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
 
   function renderAnswer(host, answer, turn, repliedIds) {
     const insufficient = turn.status === 'insufficient_context';
-    const unverified = answer.unverified === true;
-    const badge = element('span', `qa-badge${insufficient || unverified ? ' qa-badge-warning' : ''}`,
-      unverified ? '没核对原文' : insufficient ? '资料不足 · 尚不能确认' : answer.basis === '推理' ? '推理说明' : '教材依据');
-    host.append(badge, element('p', 'qa-answer-text', answer.text));
+    host.append(element('p', 'qa-answer-text', answer.text));
     if (typeof answer.imageNote === 'string' && answer.imageNote)
       host.append(element('p', 'qa-image-note', answer.imageNote));
     // The synthetic sentence is only there so an answered turn can be saved. It is not the user's quote.
@@ -249,7 +215,6 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
       item.dataset.depth = String(Math.min(depth, 2));
     }
     const head = element('div', 'qa-turn-head');
-    head.append(element('h5', 'qa-turn-heading', depth > 0 ? '你答' : '你问'));
     const remove = element('button', 'qa-delete', '删除');
     remove.type = 'button';
     remove.dataset.qaAction = 'delete';
@@ -264,8 +229,9 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
       item.append(element('p', 'qa-waiting', isRunning ? '问题已保存 · 正在回答…' : '问题已保存，上次等待已中断。'));
       if (!isRunning) item.append(button(sameContext ? '继续请求' : '带入问题重新提问', sameContext ? 'retry' : 'copy', turn.requestId));
     } else if (turn.status === 'error') {
-      const error = element('p', 'qa-error', turn.error?.message || '请求未完成，问题已保留。');
+      const error = element('p', 'qa-error', turn.error?.code === 'NOT_CONFIGURED' ? '还没设置模型，问题已存下' : turn.error?.message || '请求未完成，问题已保留。');
       error.setAttribute('role', 'note'); item.append(error);
+      if (turn.error?.code === 'NOT_CONFIGURED') { error.className = 'qa-waiting'; return item; }
       item.append(element('p', 'qa-answer-meta', `状态 ${turn.error?.status || '—'} · ${turn.error?.code || 'ERROR'}${turn.error?.finish_reason ? ` · ${turn.error.finish_reason}` : ''}`));
       if (!sameContext) item.append(button('带入问题重新提问', 'copy', turn.requestId));
       else if (turn.error?.retryable !== false) item.append(button('重试这个问题', 'retry', turn.requestId));
@@ -280,59 +246,44 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     const caret = focusedReply ? doc.activeElement.selectionStart : 0;
     if (focusedReply) replies.set(focusedReply, { open: true, text: doc.activeElement.value });
     const record = read();
-      const removed = !!record?.removed;
-      const turns = visibleTurns(record).filter(turn => turn.threadId === threadId());
-      const threads = buildThreads(turns);
-      const repliedIds = new Set(turns.filter(turn => turn.replyTo).map(turn => turn.replyTo));
-      sourceLabel.textContent = current.label || `${current.book} · ${current.chunkId} · 段 ${current.blockId}`;
-      hint.textContent = removed ? '重新标记该段落后可以继续提问。' : '输入自动保存到本机。最多 1000 字；回答后可继续追问。';
-      const children = [];
-      if (removed) {
-        abortPending();
-        children.push(element('p', 'qa-removed', '这条疑问已移除。'));
-      } else {
-        const summaryShown = turns.some(turn => turn.answer && (record?.answer?.requestId === turn.requestId
-          || record?.answer?.text === turn.answer.text));
-        if (record?.answer && !summaryShown && (record.answer.text || record.answer.quote)) {
-          const legacy = element('article', 'qa-turn qa-legacy');
-          legacy.append(element('h5', 'qa-turn-heading', '历史回答'),
-            element('p', 'qa-answer-text', record.answer.text || ''),
-            element('p', 'qa-legacy-note', '原有回答已保留。完整依据和对话以新提问的记录为准。'));
-          if (record.answer.quote) legacy.append(element('blockquote', 'qa-quote', record.answer.quote));
-          if (record.answer.by || record.answer.at) legacy.append(element('p', 'qa-answer-meta',
-            [record.answer.by, record.answer.at].filter(Boolean).join(' · ')));
-          children.push(legacy);
-        }
-        threads.forEach((thread, index) => {
-          const isLast = index === threads.length - 1;
-          const open = userThreads.has(thread.root.requestId) ? userThreads.get(thread.root.requestId)
-            : isLast && !(chainMark(thread.turns) === '懂了' && pending.size === 0);
-          const details = element('details', 'qa-thread');
-          const summary = element('summary', 'qa-thread-summary', `你问：${questionPreview(thread.root.question)} · ${chainMark(thread.turns)} · ${thread.turns.length} 轮`);
-          details.append(summary);
-          summary.addEventListener('click', () => {
-            userThreads.set(thread.root.requestId, !details.open);
-          });
-          details.open = open;
-          const body = element('div', 'qa-thread-body');
-          for (const node of thread.nodes) body.append(renderTurn(node.turn, node.depth, repliedIds));
-          details.append(body);
-          children.push(details);
-        });
-        if (!turns.length && !record?.answer) children.push(element('p', 'qa-empty', '围绕当前教材原文提问，回答会保存在这里。'));
+    const removed = !!record?.removed;
+    const turns = visibleTurns(record).filter(turn => turn.threadId === threadId());
+    const threads = buildThreads(turns);
+    const repliedIds = new Set(turns.filter(turn => turn.replyTo).map(turn => turn.replyTo));
+    const children = [];
+    if (removed) {
+      abortPending();
+      children.push(element('p', 'qa-removed', '这条疑问已移除。'));
+    } else {
+      const summaryShown = turns.some(turn => turn.answer && (record?.answer?.requestId === turn.requestId
+        || record?.answer?.text === turn.answer.text));
+      if (record?.answer && !summaryShown && (record.answer.text || record.answer.quote)
+        && (!record.answer.requestId || turns.some(turn => turn.requestId === record.answer.requestId))) {
+        const legacy = element('article', 'qa-turn qa-legacy');
+        legacy.append(element('p', 'qa-answer-text', record.answer.text || ''));
+        if (record.answer.quote) legacy.append(element('blockquote', 'qa-quote', record.answer.quote));
+        if (record.answer.by || record.answer.at) legacy.append(element('p', 'qa-answer-meta',
+          [record.answer.by, record.answer.at].filter(Boolean).join(' · ')));
+        children.push(legacy);
       }
-      turnsHost.replaceChildren(...children);
-      status.textContent = notice || (pending.size ? '问题已保存，正在请求回答。你可以继续写下一问。' : '');
-      status.classList.toggle('qa-error', noticeError);
-      syncComposer(removed, turns.length);
-      if (focusedReply) {
-        const area = turnsHost.querySelector(`[data-reply-for="${CSS.escape(focusedReply)}"]`);
-        if (area) {
-          area.focus();
-          const pos = Math.min(caret ?? area.value.length, area.value.length);
-          try { area.setSelectionRange(pos, pos); } catch { /* selection is optional while detached */ }
-        }
+      for (const thread of threads) {
+        const body = element('div', 'qa-thread');
+        for (const node of thread.nodes) body.append(renderTurn(node.turn, node.depth, repliedIds));
+        children.push(body);
       }
+    }
+    turnsHost.replaceChildren(...children);
+    status.textContent = notice || (pending.size ? '问题已保存，正在请求回答。你可以继续写下一问。' : '');
+    status.classList.toggle('qa-error', noticeError);
+    syncComposer(removed);
+    if (focusedReply) {
+      const area = turnsHost.querySelector(`[data-reply-for="${CSS.escape(focusedReply)}"]`);
+      if (area) {
+        area.focus();
+        const pos = Math.min(caret ?? area.value.length, area.value.length);
+        try { area.setSelectionRange(pos, pos); } catch { /* selection is optional while detached */ }
+      }
+    }
   }
 
   async function requestTurn(turn) {
@@ -370,7 +321,6 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
       const turn = saved?.qa?.turns?.[requestId];
       if (!turn || saved.removed) throw new QaError(saved?.removed ? 'REMOVED' : 'SAVE_FAILED');
       input.value = '';
-      composerOpen = false;
       updateCounter();
       void requestTurn(turn);
     } catch (error) {
@@ -410,12 +360,6 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     const target = event.target.closest?.('[data-qa-action]');
     if (!target || !root.contains(target) || target.disabled || disposed) return;
     const action = target.dataset.qaAction, requestId = target.dataset.requestId;
-    if (action === 'ask') {
-      composerOpen = true;
-      render();
-      input.focus();
-      return;
-    }
     const record = read(), turn = record?.qa?.turns?.[requestId];
     if (action === 'delete') {
       if (record?.removed || !turn || turn.deleted) { render(); return; }
@@ -444,11 +388,6 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
         if (next?.status === 'pending' && !saved.removed) void requestTurn(next);
       } else if (action === 'got' || action === 'still') {
         commit(latest => setResolution(latest, requestId, action, Date.now()));
-        if (action === 'got' && pending.size === 0) {
-          const threads = threadList(read());
-          const last = threads.at(-1);
-          if (last && chainMark(last.turns) === '懂了') userThreads.set(last.root.requestId, false);
-        }
         flash(action === 'got' ? '已标记为懂了。' : '已记录：还是不懂。可以继续追问。');
         render();
       } else if (action === 'answer-follow') {
@@ -469,7 +408,6 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
           const prefix = `关于 ${quote.anchor} 这句原文，我想问：`;
           input.value = input.value.trim() ? `${input.value}\n${prefix}` : prefix;
         }
-        composerOpen = true;
         saveInput();
         flash('继续写下你的问题，提交后会作为新的一轮保存。');
         render();
@@ -500,7 +438,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
       const next = snapshotContext(nextContext);
       if (contextKey(next) !== contextKey(current)) {
         epoch += 1; abortPending(); notice = ''; noticeError = false;
-        composerOpen = false; replies.clear(); userThreads.clear();
+        replies.clear();
       }
       current = next; populateDraft(); render();
     },

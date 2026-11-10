@@ -229,7 +229,8 @@ body.is-flow .app-shell {
   cursor: default;
 }
 
-.flow-letter {
+.flow-letter,
+.flow-option > span:first-child:not(.flow-option-text) {
   flex: none;
   font-variant-numeric: tabular-nums;
 }
@@ -380,17 +381,17 @@ body.is-flow {
 }
 body.is-flow .page:not(#page-flow) { font-size: 19px; }
 body.is-flow .small, body.is-flow .label, body.is-flow .q-meta { font-size: 14px; }
-body.is-flow .qa-heading, body.is-flow .qa-turn-heading { font-size: 19px; }
 body.is-flow .panel { padding-inline: 0; }
 body.is-flow .btn { box-shadow: none; }
 
 /* Four sizes across reading, review, QA and the secondary pages. */
 body.is-flow .page { font-size: 19px; }
 body.is-flow .page * { font-size: inherit; }
-body.is-flow .page :is(h1, h2, h3, h4, h5, h6), body.is-flow .page .flow-src { font-size: 22px; }
+body.is-flow .page :is(h1, h2, h3, h4, h5, h6), body.is-flow .page :is(.flow-src, .flow-lesson-line) { font-size: 22px; }
 body.is-flow .page :is(button, input, select, textarea) { font-size: 16px; }
 body.is-flow .page :is(.small, .label, .q-meta, .flow-count, .flow-notes, .flow-rule, .flow-why-entry, .flow-source,
-.qa-source, .qa-input-hint, .qa-answer-meta, .qa-image-note, .qa-anchor, .qa-count, .qa-badge, .qa-status, .qa-waiting, .qa-empty, .qa-still-hint, .qa-old-context, .qa-legacy-note, .qa-input-label) { font-size: 14px; }
+.flow-lesson-label, .flow-lesson-citation, .flow-provenance,
+.qa-answer-meta, .qa-image-note, .qa-quote, .qa-quote-text, .qa-error, .qa-insufficient, .qa-anchor, .qa-count, .qa-badge, .qa-status, .qa-waiting, .qa-empty, .qa-still-hint, .qa-old-context, .qa-legacy-note) { font-size: 14px; }
 body.is-flow .page .flow-option, body.is-flow .page .flow-result { font-size: 19px; }
 body.is-flow .qa-button-primary { color: var(--flow-bg); }
 body.is-flow { --accent-ink: var(--flow-bg); }
@@ -402,3 +403,121 @@ body.is-flow .page { border: 0; border-radius: 0; box-shadow: none; margin: 0; }
 .flow-grade { display: flex; gap: 8px; }
 .flow-selected { margin-left: auto; font-size: 14px; white-space: nowrap; }
 .review-forget { color: var(--flow-muted); }
+
+/* Content, QA and footer occupy separate tracks at every learning stage. */
+body.is-flow:has(#page-flow:not([hidden])) .app-shell { padding-bottom: 0; }
+#page-flow:not([hidden]) {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  height: calc(100dvh - 12px);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+#page-flow .flow-workspace {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+}
+#page-flow.has-qa .flow-workspace { grid-template-rows: minmax(40dvh, 1fr) auto; }
+#page-flow .flow-copy {
+  height: auto;
+  width: 100%;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  margin: 0 auto;
+  padding: 0 8px 16px;
+  box-sizing: border-box;
+}
+#page-flow .flow-qa {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  max-width: none;
+  margin: 0;
+  display: grid;
+  grid-template-rows: 36px minmax(0, 1fr);
+  max-height: 60dvh;
+  padding: 0 0 12px;
+  overflow-y: hidden;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  border-top: 1px solid var(--flow-line);
+  box-sizing: border-box;
+}
+.flow-qa-close {
+  justify-self: end;
+  width: 44px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  background: var(--flow-bg);
+  color: var(--flow-ink);
+  cursor: pointer;
+}
+#page-flow .flow-qa .qa-panel { min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 0; }
+#page-flow .flow-bar {
+  position: static;
+  padding-inline: 0;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+}
+.flow-sentence { cursor: pointer; }
+.flow-sentence.is-selected { background: color-mix(in srgb, var(--flow-accent) 16%, transparent); }
+@media (min-width: 900px) {
+  #page-flow.has-qa .flow-workspace {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
+  }
+  #page-flow .flow-qa { border-top: 0; border-left: 1px solid var(--flow-line); max-height: none; padding-left: 16px; }
+}
+
+#page-flow .flow-qa .qa-turns:empty + .qa-status:empty + .qa-form,
+#page-flow .flow-qa .qa-turns:empty ~ .qa-form { margin-top: 0; }
+#page-flow .flow-qa .qa-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+#page-flow .flow-qa .qa-form .qa-input { width: 100%; box-sizing: border-box; }
+#page-flow .flow-qa .qa-form .qa-count { grid-column: 1 / -1; }
+#page-flow .flow-qa .qa-still-hint { display: none; }
+#page-flow .flow-qa .qa-answer-meta { font-size: 12px; color: var(--flow-muted); }
+.flow-menu #flow-review-more { display: block; width: 100%; min-height: 44px; padding: 10px 0; border: 0; background: none; color: inherit; font: inherit; font-size: 19px; text-align: left; cursor: pointer; }
+#page-flow .review-input { font: inherit; }
+
+/* Source disclosures share the reading layout and stay inside the scroll track. */
+.flow-source-panel { position: relative; padding-top: 44px; margin-top: 12px; min-height: 100%; box-sizing: border-box; }
+.flow-source-close {
+  position: absolute; top: 0; right: 0; min-width: 44px; min-height: 44px;
+  border: 0; background: transparent; color: var(--flow-ink); cursor: pointer;
+}
+.flow-anchor { background: color-mix(in srgb, var(--flow-accent) 12%, transparent); }
+.flow-top { flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+.flow-count, .flow-top-tools { flex: 0 0 auto; }
+body.is-flow .page .flow-printed { margin: 0 auto 0 0; min-width: 0; color: var(--flow-muted); font-size: 14px; }
+@media (max-width: 480px) {
+  .flow-book { display: none; }
+  .flow-top, .flow-top-tools { gap: 8px; }
+}
+.rhythm-setting { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.rhythm-setting input { width: 20px; height: 20px; accent-color: var(--flow-accent); }
+/* Fixed line boxes keep enlarged words from changing the line height. */
+.flow-rhythm :is(p, li, td, th) { line-height: 34.2px; }
+body.is-flow .page .flow-rhythm .rhythm-emphasis { font-size: 1.12em; font-weight: 400; line-height: 0; }
+.flow-rhythm :is(strong, b, .flow-src) { font-weight: 700; }
+
+.flow-lesson { overflow-wrap: anywhere; }
+.flow-lesson-label, .flow-lesson-citation, .flow-lesson-reject { color: var(--flow-muted); font-size: 14px; }
+.flow-lesson-line { font-size: 22px; line-height: 1.65; margin: 0 0 20px; }
+.flow-lesson-example, .flow-lesson-source { line-height: 1.8; }
+.flow-lesson-quote { margin: 16px 0; padding-left: 16px; border-left: 2px solid var(--flow-line); }
+.flow-lesson-retell { display: block; width: 100%; box-sizing: border-box; margin-top: 24px;
+  resize: vertical; padding: 12px; border: 1px solid var(--flow-line); border-radius: 0;
+  background: transparent; color: var(--flow-ink); font: inherit; }
+.flow-lesson-reject { margin-top: 24px; }
+.flow-note-detail { min-width: 0; overflow-wrap: anywhere; }
+
+.flow-run-detail { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; font-size: 14px; }
+
+.flow-lesson-label { margin-right: auto; }
+
+.flow-provenance { color: var(--flow-muted); }

@@ -1,4 +1,6 @@
 import { RULE_REASONS } from "./agent.js";
+import { applyRhythmReading, mountSourceDisclosure } from "./reading.js";
+export { rhythmEnabled, RHYTHM_STORAGE_KEY, mountSourceDisclosure } from "./reading.js";
 
 const ruleSet = new Set(RULE_REASONS);
 const MARK_SPACE = /\s/u;
@@ -12,9 +14,11 @@ const ui = {
   qaOpen: false,
   notesOpen: false,
   choice: "",
-  peek: false,
+  source: {},
   quiet: 0,
   shownAt: 0,
+  focus: "",
+  lessonRetell: {},
   pendingAsk: ""
 };
 
@@ -305,6 +309,10 @@ function optionButton(option, question) {
   return node;
 }
 
+export function answerProvenanceText(provenance) {
+  return ({ textbook: "来源没给答案，按教材作答", corrected: "来源答案有误，已按教材改正" })[provenance?.answer] || "";
+}
+
 function drawQuestion(host, question) {
   const wrap = el("div", "flow-question");
   wrap.append(el("p", "flow-stem", question.stem || "（题干缺失）"));
@@ -340,38 +348,85 @@ function drawQuestion(host, question) {
     const line = el("p", `flow-result${question.result.ok ? " is-ok" : " is-bad"}`, question.result.ok ? "对了" : "错了");
     wrap.append(line);
     if (question.result.why) wrap.append(el("p", "flow-why", question.result.why));
+    const provenance = question.kind === "exam" ? answerProvenanceText(question.provenance) : "";
+    if (provenance) wrap.append(el("p", "flow-provenance", provenance));
     if (question.source && question.source.text) {
       const link = button("flow-source", question.source.text);
       link.id = "flow-source";
-      link.addEventListener("click", () => {
-        ui.peek = true;
-        host.refresh();
-      });
       wrap.append(link);
     }
   }
   return wrap;
 }
 
+// The run log is for checking afterwards; give tool names a plain Chinese label.
+const RUN_LABELS = { queue_migration: "题量整理", consolidate_profile: "档案整理", insert_lesson: "插入补课",
+  lesson_discard: "补课没通过自检", retire_question: "停用考点题", rewrite_explanation: "改写解释",
+  flag_question: "记存疑", disable_lesson: "停用补课", lesson_retell: "复述反馈", review_insert: "错题进复习",
+  read_learner: "看学习记录", list_pages: "看页目录", read_page: "读原文", set_queue: "排题", write_note: "写笔记" };
+
+function drawLesson(host, model) {
+  const lesson = model.lesson;
+  const wrap = el("div", "flow-lesson");
+  wrap.append(el("p", "flow-lesson-line", lesson.oneLine), el("p", "flow-lesson-example", lesson.example));
+  const source = el("div", "flow-blocks flow-lesson-source");
+  source.append(el("p", "", lesson.link.text));
+  source.append(el("blockquote", "flow-lesson-quote", lesson.link.quote));
+  source.append(el("p", "flow-lesson-citation", model.lessonCitation || lesson.link.anchor));
+  wrap.append(source, drawQuestion(host, model.question));
+  if (model.question.result && !model.browsing) {
+    const state = ui.lessonRetell[model.itemId] ||= { text: "", checked: "", feedback: "" };
+    const input = el("textarea", "flow-lesson-retell");
+    input.placeholder = "用自己的话说一遍";
+    input.setAttribute("aria-label", "用自己的话说一遍（选填）");
+    input.maxLength = 1000; input.rows = 2; input.value = state.text;
+    const feedback = el("p", "flow-why", state.feedback);
+    feedback.setAttribute("aria-live", "polite");
+    input.addEventListener("input", () => { state.text = input.value; });
+    model.reviewRetell = async () => {
+      const text = state.text.trim();
+      if (!text || state.checked === text || !model.onRetell) return true;
+      if (state.pending) return false;
+      state.pending = true; input.disabled = true;
+      try { state.feedback = await model.onRetell(text); state.checked = text; feedback.textContent = state.feedback; }
+      finally { state.pending = false; input.disabled = false; }
+      return false;
+    };
+    wrap.append(input, feedback);
+  }
+  const reject = button("flow-ask flow-lesson-reject", "讲得不对");
+  reject.addEventListener("click", () => model.onRejectLesson());
+  wrap.append(reject);
+  return wrap;
+}
+
 function drawBar(host, model) {
   const bar = el("div", "flow-bar");
+  if (model.mode === "segment") {
+    const next = button("flow-next", "继续");
+    next.id = "flow-next";
+    next.addEventListener("click", () => host.onNext({ sec: 0 }));
+    bar.append(next);
+    return bar;
+  }
   const previous = button("flow-ask", "上一页");
   previous.id = "flow-previous";
   previous.disabled = !model.canPrevious;
-  previous.addEventListener("click", () => { ui.qaOpen = false; ui.peek = false; host.onPrevious(); });
+  previous.addEventListener("click", () => { ui.qaOpen = false; ui.source = {}; host.onPrevious(); });
   bar.append(previous);
   const next = button("flow-next", model.mode === "done" ? "下一块" : "下一页");
   next.id = model.mode === "done" ? "flow-next-chunk" : "flow-next";
   if (model.mode === "done" && !model.nextId) next.disabled = true;
-  if (model.mode === "question" && !model.question?.result && !model.browsing) next.disabled = true;
-  next.addEventListener("click", () => {
+  if (["question", "lesson"].includes(model.mode) && !model.question?.result && !model.browsing) next.disabled = true;
+  next.addEventListener("click", async () => {
     if (model.mode === "done") {
       if (model.nextId) host.onOpen(model.nextId);
       return;
     }
+    if (model.mode === "lesson" && model.reviewRetell && !await model.reviewRetell()) return;
     const sec = Math.max(0, Math.round((Date.now() - ui.shownAt) / 1000));
     ui.qaOpen = false;
-    ui.peek = false;
+    ui.source = {};
     host.onNext({ sec });
   });
   const ask = button("flow-ask", "问一下");
@@ -382,7 +437,8 @@ function drawBar(host, model) {
     ui.pendingAsk = "";
     host.refresh();
   });
-  bar.append(next, ask);
+  bar.append(next);
+  if (model.mode !== "lesson") bar.append(ask);
   if (model.mode === "done") { ask.disabled = true; return bar; }
   if (model.figure && model.mode === "read") {
     const figure = button("flow-ask", "这张图在讲什么");
@@ -400,12 +456,6 @@ function drawBar(host, model) {
 function drawNotes(host, model) {
   const panel = el("section", "flow-notes");
   panel.id = "flow-notes";
-  if (model.moreReview) {
-    const more = button("flow-ask", "再来 10 张");
-    more.id = "review-more";
-    more.addEventListener("click", () => host.onMoreReview());
-    panel.append(more);
-  }
   const rule = ruleText(model);
   if (rule) {
     const line = el("p", "flow-rule", rule);
@@ -422,17 +472,81 @@ function drawNotes(host, model) {
   }
   for (const error of model.errors || []) panel.append(el("p", "flow-rule",
     `状态 ${error.status || "—"} · ${error.code || "ERROR"}${error.finish_reason ? ` · ${error.finish_reason}` : ""}`));
+  for (const run of model.runs || []) {
+    const row = el("details", "flow-run");
+    row.append(el("summary", "flow-rule", RUN_LABELS[run.name] || run.name || "agent"), el("pre", "flow-run-detail", JSON.stringify({ arguments: run.arguments, result: run.result }, null, 2)));
+    panel.append(row);
+  }
   const notes = model.notes || [];
-  if (!notes.length) panel.append(el("p", "flow-note", "还没有笔记"));
+  if (!notes.length) panel.append(el("p", "flow-note", "还没有档案"));
   for (const note of notes) {
     const row = el("div", "flow-note-row");
-    row.append(el("p", "flow-note", note.text || ""));
+    const detail = el("div", "flow-note-detail");
+    detail.append(el("p", "flow-note", note.text || ""));
+    if (note.evidence?.length) detail.append(el("p", "flow-rule", note.evidence.map(e => `${new Date(e.at).toLocaleDateString("zh-CN")} · ${e.id}`).join("；")));
+    row.append(detail);
     const remove = button("flow-ask", "删除");
     remove.addEventListener("click", () => host.onDeleteNote(note.id));
     row.append(remove);
     panel.append(row);
   }
   return panel;
+}
+
+// Wrap text-node slices, preserving inline emphasis and textbook markup.
+export function selectSentences(container, selected, onSelect) {
+  const doc = container.ownerDocument;
+  for (const paragraph of container.querySelectorAll("p, li")) {
+    if (paragraph.querySelector("p, li") || paragraph.closest("table, .katex")) continue;
+    const walker = doc.createTreeWalker(paragraph, 4);
+    const nodes = [];
+    let text = "", node;
+    while ((node = walker.nextNode())) {
+      if (node.parentElement.closest(".katex, script, style")) continue;
+      nodes.push({ node, start: text.length }); text += node.textContent;
+    }
+    const sentences = [...text.matchAll(/[^。！？!?]*[。！？!?]+|[^。！？!?]+$/gu)];
+    for (const { node, start } of nodes) {
+      const fragment = doc.createDocumentFragment();
+      for (const sentence of sentences) {
+        const from = Math.max(0, sentence.index - start);
+        const to = Math.min(node.length, sentence.index + sentence[0].length - start);
+        if (to <= from) continue;
+        const span = el("span", "flow-sentence", node.textContent.slice(from, to));
+        const value = sentence[0].trim();
+        span.classList.toggle("is-selected", !!value && value === selected);
+        span.addEventListener("click", event => {
+          if (event.target.closest("a, button")) return;
+          for (const other of container.querySelectorAll(".flow-sentence")) other.classList.remove("is-selected");
+          for (const part of paragraph.querySelectorAll(".flow-sentence")) {
+            if (part.dataset.sentence === value) part.classList.add("is-selected");
+          }
+          onSelect(value);
+        });
+        span.dataset.sentence = value;
+        fragment.append(span);
+      }
+      node.replaceWith(fragment);
+    }
+  }
+}
+
+export function createQaRegion(onClose) {
+  const slot = el("aside", "flow-qa");
+  slot.id = "flow-qa";
+  slot.setAttribute("aria-label", "答疑");
+  const close = button("flow-qa-close", "×");
+  close.setAttribute("aria-label", "收起答疑");
+  close.addEventListener("click", onClose);
+  slot.append(close);
+  return slot;
+}
+
+export function readingContent(source) {
+  const blocks = el("div", "flow-blocks");
+  blocks.innerHTML = source.html || "";
+  markKeywords(blocks, source.sources);
+  return blocks;
 }
 
 export function renderFlow(root, model) {
@@ -443,7 +557,7 @@ export function renderFlow(root, model) {
     ui.qaOpen = false;
     ui.notesOpen = false;
     ui.choice = "";
-    ui.peek = false;
+    ui.source = {};
     ui.quiet = 0;
     ui.shownAt = Date.now();
     ui.pendingAsk = "";
@@ -453,11 +567,16 @@ export function renderFlow(root, model) {
     ui.itemId = model.itemId || "";
     ui.qaOpen = false;
     ui.choice = "";
-    ui.peek = false;
+    ui.source = {};
     ui.pendingAsk = "";
+    ui.focus = "";
     ui.shownAt = Date.now();
   }
+  const oldArticle = root.querySelector("#flow-copy");
+  const scrollTop = changed ? 0 : (oldArticle?.scrollTop || 0);
+  const viewportY = globalThis.scrollY || 0;
   root.replaceChildren();
+  root.classList.toggle("has-qa", ui.qaOpen && model.mode !== "done");
   root.classList.add("flow");
   root.dataset.chunk = model.chunkId || "";
   root.dataset.item = model.itemId || "";
@@ -466,15 +585,25 @@ export function renderFlow(root, model) {
   root.dataset.total = String(model.total || 0);
 
   const head = el("header", "flow-top");
-  const count = el("p", "flow-count", model.total ? `${model.cursor} / ${model.total}` : "");
+  const displayTotal = model.displayTotal ?? model.total;
+  const displayCursor = model.displayCursor ?? model.cursor;
+  const count = el("p", "flow-count", displayTotal ? `${displayCursor} / ${displayTotal}` : "");
   count.id = "flow-count";
   const exit = button("flow-ask", "菜单");
   exit.id = "flow-menu-open";
   exit.addEventListener("click", () => model.onMenu());
-  head.append(count, exit);
+  head.append(count);
+  if (model.mode === "lesson") head.append(el("span", "flow-lesson-label", "补课"));
+  if (model.printed && ["read", "question"].includes(model.mode)) {
+    const location = el("p", "flow-printed");
+    location.append(el("span", "flow-book", `${model.printed.name} · `), el("span", "", model.printed.pages));
+    location.title = `${model.printed.name} · ${model.printed.pages}`;
+    head.append(location);
+  }
+  head.append(exit);
   const progress = el("div", "flow-progress");
   const fill = el("span");
-  const ratio = model.total ? Math.min(1, (model.progressCursor ?? model.cursor ?? 0) / model.total) : 0;
+  const ratio = displayTotal ? Math.min(1, (model.displayProgressCursor ?? model.progressCursor ?? model.cursor ?? 0) / displayTotal) : 0;
   fill.style.width = `${Math.round(ratio * 100)}%`;
   progress.append(fill);
   progress.setAttribute("aria-hidden", "true");
@@ -482,6 +611,7 @@ export function renderFlow(root, model) {
 
   const why = button("flow-ask", "笔记");
   why.id = "flow-why";
+  why.hidden = model.mode === "segment";
   why.addEventListener("click", () => {
     ui.notesOpen = !ui.notesOpen;
     model.refresh();
@@ -489,7 +619,8 @@ export function renderFlow(root, model) {
   const tools = el("div", "flow-top-tools");
   tools.append(why, exit);
   head.append(tools);
-  if (ui.notesOpen) root.append(drawNotes(model, model));
+  const workspace = el("div", "flow-workspace");
+  root.append(workspace);
 
   const article = el("article", "flow-copy");
   article.id = "flow-copy";
@@ -498,44 +629,50 @@ export function renderFlow(root, model) {
     article.append(el("p", "flow-stem", "正在读取原文…"));
   } else if (model.status === "missing") {
     article.append(el("p", "flow-stem", model.message || "这一块的原文暂时没读到。"));
+  } else if (model.mode === "segment") {
+    article.append(el("h1", "flow-title", "这一段完了"));
+    article.append(el("p", "flow-stem", `${model.segmentPages} 页 · 答对 ${model.segmentCorrect} 道 · 答错 ${model.segmentWrong} 道`));
   } else if (model.mode === "done") {
     article.append(el("h1", "flow-title", "这块学完了"));
     article.append(el("p", "flow-stem", `答对 ${model.correct || 0} 道`));
     article.id = "flow-done";
-  } else if (ui.peek && model.peekHtml) {
-    const back = button("flow-source", "回到这题");
-    back.id = "flow-back-question";
-    back.addEventListener("click", () => {
-      ui.peek = false;
-      model.refresh();
-    });
-    article.append(back);
-    const source = el("div", "flow-blocks");
-    source.innerHTML = model.peekHtml;
-    article.append(source);
+  } else if (model.mode === "lesson" && model.lesson) {
+    article.append(drawLesson(model, model));
   } else if (model.mode === "question" && model.question) {
     article.append(drawQuestion(model, model.question));
+    if (model.question.kind === "exam" && model.question.result) {
+      const flag = button("flow-ask flow-lesson-reject", model.question.flagged ? "已记下" : "这题有问题");
+      flag.id = "flow-flag-question"; flag.disabled = !!model.question.flagged;
+      flag.addEventListener("click", () => {
+        model.onFlagQuestion(); flag.textContent = "已记下"; flag.disabled = true;
+      });
+      article.append(flag);
+    }
   } else {
-    const blocks = el("div", "flow-blocks");
-    blocks.innerHTML = model.html || "";
-    markKeywords(blocks, model.sources);
+    const blocks = readingContent(model);
+    applyRhythmReading(blocks, `${model.chunkId}:${model.itemId}`, model.rhythm);
+    selectSentences(blocks, ui.focus, value => { ui.focus = value; if (ui.qaOpen) model.refresh(); });
     article.append(blocks);
   }
-  root.append(article);
+  if (ui.notesOpen && model.mode !== "segment") article.prepend(drawNotes(model, model));
+  workspace.append(article);
 
   if (ui.qaOpen && model.mode !== "done") {
-    const slot = el("div", "flow-qa");
-    slot.id = "flow-qa";
-    root.append(slot);
+    workspace.append(createQaRegion(() => { ui.qaOpen = false; model.refresh(); }));
   }
   if (model.status === "ready" || model.mode === "done") root.append(drawBar(model, model));
+  article.scrollTop = scrollTop;
+  if (model.mode === "question" && model.question?.result) {
+    mountSourceDisclosure(article, article.querySelector("#flow-source"), model.source || {}, ui.source, model.refresh, readingContent, scrollTop);
+  }
   if (ui.qaOpen && model.mountQa) {
     const slot = root.querySelector("#flow-qa");
-    const handle = slot ? model.mountQa(slot) : null;
+    const handle = slot ? model.mountQa(slot, ui.focus) : null;
     if (handle && ui.pendingAsk && typeof handle.ask === "function") {
       const text = ui.pendingAsk;
       ui.pendingAsk = "";
       handle.ask(text);
     }
   }
+  if (!changed && typeof globalThis.scrollTo === "function") globalThis.scrollTo(0, viewportY);
 }

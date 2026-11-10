@@ -1,11 +1,14 @@
+import { memoryPrompt, learnerMemory } from "../agent/memory.js";
 import { applyPlan } from "./pages.js";
 import { runAgent } from "../agent/kernel.js";
 
 export const STUDY_SYSTEM = `你是学习流的自适应内核，不是讲解老师。目标是让 Billy 考试通过，并且真的懂。
 
-Billy 是电信设计工程师：先看 read_learner 和笔记，再判断他哪里熟、哪里弱，不要根据职业预设他的基础。他不爱读大段文字，要靠题知道重点。
+Billy 是电信设计工程师：先看 read_learner 和学习者档案，再判断他哪里熟、哪里弱，不要根据职业预设他的基础。他不爱读大段文字，要靠题知道重点。
 
-你只能调整题目出现的时机，以及让他重看已经读过的页。不要讲解。讲解由他提问时的另一个通道负责。做不到更好就不要改队列。先用工具读情况，再改。不要编造页 id 或题 id。未作答的题不能删除，未读原文不能丢或改顺序。
+你可以调整题目时机、回看原文，发现前置知识缺口时用 insert_lesson 插入补课。由你根据提问、错题和档案判断，不要机械插入。做不到更好就不要改队列。先用工具读情况，再改。不要编造页 id 或题 id。默认题不能删除；你追加的题可以删除。每页最多追加两道，一块最多追加原文页数的一半，未读原文不能丢或改顺序。
+
+他问到题目或做错时，先 read_page 检查题目质量：位置记忆题、复述原文的解释、乱码提示，应 retire_question 或 rewrite_explanation。真题只能 flag_question，不能改答案。
 
 理由用一句中文，20 字以内，写给 Billy 看。`;
 
@@ -41,14 +44,6 @@ export function rememberNote(notes, text, now) {
   const next = { ...(notes || {}) };
   const id = `n${now}-${Object.keys(next).length}`;
   next[id] = { text: body, at: now, updatedAt: now };
-  const active = Object.entries(next)
-    .filter(([, note]) => note && !note.removed)
-    .sort((a, b) => (Number(a[1].at) || 0) - (Number(b[1].at) || 0) || (a[0] < b[0] ? -1 : 1));
-  if (active.length > 30) {
-    for (const [oldId, note] of active.slice(0, active.length - 30)) {
-      next[oldId] = { ...note, removed: true, updatedAt: now };
-    }
-  }
   return { notes: next, id };
 }
 
@@ -68,20 +63,22 @@ function buildTools(host) {
   return [
     {
       name: "read_learner",
-      description: "读取这一块的进度、最近 30 条事件，以及你之前记下的笔记。",
+      description: "读取这一块的进度、最近 30 条事件，学习者档案和整理后最多五条新笔记。",
       parameters: { type: "object", properties: {}, required: [] },
       run() {
         const current = ctx();
-        const events = (current.events || []).slice(-30);
-        const notes = (current.notes || []).filter((note) => note && !note.removed).slice(-30);
+        const events = (current.events || []).filter(event => event.type !== "tool").slice(-30);
+        const memory = learnerMemory(current.profile, current.notes, current.memoryState);
         return {
           chunkId: current.chunkId || "",
           seen: (current.seen || []).length,
           pages: (current.pages || []).length,
           cursor: current.cursor || 0,
           queueLength: (current.queue || []).length,
+          queue: current.queue || [],
+          questionOrigins: current.questionOrigins || {},
           events,
-          notes
+          ...memory
         };
       }
     },
@@ -122,7 +119,7 @@ function buildTools(host) {
         const page = (current.pages || []).find((item) => item.id === args.id);
         if (page) return { id: page.id, kind: page.kind, text: page.text || "" };
         const question = (current.questions || []).find((item) => item.id === args.id);
-        if (question) return { id: question.id, stem: question.stem || "", options: question.options || [] };
+        if (question) return { id: question.id, stem: question.stem || "", options: question.options || [], explanation: question.explanation || "", answer: question.answer, kind: question.kind };
         return { error: `没有 ${args.id}` };
       }
     },
@@ -143,12 +140,22 @@ function buildTools(host) {
         if (chars(reason).length > 20) return { error: "reason 要在 20 字以内" };
         if (!Array.isArray(args.items) || args.items.some((id) => typeof id !== "string")) return { error: "items 必须是字符串数组" };
         const current = ctx();
-        const plan = applyPlan({ items: args.items, reason }, current.pages || [], current.questions || [], current.seen || [], current.queue || [], current.answered || []);
+        const pendingLessons = (current.queue || []).filter(id => (current.lessons || []).some(l => l.id === id));
+        const plan = applyPlan({ items: [...args.items, ...pendingLessons.filter(id => !args.items.includes(id))], reason }, current.pages || [], [...(current.questions || []), ...(current.lessons || [])], current.seen || [], current.queue || [], current.answered || [], current.questionOrigins || {});
         if (!plan.ok) return { error: plan.error };
         host.saveQueue(plan.queue, reason, host.currentJob);
         return { ok: true, queue: plan.queue, fixes: plan.fixes, reason };
       }
     },
+    ...[
+      ["insert_lesson", "发现前置知识缺口，在 before 页或题前插入补课。", { concept: {type:"string"}, reason: {type:"string"}, before: {type:"string"} }],
+      ["retire_question", "停用有问题的考点题；真题不可停用。", { id: {type:"string"}, reason: {type:"string"} }],
+      ["rewrite_explanation", "改写考点题的解释，不能改真题。", { id: {type:"string"}, text: {type:"string"} }],
+      ["flag_question", "为题目记一条存疑，不改答案。", { id: {type:"string"}, reason: {type:"string"} }]
+    ].map(([name, description, properties]) => ({ name, description,
+      parameters: { type: "object", properties, required: Object.keys(properties) },
+      run: args => host.performTool ? host.performTool(name, args, host.currentJob, host.llm, host.signal) : { error: "工具不可用" }
+    })),
     {
       name: "write_note",
       description: "记下对这个学习者的判断。text 不超过 200 字。",
@@ -183,6 +190,8 @@ export function createStudyRunner({
   now = () => Date.now(),
   prepare,
   captureRun,
+  performTool,
+  saveTool = () => {},
   maxSteps = 6,
   run = runAgent
 } = {}) {
@@ -193,7 +202,7 @@ export function createStudyRunner({
   let running = false;
   let pending = null;
   let abortCurrent = null;
-  const host = { getContext, saveQueue, saveNote, secret, notes, now, prepare, currentJob: null };
+  const host = { getContext, saveQueue, saveNote, secret, notes, now, prepare, performTool, currentJob: null };
 
   function abort() {
     pending = null;
@@ -223,14 +232,17 @@ export function createStudyRunner({
     if (snap) host.secret = () => key;
     const controller = new AbortController();
     abortCurrent = controller;
+    host.llm = llm; host.signal = controller.signal;
+    const current = getContext(job);
     try {
       await run({
         llm,
-        system: STUDY_SYSTEM,
+        system: STUDY_SYSTEM + "\n" + memoryPrompt(current.profile, current.notes, current.memoryState),
         messages: [{ role: "user", content: userText(job) }],
         tools: buildTools(host),
         maxSteps,
-        signal: controller.signal
+        signal: controller.signal,
+        onTool: entry => saveTool(JSON.parse(redact(JSON.stringify(entry), key || host.secret())), job)
       });
     } catch (error) {
       if (!controller.signal.aborted) { saveError(error, job); saveReason(RULE_OFFLINE, job); }
