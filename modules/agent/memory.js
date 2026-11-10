@@ -48,6 +48,12 @@ export function memoryEvidence(state, since = 0) {
         correct: tries.filter(t => t.ok).length, wrong: tries.filter(t => !t.ok).length });
     }
   }
+  // Written review answers carry the text and the grader's gap, not just a count.
+  for (const [id, record] of Object.entries(state.reviewAnswers || {})) {
+    const tries = (record.tries || []).filter(t => (Number(t.at) || Date.parse(t.at) || 0) > since);
+    if (tries.length) evidence.push({ id: `recall:${id}`, at: Math.max(...tries.map(t => Number(t.at) || Date.parse(t.at) || 0)),
+      answers: tries.map(t => ({ response: t.response, verdict: t.verdict, gap: t.gap, ...(t.flipped ? { flipped: true } : {}) })) });
+  }
   return evidence;
 }
 

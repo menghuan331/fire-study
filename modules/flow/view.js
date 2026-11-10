@@ -365,13 +365,22 @@ const RUN_LABELS = { queue_migration: "题量整理", consolidate_profile: "档�
   flag_question: "记存疑", disable_lesson: "停用补课", lesson_retell: "复述反馈", review_insert: "错题进复习",
   read_learner: "看学习记录", list_pages: "看页目录", read_page: "读原文", set_queue: "排题", write_note: "写笔记" };
 
+// The host supplies sanitized formatters; without them text stays plain.
+function richEl(tag, className, text, format) {
+  const node = el(tag, className);
+  if (typeof format === "function") node.innerHTML = format(String(text ?? ""));
+  else node.textContent = String(text ?? "");
+  return node;
+}
+
 function drawLesson(host, model) {
   const lesson = model.lesson;
+  const format = model.format || {};
   const wrap = el("div", "flow-lesson");
-  wrap.append(el("p", "flow-lesson-line", lesson.oneLine), el("p", "flow-lesson-example", lesson.example));
+  wrap.append(richEl("div", "flow-lesson-line", lesson.oneLine, format.model), richEl("div", "flow-lesson-example", lesson.example, format.model));
   const source = el("div", "flow-blocks flow-lesson-source");
-  source.append(el("p", "", lesson.link.text));
-  source.append(el("blockquote", "flow-lesson-quote", lesson.link.quote));
+  source.append(richEl("div", "", lesson.link.text, format.model));
+  source.append(richEl("blockquote", "flow-lesson-quote", lesson.link.quote, format.textbook));
   source.append(el("p", "flow-lesson-citation", model.lessonCitation || lesson.link.anchor));
   wrap.append(source, drawQuestion(host, model.question));
   if (model.question.result && !model.browsing) {
@@ -531,15 +540,54 @@ export function selectSentences(container, selected, onSelect) {
   }
 }
 
-export function createQaRegion(onClose) {
+// The QA column stays attached while it is open on one item, so its scroll, draft and caret survive re-renders.
+const qaRegion = { key: "", slot: null, onClose: null };
+
+function createQaRegion() {
   const slot = el("aside", "flow-qa");
   slot.id = "flow-qa";
   slot.setAttribute("aria-label", "答疑");
   const close = button("flow-qa-close", "×");
   close.setAttribute("aria-label", "收起答疑");
-  close.addEventListener("click", onClose);
+  close.addEventListener("click", () => qaRegion.onClose?.());
   slot.append(close);
   return slot;
+}
+
+/** Shared by the learning flow and review: swaps everything except an open QA column. Returns the QA slot or null. */
+export function paintFlow(root, { top = [], article, bar, qa = null }) {
+  const kept = qa && qaRegion.key === qa.key && qaRegion.slot?.parentElement?.parentElement === root ? qaRegion.slot : null;
+  let slot = kept;
+  if (kept) {
+    const workspace = kept.parentElement;
+    for (const child of [...root.children]) if (child !== workspace) child.remove();
+    for (const child of [...workspace.children]) if (child !== kept) child.remove();
+    root.prepend(...top);
+    workspace.prepend(article);
+    if (bar) root.append(bar);
+  } else {
+    const workspace = el("div", "flow-workspace");
+    slot = qa ? createQaRegion() : null;
+    workspace.append(article, ...(slot ? [slot] : []));
+    root.replaceChildren(...top, workspace, ...(bar ? [bar] : []));
+  }
+  Object.assign(qaRegion, qa ? { key: qa.key, slot, onClose: qa.onClose } : { key: "", slot: null, onClose: null });
+  root.classList.toggle("has-qa", !!slot);
+  return slot;
+}
+
+/** iPad keyboard: the page follows the visual viewport, so content, transcript and composer all stay visible. */
+export function trackViewport(win = globalThis) {
+  const viewport = win.visualViewport;
+  if (!viewport) return;
+  const style = win.document.documentElement.style;
+  const apply = () => {
+    style.setProperty("--flow-vh", `${viewport.height}px`);
+    style.setProperty("--flow-vtop", `${viewport.offsetTop}px`);
+  };
+  viewport.addEventListener("resize", apply);
+  viewport.addEventListener("scroll", apply);
+  apply();
 }
 
 export function readingContent(source) {
@@ -574,9 +622,6 @@ export function renderFlow(root, model) {
   }
   const oldArticle = root.querySelector("#flow-copy");
   const scrollTop = changed ? 0 : (oldArticle?.scrollTop || 0);
-  const viewportY = globalThis.scrollY || 0;
-  root.replaceChildren();
-  root.classList.toggle("has-qa", ui.qaOpen && model.mode !== "done");
   root.classList.add("flow");
   root.dataset.chunk = model.chunkId || "";
   root.dataset.item = model.itemId || "";
@@ -607,7 +652,6 @@ export function renderFlow(root, model) {
   fill.style.width = `${Math.round(ratio * 100)}%`;
   progress.append(fill);
   progress.setAttribute("aria-hidden", "true");
-  root.append(head, progress);
 
   const why = button("flow-ask", "笔记");
   why.id = "flow-why";
@@ -619,8 +663,6 @@ export function renderFlow(root, model) {
   const tools = el("div", "flow-top-tools");
   tools.append(why, exit);
   head.append(tools);
-  const workspace = el("div", "flow-workspace");
-  root.append(workspace);
 
   const article = el("article", "flow-copy");
   article.id = "flow-copy";
@@ -655,24 +697,22 @@ export function renderFlow(root, model) {
     article.append(blocks);
   }
   if (ui.notesOpen && model.mode !== "segment") article.prepend(drawNotes(model, model));
-  workspace.append(article);
-
-  if (ui.qaOpen && model.mode !== "done") {
-    workspace.append(createQaRegion(() => { ui.qaOpen = false; model.refresh(); }));
-  }
-  if (model.status === "ready" || model.mode === "done") root.append(drawBar(model, model));
+  const qaShown = ui.qaOpen && model.mode !== "done";
+  const slot = paintFlow(root, {
+    top: [head, progress], article,
+    bar: model.status === "ready" || model.mode === "done" ? drawBar(model, model) : null,
+    qa: qaShown ? { key: `flow:${model.chunkId}:${model.itemId}`, onClose: () => { ui.qaOpen = false; model.refresh(); } } : null
+  });
   article.scrollTop = scrollTop;
   if (model.mode === "question" && model.question?.result) {
     mountSourceDisclosure(article, article.querySelector("#flow-source"), model.source || {}, ui.source, model.refresh, readingContent, scrollTop);
   }
-  if (ui.qaOpen && model.mountQa) {
-    const slot = root.querySelector("#flow-qa");
-    const handle = slot ? model.mountQa(slot, ui.focus) : null;
+  if (slot && model.mountQa) {
+    const handle = model.mountQa(slot, ui.focus);
     if (handle && ui.pendingAsk && typeof handle.ask === "function") {
       const text = ui.pendingAsk;
       ui.pendingAsk = "";
       handle.ask(text);
     }
   }
-  if (!changed && typeof globalThis.scrollTo === "function") globalThis.scrollTo(0, viewportY);
 }

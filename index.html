@@ -1900,6 +1900,7 @@ function mergeStates(local, remote) {
     memoryState: mergeMaps(left.memoryState, right.memoryState),
     lessons: mergeMaps(left.lessons, right.lessons),
     lessonAttempts: mergeMaps(left.lessonAttempts, right.lessonAttempts),
+    reviewAnswers: mergeMaps(left.reviewAnswers, right.reviewAnswers),
     questionOverrides: mergeMaps(left.questionOverrides, right.questionOverrides),
     agentLog: mergeMaps(left.agentLog, right.agentLog),
     agentNotes: mergeMaps(left.agentNotes, right.agentNotes),
@@ -2296,6 +2297,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
       memoryState: {},
       lessons: {},
       lessonAttempts: {},
+      reviewAnswers: {},
       questionOverrides: {},
       agentLog: {},
       agentNotes: {},
@@ -2406,6 +2408,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
       memoryState: src.memoryState || {},
       lessons: src.lessons || {},
       lessonAttempts: src.lessonAttempts || {},
+      reviewAnswers: src.reviewAnswers || {},
       questionOverrides: src.questionOverrides || {},
       agentLog: src.agentLog || {},
       agentRuns: normalizeAgentRuns(src.agentRuns)
@@ -2491,6 +2494,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
         if (json.memoryState && typeof json.memoryState === "object" && !Array.isArray(json.memoryState)) remote.memoryState = json.memoryState;
         if (json.lessons && typeof json.lessons === "object" && !Array.isArray(json.lessons)) remote.lessons = json.lessons;
         if (json.lessonAttempts && typeof json.lessonAttempts === "object" && !Array.isArray(json.lessonAttempts)) remote.lessonAttempts = json.lessonAttempts;
+        if (json.reviewAnswers && typeof json.reviewAnswers === "object" && !Array.isArray(json.reviewAnswers)) remote.reviewAnswers = json.reviewAnswers;
         if (json.questionOverrides && typeof json.questionOverrides === "object" && !Array.isArray(json.questionOverrides)) remote.questionOverrides = json.questionOverrides;
         if (json.agentLog && typeof json.agentLog === "object" && !Array.isArray(json.agentLog)) remote.agentLog = json.agentLog;
         remote.agentRuns = normalizeAgentRuns(json.agentRuns);
@@ -2728,7 +2732,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-10.4";
+const APP_VERSION = "2026-11-10.5";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -3009,6 +3013,7 @@ function createDefaultState() {
     memoryState: {},
     lessons: {},
     lessonAttempts: {},
+    reviewAnswers: {},
     questionOverrides: {},
     agentLog: {},
     agentNotes: {},
@@ -3114,6 +3119,7 @@ function coerceState(input, options) {
     memoryState: {},
     lessons: {},
     lessonAttempts: {},
+    reviewAnswers: {},
     questionOverrides: {},
     agentLog: {},
     agentNotes: {},
@@ -3147,6 +3153,7 @@ function coerceState(input, options) {
   copyRecords(src.memoryState, state.memoryState);
   copyRecords(src.lessons, state.lessons);
   copyRecords(src.lessonAttempts, state.lessonAttempts);
+  copyRecords(src.reviewAnswers, state.reviewAnswers);
   copyRecords(src.questionOverrides, state.questionOverrides);
   copyRecords(src.agentLog, state.agentLog);
   copyRecords(src.agentNotes, state.agentNotes);
@@ -3230,7 +3237,7 @@ function setNestedState(path, value, options) {
   } else if (kind === "flow" && id) {
     if (!app.state.flow) app.state.flow = {};
     app.state.flow[id] = id === "reviewDoneOn" ? value : stampSavedRecord(value, options, now);
-  } else if (["learnerProfile", "memoryState", "lessons", "lessonAttempts", "questionOverrides", "agentLog"].includes(kind) && id) {
+  } else if (["learnerProfile", "memoryState", "lessons", "lessonAttempts", "reviewAnswers", "questionOverrides", "agentLog"].includes(kind) && id) {
     app.state[kind] ||= {};
     app.state[kind][id] = stampSavedRecord(value, options, now);
   } else if (kind === "agentNotes" && id) {
@@ -5461,6 +5468,50 @@ function renderRich(md, inline) {
   return parts.join("");
 }
 
+// Model-written text: bold, lists, inline code, formulas, tables, paragraphs. Headings become bold paragraphs; raw HTML stays escaped.
+function renderModelInline(text) {
+  return String(text).split(/`([^`\n]+)`/).map((part, index) => index % 2 ? `<code>${escapeHtml(part)}</code>` : renderRich(part, true)).join("");
+}
+
+function renderModelText(md) {
+  const lines = String(md || "").replace(/\r\n?/g, "\n").split("\n");
+  const out = [];
+  const cells = line => line.trim().replace(/^\||\|$/g, "").split("|").map(cell => cell.trim());
+  for (let i = 0; i < lines.length;) {
+    const line = lines[i];
+    if (!line.trim()) { i++; continue; }
+    const heading = line.match(/^\s*#{1,6}\s+(.*)$/);
+    if (heading) { out.push(`<p><strong>${renderModelInline(heading[1].replace(/\*\*/g, ""))}</strong></p>`); i++; continue; }
+    if (/^\s*\|/.test(line) && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] || "")) {
+      const head = cells(line);
+      const rows = [];
+      for (i += 2; i < lines.length && /^\s*\|/.test(lines[i]); i++) rows.push(cells(lines[i]));
+      out.push(`<table><thead><tr>${head.map(cell => `<th>${renderModelInline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map(row => `<tr>${row.map(cell => `<td>${renderModelInline(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table>`);
+      continue;
+    }
+    const bullet = /^\s*[-*+]\s+/, ordered = /^\s*\d+(?:[.)]\s+|、)/;
+    const list = bullet.test(line) ? bullet : ordered.test(line) ? ordered : null;
+    if (list) {
+      const items = [];
+      for (; i < lines.length && list.test(lines[i]); i++) items.push(`<li>${renderModelInline(lines[i].replace(list, ""))}</li>`);
+      const tag = list === bullet ? "ul" : "ol";
+      out.push(`<${tag}>${items.join("")}</${tag}>`);
+      continue;
+    }
+    const para = [lines[i++]];
+    for (; i < lines.length && lines[i].trim() && !bullet.test(lines[i]) && !ordered.test(lines[i]) && !/^\s*#{1,6}\s/.test(lines[i]) && !/^\s*\|/.test(lines[i]); i++) para.push(lines[i]);
+    out.push(`<p>${renderModelInline(para.join("\n"))}</p>`);
+  }
+  return out.join("");
+}
+
+const FLOW_FORMAT = { model: text => renderModelText(text), textbook: text => renderTextbookText(text) };
+
+// Textbook fragments use the same layout as textbook blocks.
+function renderTextbookText(md) {
+  return flowBlockHtml({ kind: /<table/i.test(String(md || "")) ? "table" : "para", md: String(md || "") });
+}
+
 function rhythmMode() {
   try {
     return localStorage.getItem("study-rhythm-mode") === "plain" ? "plain" : "focus";
@@ -7199,7 +7250,7 @@ function anchorParagraph(meta, anchor) {
   if (!block) return { status: "missing" };
   const text = markdownPlain(block.md);
   if (!text) return { status: "missing" };
-  return { status: "ready", text, blockId };
+  return { status: "ready", text, block, blockId };
 }
 
 function prepareSkeletonSource(cardId) {
@@ -7224,7 +7275,7 @@ function skeletonAnswerExtra(cardId, base) {
   } else if (meta) {
     const para = anchorParagraph(meta, base && base.anchor);
     if (para.status === "ready") {
-      quoteHtml = `<div class="review-quote" id="review-source-quote"><p class="small">教材原句</p><p>${escapeHtml(para.text)}</p></div>`;
+      quoteHtml = `<div class="review-quote" id="review-source-quote"><p class="small">教材原句</p>${flowBlockHtml(para.block)}</div>`;
     } else if (para.status === "loading") {
       quoteHtml = `<p class="small" id="review-source-quote">正在读取原句…</p>`;
     }
@@ -7249,7 +7300,7 @@ function poolIntroAnswerHtml(item, tryItem) {
   const answerText = options[Number(item.recog && item.recog.answer)] || "";
   return `
     <p class="quiz-result ${tryItem.ok ? "ok" : "bad"}" id="review-pool-result">${tryItem.ok ? "✓ 对了" : `✗ 正确是：${escapeHtml(answerText)}`}</p>
-    <p id="review-kaokao-src">原句：${escapeHtml(item.src || "")}</p>
+    <div id="review-kaokao-src">${renderTextbookText(`原句：${item.src || ""}`)}</div>
     <p class="small" id="review-pool-why">${escapeHtml((item.recog && item.recog.why) || "")}</p>
     <button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>`;
 }
@@ -7298,6 +7349,72 @@ function advancePoolIntro() {
   render();
 }
 
+// Skeleton cards: Billy writes the answer, the model judges against this card only.
+function recallFrontHtml(cardId, phase, grading) {
+  const text = String(app.ui.reviewDrafts?.[cardId] || "");
+  if (phase === "front") return `<textarea id="review-recall" class="review-recall" rows="3" placeholder="写下你的答案" aria-label="写下你的答案"${grading ? " readonly" : ""}>${escapeHtml(text)}</textarea>`;
+  let html = text.trim() ? `<p id="review-recall-text" class="review-recall-text">${reviewRichText(text)}</p>` : "";
+  const grade = app.ui.reviewGrades?.[cardId];
+  if (grade?.verdict) {
+    html += `<div class="review-verdict"><p id="review-recall-verdict" class="flow-result ${grade.verdict === "对" ? "is-ok" : "is-bad"}">${grade.verdict}</p><button id="review-regrade" class="flow-ask flow-lesson-reject" type="button"${grade.flipped ? " disabled" : ""}>${grade.flipped ? "已改" : "判得不对"}</button></div>`;
+    if (grade.gap) html += `<div id="review-recall-gap" class="review-gap">${renderModelText(grade.gap)}</div>`;
+  }
+  return html;
+}
+
+function recordReviewAnswer(cardId, entry) {
+  const prev = app.state.reviewAnswers?.[cardId] || {};
+  store.save(`reviewAnswers/${cardId}`, { tries: [...(prev.tries || []), { at: shanghaiIso(), ...entry }] }, { silent: true });
+}
+
+async function submitReviewRecall(cardId, content) {
+  const session = app.ui.review;
+  if (!session || session.currentId !== cardId || session.phase !== "front" || app.ui.reviewGrading) return;
+  const response = String(app.ui.reviewDrafts?.[cardId] || "").trim();
+  if (!response) return;
+  const cfg = loadDirectConfig();
+  let grade = null;
+  if (cfg.apiKey) {
+    const pending = { cardId, session };
+    app.ui.reviewGrading = pending;
+    render();
+    const base = app.derived.cardById.get(cardId);
+    const para = anchorParagraph(chunkForCardId(cardId), base && base.anchor);
+    try {
+      grade = await qaApi.gradeRecall({ provider: cfg.provider, model: cfg.model, baseUrl: cfg.baseUrl, apiKey: cfg.apiKey,
+        front: content.front, back: content.back, quote: para.status === "ready" ? para.text : "", response });
+    } catch (_) {}
+    if (app.ui.reviewGrading !== pending) return;
+    app.ui.reviewGrading = null;
+    if (shanghaiToday() !== session.sessionDate || app.ui.review?.sessionDate !== session.sessionDate || app.ui.review?.currentId !== cardId || app.ui.review.phase !== "front") return;
+  }
+  if (grade) {
+    app.ui.reviewGrades ||= {};
+    app.ui.reviewGrades[cardId] = grade;
+    recordReviewAnswer(cardId, { response, verdict: grade.verdict, gap: grade.gap });
+    gradeRevealedReview(grade.verdict === "对" ? "remember" : "forget");
+  } else {
+    app.ui.review = revealReviewAnswer(app.ui.review);
+    render();
+  }
+}
+
+// "判得不对": undo the model's score and apply the opposite one, once.
+function flipRecallGrade(cardId) {
+  const grade = app.ui.reviewGrades?.[cardId];
+  const session = app.ui.review;
+  if (!grade?.verdict || grade.flipped || session?.currentId !== cardId || session.phase !== "revealed" || session.lastUndo?.cardId !== cardId) return;
+  const undone = undoReview(session);
+  if (!undone.card) return;
+  store.save(`cards/${cardId}`, undone.card);
+  if (app.sync.sessionReviews > 0) app.sync.sessionReviews -= 1;
+  app.ui.review = undone.session;
+  grade.flipped = true;
+  const record = app.state.reviewAnswers?.[cardId];
+  if (record?.tries?.length) store.save(`reviewAnswers/${cardId}`, { tries: [...record.tries.slice(0, -1), { ...record.tries.at(-1), flipped: true }] }, { silent: true });
+  gradeRevealedReview(grade.verdict === "对" ? "forget" : "remember");
+}
+
 async function submitReviewCloze(cardId, item) {
   const session = app.ui.review;
   if (!session || session.currentId !== cardId || session.phase !== "front" || app.ui.reviewGrading) return;
@@ -7318,6 +7435,7 @@ async function submitReviewCloze(cardId, item) {
   if (grade) {
     app.ui.reviewGrades ||= {};
     app.ui.reviewGrades[cardId] = grade;
+    recordReviewAnswer(cardId, { response: response.join(" / "), verdict: grade.correct ? "对" : "错", gap: grade.why });
     gradeRevealedReview(grade.correct ? "remember" : "forget");
   } else {
     app.ui.review = revealReviewAnswer(app.ui.review);
@@ -7382,6 +7500,7 @@ function renderFlowReview(root, today) {
   const choiceCard = exam && Object.keys(exam.options || {}).length > 0;
   const clozeCard = !!(kkItem?.cloze?.text && Array.isArray(kkItem.cloze.answers));
   const clozeGrade = app.ui.reviewGrades?.[card.id];
+  const recallCard = card.src !== "wrong" && card.src !== "kaokao";
   const grading = app.ui.reviewGrading?.cardId === card.id;
   const showAnswer = session.phase === "checking" || session.phase === "revealed";
   const hintUsed = !!(app.ui.reviewHint && app.ui.reviewHint.cardId === card.id && app.ui.reviewHint.used);
@@ -7419,6 +7538,7 @@ function renderFlowReview(root, today) {
     }
   } else {
     frontHtml = `<p>${reviewRichText(content.front)}</p>`;
+    if (recallCard) frontHtml += recallFrontHtml(card.id, session.phase, grading);
     if (exam?.options) {
       const selected = app.ui.reviewChoices?.[card.id] || "";
       frontHtml = `<p>${escapeHtml(exam.stem)}</p><div class="flow-options">${Object.entries(exam.options).map(([key, text]) => {
@@ -7436,8 +7556,8 @@ function renderFlowReview(root, today) {
     if (kkItem) {
       const filled = fillCloze(kkItem.cloze && kkItem.cloze.text, kkItem.cloze && kkItem.cloze.answers);
       answerHtml = `<section class="panel" id="review-kaokao-answer">
-        <p id="review-kaokao-src" hidden>原句：${escapeHtml(kkItem.src || "")}</p>
-        <p>${escapeHtml(filled)}</p>
+        <div id="review-kaokao-src" hidden>${renderTextbookText(`原句：${kkItem.src || ""}`)}</div>
+        ${renderTextbookText(filled)}
         <p class="small">${escapeHtml((kkItem.recog && kkItem.recog.why) || "")}</p>
         <button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>
       </section>`;
@@ -7452,7 +7572,7 @@ function renderFlowReview(root, today) {
   } else if (showAnswer) {
     answerHtml = `<section class="panel"><p>${reviewRichText(content.back)}</p>${examProvenanceHtml(exam)}${anchorPrintedHtml(content.anchor)}<button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button></section>`;
   }
-  if (showAnswer && clozeGrade) answerHtml = `<p class="flow-result ${clozeGrade.correct ? "is-ok" : "is-bad"}">${clozeGrade.correct ? "✓ 对了" : "✕ 错了"} · ${escapeHtml(clozeGrade.why)}</p>` + answerHtml;
+  if (showAnswer && clozeGrade && !recallCard) answerHtml = `<p class="flow-result ${clozeGrade.correct ? "is-ok" : "is-bad"}">${clozeGrade.correct ? "✓ 对了" : "✕ 错了"} · ${renderModelInline(clozeGrade.why)}</p>` + answerHtml;
   let actions;
   if (poolAnswered) actions = `<button id="review-pool-next" class="flow-next" type="button">下一张</button>`;
   else if (session.phase === "revealed") actions = `<button id="review-next" class="flow-next" type="button">下一张</button>`;
@@ -7462,24 +7582,26 @@ function renderFlowReview(root, today) {
   else if (clozeCard && !poolReady) actions = loadDirectConfig().apiKey
     ? `<button id="review-cloze-submit" class="flow-next" type="button" ${grading ? "disabled" : ""}>${grading ? "正在判断…" : "提交"}</button>`
     : `<button id="review-show" class="flow-next" type="button">想好了，看答案</button>`;
+  else if (recallCard) actions = `<button id="review-recall-submit" class="flow-next" type="button" ${grading || !String(app.ui.reviewDrafts?.[card.id] || "").trim() ? "disabled" : ""}>${grading ? "正在判断…" : "提交"}</button>`;
   else actions = `<button id="review-show" class="flow-next" type="button" ${poolReady || poolHold ? "disabled" : ""}>想好了，看答案</button>`;
 
   const oldCopy = root.querySelector('#flow-copy');
   const scrollTop = root.dataset.item === session.currentId ? oldCopy?.scrollTop || 0 : 0;
   root.classList.add("flow");
-  root.classList.toggle("has-qa", !!app.ui.reviewQaOpen);
   root.dataset.mode = "review";
   root.dataset.item = session.currentId;
-  root.innerHTML = `
-    <header class="flow-top"><p class="flow-count" id="flow-count">复习 ${position} / ${total}</p><button id="flow-menu-open" class="flow-ask" type="button">菜单</button></header>
+  const parts = document.createElement("template");
+  parts.innerHTML = `<header class="flow-top"><p class="flow-count" id="flow-count">复习 ${position} / ${total}</p><button id="flow-menu-open" class="flow-ask" type="button">菜单</button></header>
     <div class="flow-progress"><span style="width:${Math.round(position / total * 100)}%"></span></div>
-    <div class="flow-workspace"><article id="flow-copy" class="flow-copy review-card" data-phase="${session.phase}" data-src="${escapeHtml(card.src || "skeleton")}">
+    <article id="flow-copy" class="flow-copy review-card" data-phase="${session.phase}" data-src="${escapeHtml(card.src || "skeleton")}">
       ${frontHtml}${answerHtml}
       ${showAnswer && exam ? examFlagHtml(exam.id || card.qid) : ""}
       ${session.phase === "front" && !grading ? `<button id="review-blank" class="flow-ask review-forget" type="button">没印象</button>` : ""}
     </article>
-    </div>
     <div class="flow-bar"><button id="review-undo" class="flow-ask" type="button" ${session.lastUndo ? "" : "disabled"}>撤销</button>${actions}<button id="flow-ask" class="flow-ask" aria-expanded="${!!app.ui.reviewQaOpen}" type="button">问一下</button></div>`;
+  const [head, progress, article, bar] = parts.content.children;
+  const slot = flowModules.view.paintFlow(root, { top: [head, progress], article, bar,
+    qa: app.ui.reviewQaOpen ? { key: `review:${session.currentId}`, onClose: () => { app.ui.reviewQaOpen = false; render(); } } : null });
   document.getElementById("flow-ask").addEventListener("click", () => { app.ui.reviewQaOpen = !app.ui.reviewQaOpen; render(); });
   root.querySelector('#flow-copy').scrollTop = scrollTop;
   root.querySelector('#flow-flag-question')?.addEventListener('click', event => {
@@ -7487,9 +7609,7 @@ function renderFlowReview(root, today) {
     flagExamQuestion(meta, exam.id || card.qid, "billy", "Billy 标记");
     event.currentTarget.textContent = "已记下"; event.currentTarget.disabled = true;
   });
-  if (app.ui.reviewQaOpen) {
-    const slot = flowModules.view.createQaRegion(() => { app.ui.reviewQaOpen = false; render(); });
-    root.querySelector('.flow-workspace').append(slot);
+  if (slot) {
     const meta = exam ? findChunkMeta(exam.chunk) || Object.values(app.study.indexes).flatMap(index => index.chunks || []).find(chunk => (chunk.questions || []).includes(card.qid)) : kkItem ? findChunkMeta(kkItem.chunk) : chunkForCardId(card.id);
     if (meta) {
       kickChunkBody(meta);
@@ -7542,6 +7662,14 @@ function renderFlowReview(root, today) {
   }
   bindReviewButton("review-submit", gradeChoice);
   bindReviewButton("review-cloze-submit", () => submitReviewCloze(card.id, kkItem));
+  bindReviewButton("review-recall-submit", () => submitReviewRecall(card.id, content));
+  root.querySelector("#review-recall")?.addEventListener("input", event => {
+    app.ui.reviewDrafts ||= {};
+    app.ui.reviewDrafts[card.id] = event.target.value;
+    const submit = root.querySelector("#review-recall-submit");
+    if (submit) submit.disabled = !event.target.value.trim();
+  });
+  root.querySelector("#review-regrade")?.addEventListener("click", () => flipRecallGrade(card.id));
   bindReviewButton("review-blank", () => clozeCard && !poolReady ? gradeRevealedReview("forget") : choiceCard ? gradeRevealedReview("forget") : poolReady ? answerPoolIntro(-1) : gradeCurrentReview("blank"));
   bindReviewButton("review-show", () => {
     const current = app.ui.review;
@@ -7955,10 +8083,12 @@ async function performStudyTool(name, args, job, llm, signal) {
     if (!result.reused) store.save(`lessons/${result.id}`, { content: result.content, sourceTexts: result.sourceTexts, validated: true }, { silent: true });
     // The same concept may recur later, but never twice in the pending tail.
     if (rec.queue.slice(rec.cursor).includes(result.id)) return { ok: true, reused: true, alreadyQueued: true };
-    const queue = rec.queue.slice(); queue.splice(before, 0, result.id);
-    if (before === rec.cursor && flowVisit?.id === chunkId && flowVisit.history.at(-1) === args.before) flowVisit.history.pop();
+    // The item at the cursor is the one on screen; only Billy moves past it, so the lesson waits right behind it.
+    const place = before === rec.cursor ? before + 1 : before;
+    const queue = rec.queue.slice(); queue.splice(place, 0, result.id);
     saveFlow(chunkId, { queue });
-    return { ok: true, id: result.id, reused: result.reused, before: args.before };
+    if (place === rec.cursor + 1 && flowQa?.chunkId === chunkId) flowQa.handle.note("补了一页课，在下一页");
+    return { ok: true, id: result.id, reused: result.reused, before: queue[place + 1] };
   }
   const catalog = flowCatalog(meta);
   // Use loaded records to establish type, never trust an ID prefix or model-supplied kind.
@@ -8027,7 +8157,7 @@ function renderLessonReview(root, card, session, today) {
   flowModules.view.renderFlow(root, {
     chunkId: `review-${today}`, status: "ready", mode: "lesson", itemId: card.id,
     cursor: session.order.indexOf(card.id) + 1, total: session.order.length,
-    lesson: lesson.content, lessonCitation: lessonCitation(lesson.content),
+    lesson: lesson.content, lessonCitation: lessonCitation(lesson.content), format: FLOW_FORMAT,
     question: flowModules.lessons.lessonQuestion(lesson.content, attempt), onMenu: openFlowMenu,
     onAnswer(choice) {
       if (session.phase !== "front") return;
@@ -8093,6 +8223,7 @@ function loadFlowModules() {
     import("./modules/flow/lessons.js")
   ]).then(([view, pages, agent, llm, memory, lessons]) => {
     flowModules = { view, pages, agent, llm, memory, lessons };
+    view.trackViewport();
     render();
     return flowModules;
   }).catch(() => null);
@@ -8722,10 +8853,11 @@ function mountFlowQa(slot, meta, blocks, question, focus = "") {
   if (!qaApi || !slot) return null;
   const context = flowQaContext(meta, blocks, question, focus);
   if (!context) return null;
-  const signature = `${qaApi.contextKey(context)}\n${JSON.stringify(context.exercise || null)}\n${context.focus || ""}\n${qaDirectSignature()}`;
+  // Answering the question or picking a sentence updates the prompt, never the mounted panel.
+  const signature = `${qaApi.contextKey(context)}\n${qaDirectSignature()}`;
   if (flowQa && flowQa.signature === signature && flowQa.handle) {
-    slot.append(flowQa.root);
-    flowQa.handle.refresh();
+    if (flowQa.root.parentNode !== slot) slot.append(flowQa.root);
+    flowQa.handle.setContext(context);
     return flowQa.handle;
   }
   if (flowQa && flowQa.handle) flowQa.handle.destroy();
@@ -8778,9 +8910,10 @@ function mountFlowQa(slot, meta, blocks, question, focus = "") {
       store.save(`doubts/${id}`, value, { silent: true, keepUpdatedAt: true, requirePersistence: true });
       return app.state.doubts[id];
     },
-    client
+    client,
+    format: FLOW_FORMAT
   });
-  flowQa = { handle, root, signature };
+  flowQa = { handle, root, signature, chunkId: meta.id };
   return handle;
 }
 
@@ -8995,6 +9128,7 @@ function renderFlowPage() {
     question: questionView,
     lesson: lesson?.content,
     lessonCitation: lesson ? lessonCitation(lesson.content) : "",
+    format: FLOW_FORMAT,
     onRejectLesson: () => disableLesson(currentId, meta.id),
     onFlagQuestion: () => flagExamQuestion(meta, question.id, "billy", "Billy 标记"),
     onRetell: text => checkLessonRetell(currentId, text, meta.id),

@@ -73,3 +73,14 @@
   border: 1px solid var(--qa-line); border-radius: 0; color: var(--qa-ink); background: var(--qa-bg);
   font: inherit; font-size: 16px; line-height: 1.5; resize: vertical;
 }
+/* Transcript and composer are separate: only the transcript scrolls. */
+.qa-panel .qa-content { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.qa-panel .qa-log { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.qa-panel .qa-form { flex: none; }
+.qa-panel .qa-footnote { margin: 0; color: var(--qa-muted); font-size: 14px; }
+.qa-panel .qa-answer-text > :first-child, .qa-panel .qa-quote-text > :first-child { margin-top: 0; }
+.qa-panel :is(.qa-answer-text, .qa-quote-text, .qa-follow-text) :is(p, ul, ol) { margin: 0 0 .6em; }
+.qa-panel :is(.qa-answer-text, .qa-quote-text, .qa-follow-text) :is(ul, ol) { padding-left: 1.4em; }
+.qa-panel :is(.qa-answer-text, .qa-quote-text, .qa-follow-text) table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+.qa-panel :is(.qa-answer-text, .qa-quote-text, .qa-follow-text) :is(td, th) { padding: 2px 8px; border: 1px solid var(--qa-line); }
+.qa-panel code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }

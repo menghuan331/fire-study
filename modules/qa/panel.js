@@ -60,19 +60,27 @@ function idsToDelete(record, requestId) {
  * saveRecord(update) must atomically invoke update(getRecord()) and commit locally before returning.
  * It may start a background repository sync, but must not wait for that network before committing.
  * update returning the same record or undefined means no write. The host must preserve full records.
+ * format = { model(text), textbook(text) } returns sanitized HTML; without it every text stays plain.
  */
-export function mountPanel({ root, context, getRecord, saveRecord, client = createClient() }) {
+export function mountPanel({ root, context, getRecord, saveRecord, client = createClient(), format = {} }) {
   if (!root?.ownerDocument || typeof getRecord !== 'function' || typeof saveRecord !== 'function')
     throw new TypeError('mountPanel requires a DOM root, getRecord(), and saveRecord(update)');
   mounts.get(root)?.destroy();
   const doc = root.ownerDocument;
   let current = snapshotContext(context), epoch = 0, disposed = false, notice = '', noticeError = false;
+  let anchorId = '', scrollToAnchor = false, footnote = '';
   const pending = new Map();
   const replies = new Map();
   const element = (tag, className, text) => {
     const node = doc.createElement(tag);
     if (className) node.className = className;
     if (text !== undefined) node.textContent = String(text);
+    return node;
+  };
+  const rich = (tag, className, text, kind) => {
+    const node = element(tag, className);
+    if (typeof format[kind] === 'function') node.innerHTML = format[kind](String(text ?? ''));
+    else node.textContent = String(text ?? '');
     return node;
   };
   const button = (text, action, requestId, extra = {}) => {
@@ -85,6 +93,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
   const wrapper = element('section', 'qa-content');
   wrapper.setAttribute('aria-label', '答疑');
   panelSequence += 1;
+  const log = element('div', 'qa-log');
   const turnsHost = element('div', 'qa-turns');
   const status = element('p', 'qa-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   const form = element('form', 'qa-form');
@@ -95,7 +104,8 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
   send.type = 'submit';
   const count = element('span', 'qa-count'); count.setAttribute('aria-live', 'off');
   form.append(input, send, count);
-  wrapper.append(turnsHost, status, form);
+  log.append(turnsHost, status);
+  wrapper.append(log, form);
   root.classList.add('qa-panel'); root.replaceChildren(wrapper);
   const threadId = () => `${current.chunkId}:${current.blockId}`;
 
@@ -148,7 +158,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
   }
   function appendQuote(host, quote, index, turn) {
     const block = element('blockquote', 'qa-quote');
-    block.append(element('p', 'qa-quote-text', quote.text), element('cite', 'qa-anchor', quote.anchor));
+    block.append(rich('div', 'qa-quote-text', quote.text, 'textbook'), element('cite', 'qa-anchor', quote.anchor));
     const ask = button('围绕这句追问', 'quote', turn.requestId, { quoteIndex: String(index) });
     ask.disabled = turn.contextKey !== contextKey(current);
     if (ask.disabled) ask.title = '引用来自此前教材上下文，请按当前片段重新提问。';
@@ -158,7 +168,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
 
   function renderAnswer(host, answer, turn, repliedIds) {
     const insufficient = turn.status === 'insufficient_context';
-    host.append(element('p', 'qa-answer-text', answer.text));
+    host.append(rich('div', 'qa-answer-text', answer.text, 'model'));
     if (typeof answer.imageNote === 'string' && answer.imageNote)
       host.append(element('p', 'qa-image-note', answer.imageNote));
     // The synthetic sentence is only there so an answered turn can be saved. It is not the user's quote.
@@ -174,7 +184,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     if (insufficient) host.append(element('p', 'qa-insufficient', '当前资料不足以证实结论，请按回答提示补充教材片段后再问。'));
     if (turn.followUp) {
       const follow = element('div', 'qa-follow-up');
-      follow.append(element('p', '', `再想一步：${turn.followUp}`));
+      follow.append(rich('div', 'qa-follow-text', `再想一步：${turn.followUp}`, 'model'));
       const answered = repliedIds.has(turn.requestId);
       if (!answered) follow.append(button('我来答', 'answer-follow', turn.requestId));
       const draft = replies.get(turn.requestId);
@@ -260,8 +270,8 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
       if (record?.answer && !summaryShown && (record.answer.text || record.answer.quote)
         && (!record.answer.requestId || turns.some(turn => turn.requestId === record.answer.requestId))) {
         const legacy = element('article', 'qa-turn qa-legacy');
-        legacy.append(element('p', 'qa-answer-text', record.answer.text || ''));
-        if (record.answer.quote) legacy.append(element('blockquote', 'qa-quote', record.answer.quote));
+        legacy.append(rich('div', 'qa-answer-text', record.answer.text || '', 'model'));
+        if (record.answer.quote) legacy.append(rich('blockquote', 'qa-quote', record.answer.quote, 'textbook'));
         if (record.answer.by || record.answer.at) legacy.append(element('p', 'qa-answer-meta',
           [record.answer.by, record.answer.at].filter(Boolean).join(' · ')));
         children.push(legacy);
@@ -272,7 +282,10 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
         children.push(body);
       }
     }
+    if (footnote && !removed) children.push(element('p', 'qa-footnote', footnote));
+    const keepTop = log.scrollTop;
     turnsHost.replaceChildren(...children);
+    placeAnchor(keepTop);
     status.textContent = notice || (pending.size ? '问题已保存，正在请求回答。你可以继续写下一问。' : '');
     status.classList.toggle('qa-error', noticeError);
     syncComposer(removed);
@@ -285,6 +298,20 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
       }
     }
   }
+
+  // A new question rises to the top of the transcript once; later renders (answers included) keep the reader's offset.
+  function placeAnchor(keepTop) {
+    const item = anchorId ? turnsHost.querySelector(`.qa-turn[data-request-id="${CSS.escape(anchorId)}"]`) : null;
+    turnsHost.style.paddingBottom = '';
+    if (item) {
+      const below = turnsHost.getBoundingClientRect().bottom - item.getBoundingClientRect().top;
+      turnsHost.style.paddingBottom = `${Math.max(0, log.clientHeight - below)}px`;
+    }
+    if (item && scrollToAnchor) log.scrollTop += item.getBoundingClientRect().top - log.getBoundingClientRect().top;
+    else log.scrollTop = keepTop;
+    scrollToAnchor = false;
+  }
+  function anchorOn(requestId) { anchorId = requestId; scrollToAnchor = true; }
 
   async function requestTurn(turn) {
     if (disposed || pending.has(turn.requestId)) return;
@@ -322,6 +349,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
       if (!turn || saved.removed) throw new QaError(saved?.removed ? 'REMOVED' : 'SAVE_FAILED');
       input.value = '';
       updateCounter();
+      anchorOn(requestId);
       void requestTurn(turn);
     } catch (error) {
       const failure = errorRecord(error instanceof QaError ? error : new QaError('SAVE_FAILED'));
@@ -347,6 +375,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
       const created = saved?.qa?.turns?.[newId];
       if (!created || saved.removed) throw new QaError(saved?.removed ? 'REMOVED' : 'SAVE_FAILED');
       replies.delete(requestId);
+      anchorOn(newId);
       void requestTurn(created);
     } catch (error) {
       const failure = errorRecord(error instanceof QaError ? error : new QaError('SAVE_FAILED'));
@@ -440,7 +469,16 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
         epoch += 1; abortPending(); notice = ''; noticeError = false;
         replies.clear();
       }
-      current = next; populateDraft(); render();
+      const moved = contextKey(next) !== contextKey(current);
+      current = next;
+      if (moved || doc.activeElement !== input) populateDraft();
+      render();
+    },
+    /** One quiet line at the end of the transcript, e.g. a lesson queued after this item. */
+    note(text) {
+      if (disposed) return;
+      footnote = String(text || '');
+      render();
     },
     ask(text) {
       if (disposed) return;

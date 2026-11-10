@@ -391,7 +391,7 @@ body.is-flow .page :is(h1, h2, h3, h4, h5, h6), body.is-flow .page :is(.flow-src
 body.is-flow .page :is(button, input, select, textarea) { font-size: 16px; }
 body.is-flow .page :is(.small, .label, .q-meta, .flow-count, .flow-notes, .flow-rule, .flow-why-entry, .flow-source,
 .flow-lesson-label, .flow-lesson-citation, .flow-provenance,
-.qa-answer-meta, .qa-image-note, .qa-quote, .qa-quote-text, .qa-error, .qa-insufficient, .qa-anchor, .qa-count, .qa-badge, .qa-status, .qa-waiting, .qa-empty, .qa-still-hint, .qa-old-context, .qa-legacy-note) { font-size: 14px; }
+.qa-answer-meta, .qa-image-note, .qa-quote, .qa-quote-text, .qa-footnote, .qa-error, .qa-insufficient, .qa-anchor, .qa-count, .qa-badge, .qa-status, .qa-waiting, .qa-empty, .qa-still-hint, .qa-old-context, .qa-legacy-note) { font-size: 14px; }
 body.is-flow .page .flow-option, body.is-flow .page .flow-result { font-size: 19px; }
 body.is-flow .qa-button-primary { color: var(--flow-bg); }
 body.is-flow { --accent-ink: var(--flow-bg); }
@@ -404,12 +404,15 @@ body.is-flow .page { border: 0; border-radius: 0; box-shadow: none; margin: 0; }
 .flow-selected { margin-left: auto; font-size: 14px; white-space: nowrap; }
 .review-forget { color: var(--flow-muted); }
 
-/* Content, QA and footer occupy separate tracks at every learning stage. */
-body.is-flow:has(#page-flow:not([hidden])) .app-shell { padding-bottom: 0; }
+/* Content, QA and footer occupy separate tracks at every learning stage. The body never scrolls;
+   the page follows the visual viewport so the iPad keyboard cannot push any track out of view. */
+html:has(#page-flow:not([hidden])), body.is-flow:has(#page-flow:not([hidden])) { height: 100%; overflow: hidden; }
+body.is-flow:has(#page-flow:not([hidden])) .app-shell { padding-bottom: 0; min-height: 0; }
 #page-flow:not([hidden]) {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr) auto;
-  height: calc(100dvh - 12px);
+  height: calc(var(--flow-vh, 100dvh) - 12px);
+  transform: translateY(var(--flow-vtop, 0px));
   box-sizing: border-box;
   overflow: hidden;
 }
@@ -419,7 +422,7 @@ body.is-flow:has(#page-flow:not([hidden])) .app-shell { padding-bottom: 0; }
   min-height: 0;
   min-width: 0;
 }
-#page-flow.has-qa .flow-workspace { grid-template-rows: minmax(40dvh, 1fr) auto; }
+#page-flow.has-qa .flow-workspace { grid-template-rows: minmax(0, 11fr) minmax(0, 9fr); }
 #page-flow .flow-copy {
   height: auto;
   width: 100%;
@@ -440,7 +443,6 @@ body.is-flow:has(#page-flow:not([hidden])) .app-shell { padding-bottom: 0; }
   margin: 0;
   display: grid;
   grid-template-rows: 36px minmax(0, 1fr);
-  max-height: 60dvh;
   padding: 0 0 12px;
   overflow-y: hidden;
   overflow-x: hidden;
@@ -458,7 +460,7 @@ body.is-flow:has(#page-flow:not([hidden])) .app-shell { padding-bottom: 0; }
   color: var(--flow-ink);
   cursor: pointer;
 }
-#page-flow .flow-qa .qa-panel { min-height: 0; overflow-y: auto; overscroll-behavior: contain; margin: 0; padding: 0; }
+#page-flow .flow-qa .qa-panel { min-height: 0; overflow: hidden; margin: 0; padding: 0; }
 #page-flow .flow-bar {
   position: static;
   padding-inline: 0;
@@ -471,7 +473,7 @@ body.is-flow:has(#page-flow:not([hidden])) .app-shell { padding-bottom: 0; }
     grid-template-rows: minmax(0, 1fr);
     grid-template-columns: minmax(0, 58fr) minmax(0, 42fr);
   }
-  #page-flow .flow-qa { border-top: 0; border-left: 1px solid var(--flow-line); max-height: none; padding-left: 16px; }
+  #page-flow .flow-qa { border-top: 0; border-left: 1px solid var(--flow-line); padding-left: 16px; }
 }
 
 #page-flow .flow-qa .qa-turns:empty + .qa-status:empty + .qa-form,
@@ -480,7 +482,7 @@ body.is-flow:has(#page-flow:not([hidden])) .app-shell { padding-bottom: 0; }
 #page-flow .flow-qa .qa-form .qa-input { width: 100%; box-sizing: border-box; }
 #page-flow .flow-qa .qa-form .qa-count { grid-column: 1 / -1; }
 #page-flow .flow-qa .qa-still-hint { display: none; }
-#page-flow .flow-qa .qa-answer-meta { font-size: 12px; color: var(--flow-muted); }
+#page-flow .flow-qa .qa-answer-meta { color: var(--flow-muted); }
 .flow-menu #flow-review-more { display: block; width: 100%; min-height: 44px; padding: 10px 0; border: 0; background: none; color: inherit; font: inherit; font-size: 19px; text-align: left; cursor: pointer; }
 #page-flow .review-input { font: inherit; }
 
@@ -521,3 +523,11 @@ body.is-flow .page .flow-rhythm .rhythm-emphasis { font-size: 1.12em; font-weigh
 .flow-lesson-label { margin-right: auto; }
 
 .flow-provenance { color: var(--flow-muted); }
+
+/* Skeleton review: written recall, the grader's verdict and gap, then the card's answer. */
+.review-recall { display: block; width: 100%; box-sizing: border-box; margin: 12px 0; resize: vertical; padding: 12px;
+  border: 1px solid var(--flow-line); border-radius: 0; background: transparent; color: var(--flow-ink); font: inherit; }
+.review-recall-text { padding-left: 12px; border-left: 2px solid var(--flow-line); white-space: normal; }
+.review-verdict { display: flex; align-items: center; gap: 12px; }
+.review-verdict .flow-lesson-reject { margin: 0; }
+.flow-lesson-line > :last-child, .flow-lesson-example > :last-child, .review-gap > :last-child { margin-bottom: 0; }
