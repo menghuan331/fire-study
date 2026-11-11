@@ -2732,7 +2732,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-10.7";
+const APP_VERSION = "2026-11-11.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -8906,6 +8906,22 @@ function flowQaContext(meta, blocks, question, focus = "") {
   };
 }
 
+// Z1N-197: the rest of the chunk rides along at send time (nearest blocks first, 6000 chars) so
+// cross-page questions can be answered. It is not stored with the turn.
+function flowQaNearby(meta, request) {
+  const all = app.study.bodies[meta.id]?.blocks || [];
+  const anchor = block => `${meta.book}:p${block.page}:b${block.id}`;
+  const here = new Set((request.context || []).map(part => part.anchor));
+  const at = all.findIndex(block => here.has(anchor(block)));
+  if (at < 0) return "";
+  let room = 6000;
+  const picked = all.map((block, index) => ({ index, text: markdownPlain(String(block.md || "")) }))
+    .filter(item => item.text && !here.has(anchor(all[item.index])))
+    .sort((a, b) => Math.abs(a.index - at) - Math.abs(b.index - at))
+    .filter(item => (room -= item.text.length) >= 0);
+  return picked.sort((a, b) => a.index - b.index).map(item => item.text).join("\n");
+}
+
 function mountFlowQa(slot, meta, blocks, question, focus = "") {
   if (!qaApi || !slot) return null;
   const context = flowQaContext(meta, blocks, question, focus);
@@ -8932,6 +8948,7 @@ function mountFlowQa(slot, meta, blocks, question, focus = "") {
     getProfile: () => app.state.learnerProfile || {},
     getMemoryState: () => app.state.memoryState?.daily || {},
     getNotes: () => app.state.agentNotes || {},
+    getNearby: request => flowQaNearby(meta, request),
     onError(error) {
       if (!flowVisit?.readOnly && flowVisit?.browse < 0)
         appendFlowEvent(meta.id, { type: "error", channel: "qa", ...error, at: Date.now() });

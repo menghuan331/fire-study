@@ -10,9 +10,10 @@ export const SYSTEM_PROMPT = `你是注册消防工程师备考的讲解老师�
 3. 指出原文里对应的那一句，必须从【原文片段】里逐字摘抄，放进 quotes。
 4. 有容易混的说法或数字，用一句话点出来；这个点常考的话，用一句话说一般怎么考。
 5. 篇幅：第一句之后最多三条要点，每条单独一行，以「- 」开头；全文 150 字左右。讲不完的不硬塞，他再问你再讲。指出他想错的地方要直接，不要软化。不要客套，不要写“教材写明”“根据原文”这种复读，不要编造你不确定的数字或规范条文号。
-6. 如果原文片段不够回答，就说清缺什么，status 用 insufficient_context。
+6. 【原文片段】不够时先看【同一节的其他原文】，可以据此回答和对比，但 quotes 只能摘【原文片段】。两处都不够，才说清缺什么，status 用 insufficient_context。
 7. 如果附了图，先看图，用读者能对上的方式指出图里的位置。没有附图时，你看不到图本身，只能根据图题和上下文讲；需要看图才能回答时，要说明这一点。
 8. 如果他是在回答你上一轮的「再想一步」，第一句先判断他答得对不对、差在哪，再把道理补完整；他答对了就不要再出新的 followUp，答错或不完整才再给一个更小的 followUp。
+12. 看对话历史：他在这一处又问了和之前相近的问题，说明上一种讲法没讲通。不许重复上一轮的讲法、例子和结论句；第一句先点出他卡住的是哪个词或哪个前提，再换一个角度讲。
 10. 用户消息末尾出现【收束】时，按【收束】的要求做，优先于第 5 条的篇幅。
 9. 讲题必须以官方答案为准。如果你认为官方答案有问题，必须单独一句明说「我和官方答案不一致：……」，不能悄悄换成自己的答案。
 11. 讲的是连接关系、先后顺序或包含关系时，在 text 里放一张图代替文字描述，一次回答最多一张；图不计入第 5 条的 150 字。图占整行，text 在 JSON 字符串里，换行写成 \\n。流程图每行一条链，行尾可加「 : 说明」：
@@ -80,10 +81,10 @@ function compatibleUrl(baseUrl) {
   return url.href;
 }
 
-function userContent(request) {
+function userContent(request, nearby = '') {
   const place = trimmed(request.label) || `${request.unit}/${request.chunkId}`;
   const lines = request.context.map(part => `[${part.anchor}] (${part.kind}) ${part.text}`);
-  return `【教材位置】${place}\n【原文片段】\n${lines.join('\n')}\n${request.focus ? `【选中的这一句（重点讲解）】${request.focus}\n` : ""}【我的问题】${request.question}`;
+  return `【教材位置】${place}\n【原文片段】\n${lines.join('\n')}\n${nearby ? `【同一节的其他原文（只供对照，quotes 不能摘这里）】\n${nearby}\n` : ''}${request.focus ? `【选中的这一句（重点讲解）】${request.focus}\n` : ""}【我的问题】${request.question}`;
 }
 
 function usableImages(images) {
@@ -495,7 +496,7 @@ async function send(fetchImpl, url, headers, body, signal, stopOf) {
 
 /** Browser-direct model client. Same answer() contract as createClient. The key stays in memory for the request only. */
 export function createDirectClient({ provider, model, baseUrl, getApiKey = () => '', fetchImpl = globalThis.fetch,
-  timeoutMs = 120000, now = () => Date.now(), getImages, getNotes = () => [], getProfile = () => ({}), getMemoryState = () => ({}), onError = () => {} } = {}) {
+  timeoutMs = 120000, now = () => Date.now(), getImages, getNotes = () => [], getProfile = () => ({}), getMemoryState = () => ({}), getNearby = () => '', onError = () => {} } = {}) {
   const timeout = Math.max(1, Number(timeoutMs) || 120000);
   const inFlight = new Map();
   const name = providerName(provider);
@@ -567,7 +568,7 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
           ? "\n这道题还没作答：不能给答案，不能说出答案或排除选项，只能帮助理解题意和相关原文。"
           : "";
         const system = (SYSTEM_PROMPT + guard + (memory ? `\n【关于这位学习者】\n${memory}` : "")).split(key).join("[REDACTED]");
-        let promptText = userContent(payload);
+        let promptText = userContent(payload, trimmed(getNearby(payload)));
         if (payload.exercise) {
           const q = payload.exercise;
           promptText += `\n【当前题目】${q.stem}\n${q.options.map(o => `${o.label}. ${o.text}`).join("\n")}`;
