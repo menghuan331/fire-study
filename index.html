@@ -2732,7 +2732,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-11.1";
+const APP_VERSION = "2026-11-12.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -8411,7 +8411,20 @@ function ensureFlowQueue(meta, catalog) {
   const rec = flowRecord(meta.id);
   if (!catalog || !flowModules) return rec;
   const next = flowModules.pages.reconcileFlowRecord(rec, catalog.pages, catalog.availableQuestions, catalog.answered);
-  if (!next.rebuilt) return rec;
+  if (!next.rebuilt) {
+    // Z1N-199: exam questions added to the bank after this queue was built still reach an unfinished chunk:
+    // behind their page when that page is still ahead, otherwise at the end. The item on screen never moves.
+    const missing = chunkDone(meta.id) ? [] : catalog.availableQuestions.filter(q => q.kind === "exam"
+      && !rec.queue.includes(q.id) && !catalog.answered.includes(q.id));
+    if (!missing.length) return rec;
+    const queue = rec.queue.slice();
+    for (const q of missing) {
+      const at = q.pageId ? queue.lastIndexOf(q.pageId) + 1 : 0;
+      queue.splice(at > rec.cursor ? at : queue.length, 0, q.id);
+    }
+    saveFlow(meta.id, { queue }, { silent: true });
+    return flowRecord(meta.id);
+  }
   saveFlow(meta.id, {
     queue: next.queue,
     cursor: next.cursor,

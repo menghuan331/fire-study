@@ -310,7 +310,7 @@ function optionButton(option, question) {
 }
 
 export function answerProvenanceText(provenance) {
-  return ({ textbook: "来源没给答案，按教材作答", corrected: "来源答案有误，已按教材改正" })[provenance?.answer] || "";
+  return ({ textbook: "来源没给答案，按教材作答", corrected: "来源答案有误，已按教材改正", written: "仿真题，按教材出" })[provenance?.answer] || "";
 }
 
 function drawQuestion(host, question) {
