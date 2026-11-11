@@ -2732,7 +2732,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-12.2";
+const APP_VERSION = "2026-11-12.3";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -5082,6 +5082,27 @@ function releasePoolCards(today) {
   }
 }
 
+const EXAM_BACKFILL_DAILY = 3;
+
+// Real questions collected after a chunk was finished enter review as not-yet-done cards (Z1N-201).
+function releaseExamCards(today) {
+  if (!today || !app.state?.cards || !app.derived?.questionById) return;
+  let room = EXAM_BACKFILL_DAILY - Object.values(app.state.cards).filter((card) => card && card.fresh && card.created === today).length;
+  for (const index of Object.values(app.study.indexes || {})) {
+    for (const chunk of index.chunks || []) {
+      if (!chunkDone(chunk.id)) continue;
+      for (const qid of chunk.questions || []) {
+        if (room <= 0) return;
+        const q = app.derived.questionById.get(qid);
+        if (!q || !Object.keys(q.options || {}).length || q.verify?.status === "doubt") continue;
+        if (latestTry(qid) || app.state.cards[`WQ-${qid}`] || billyFlaggedQuestion(qid)) continue;
+        store.save(`cards/WQ-${qid}`, { box: 0, due: today, streak: 0, streakStart: null, cleared: false, src: "wrong", qid, created: today, fresh: true }, { silent: true });
+        room -= 1;
+      }
+    }
+  }
+}
+
 function kickUnitIndex(unitId) {
   if (!unitId || app.study.indexes[unitId]) return;
   const state = app.study.indexState[unitId];
@@ -5304,6 +5325,7 @@ function daysLeftInWeek(today, week) {
 function todayReviewView(today) {
   ensureKaokaoLoaded(today);
   releasePoolCards(today);
+  releaseExamCards(today);
   const backlog = getReviewQueue(today).length;
   const session = app.ui.review && app.ui.review.sessionDate === today ? app.ui.review : null;
   const stats = session && session.stats ? session.stats : emptyReviewStats();
@@ -7194,6 +7216,9 @@ function applyReviewGrade(card, action, today) {
     next = nextCardRemember(card, today);
     if (shouldClearWrongCard(next, today)) {
       next = { ...next, cleared: true, clearedAt: today };
+    } else if (card.fresh && !latestTry(card.qid)) {
+      // A backfilled question answered right the first time is done; it was never a wrong question.
+      next = { ...next, cleared: true };
     }
   } else {
     next = nextCardForget(card, today);
@@ -7507,6 +7532,7 @@ function renderFlowReview(root, today) {
   }
   ensureKaokaoLoaded(today);
   releasePoolCards(today);
+  releaseExamCards(today);
 
   // Do not dismiss startup review while due skeleton cards' indexes are still loading.
   const waitingUnits = new Set(Object.entries(app.state.cards || {}).filter(([id, card]) => {
@@ -7676,8 +7702,14 @@ function renderFlowReview(root, today) {
   const gradeChoice = () => {
     if (app.ui.review.phase !== "front") return;
     const selected = app.ui.reviewChoices?.[card.id] || "";
-    const ok = compareAnswer(selected, exam.answer, exam.type);
-    gradeRevealedReview(ok ? "remember" : "forget");
+    gradeExam(selected);
+  };
+  // A backfilled question's first answer is also recorded as an attempt, after the card is graded.
+  const gradeExam = (choice) => {
+    if (app.ui.review?.phase !== "front") return;
+    const first = stored?.fresh && !latestTry(exam.id);
+    gradeRevealedReview(compareAnswer(choice, exam.answer, exam.type) ? "remember" : "forget");
+    if (first) submitAnswer(exam, choice);
   };
 
   document.getElementById("flow-menu-open").addEventListener("click", openFlowMenu);
@@ -7727,7 +7759,7 @@ function renderFlowReview(root, today) {
     if (submit) submit.disabled = !event.target.value.trim();
   });
   root.querySelector("#review-regrade")?.addEventListener("click", () => flipRecallGrade(card.id));
-  bindReviewButton("review-blank", () => clozeCard && !poolReady ? gradeRevealedReview("forget") : choiceCard ? gradeRevealedReview("forget") : poolReady ? answerPoolIntro(-1) : gradeCurrentReview("blank"));
+  bindReviewButton("review-blank", () => clozeCard && !poolReady ? gradeRevealedReview("forget") : choiceCard ? gradeExam("") : poolReady ? answerPoolIntro(-1) : gradeCurrentReview("blank"));
   bindReviewButton("review-show", () => {
     const current = app.ui.review;
     if (!current || current.phase !== "front") return;
@@ -7986,7 +8018,7 @@ function renderWeek(today, weekCtx) {
   }
 
   const clearedCount = Object.values(app.state.cards).filter((card) => card.src === "wrong" && card.cleared && card.clearedAt && card.clearedAt >= week.start && card.clearedAt <= week.end).length;
-  const backlog = Object.values(app.state.cards).filter((card) => card.src === "wrong" && !card.cleared).length;
+  const backlog = Object.values(app.state.cards).filter((card) => card.src === "wrong" && !card.cleared && !(card.fresh && !latestTry(card.qid))).length;
   const rate = totalTries ? Math.round((correctTries / totalTries) * 100) : 0;
   const weekDoc = app.state.weeks[week.start] || { good: "", bad: "", next: "" };
 
