@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-v33";
+const CACHE_VERSION = "study-v34";
 const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [

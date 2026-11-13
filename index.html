@@ -2732,7 +2732,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-12.3";
+const APP_VERSION = "2026-11-13.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -7696,7 +7696,7 @@ function renderFlowReview(root, today) {
     const meta = exam ? findChunkMeta(exam.chunk) || Object.values(app.study.indexes).flatMap(index => index.chunks || []).find(chunk => (chunk.questions || []).includes(card.qid)) : kkItem ? findChunkMeta(kkItem.chunk) : chunkForCardId(card.id);
     if (meta) {
       kickChunkBody(meta);
-      mountFlowQa(slot, meta, app.study.bodies[meta.id]?.blocks || [], exam ? {id: exam.id || card.qid, kind: "exam"} : null);
+      mountFlowQa(slot, meta, app.study.bodies[meta.id]?.blocks || [], exam ? {id: exam.id || card.qid, kind: "exam"} : null, "", `r:${card.id}`);
     }
   }
   const gradeChoice = () => {
@@ -8921,7 +8921,7 @@ function answerFlowQuestion(meta, question, choice) {
   if (!ok) triggerFlow(meta.id, "wrong", { id: exam.id, chunkId: meta.id });
 }
 
-function flowQaContext(meta, blocks, question, focus = "") {
+function flowQaContext(meta, blocks, question, focus = "", thread = "") {
   const usable = (blocks || []).filter((block) => Number.isFinite(Number(block.page)));
   if (!usable.length) return null;
   const primary = usable.find((block) => block.kind === "figure") || usable[0];
@@ -8937,7 +8937,7 @@ function flowQaContext(meta, blocks, question, focus = "") {
     ...(focus && !question ? { focus } : {}),
     unit: meta.unit,
     chunkId: meta.id,
-    blockId: question ? `q:${question.id}` : String(primary.id),
+    blockId: question ? `q:${question.id}` : thread || String(primary.id),
     ...(question ? { exercise: (() => {
       const q = flowQuestionView(meta, question);
       return { stem: q.stem, options: q.options, answered: !!q.result,
@@ -8967,9 +8967,9 @@ function flowQaNearby(meta, request) {
   return picked.sort((a, b) => a.index - b.index).map(item => item.text).join("\n");
 }
 
-function mountFlowQa(slot, meta, blocks, question, focus = "") {
+function mountFlowQa(slot, meta, blocks, question, focus = "", thread = "") {
   if (!qaApi || !slot) return null;
-  const context = flowQaContext(meta, blocks, question, focus);
+  const context = flowQaContext(meta, blocks, question, focus, thread);
   if (!context) return null;
   // Answering the question or picking a sentence updates the prompt, never the mounted panel.
   const signature = `${qaApi.contextKey(context)}\n${qaDirectSignature()}`;

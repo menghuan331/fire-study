@@ -365,8 +365,9 @@ function planItems(plan) {
 /**
  * Unknown ids reject the whole plan.
  * Unread pages stay in their original order. Missing ones are inserted back into that order.
- * Questions and reread pages stay where they were relative to the unread pages around them.
- * Unanswered default questions must remain; agent additions can be removed. A seen page may be reread at most twice.
+ * Questions stay where they were relative to the unread pages around them.
+ * Unanswered default questions must remain; agent additions can be removed.
+ * A page already read never re-enters the queue (Z1N-203): gaps are filled with lessons, and Billy can page back himself.
  */
 export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQueue(pages, questions, []), answered = [], origins = {}) {
   const items = planItems(plan);
@@ -384,7 +385,6 @@ export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQ
   const unreadIndex = new Map(unread.map((id, index) => [id, index]));
   const fixes = [];
   const placedUnread = new Set();
-  const reread = new Map();
   const usedQuestion = new Set();
   const slots = Array.from({ length: unread.length + 1 }, () => []);
   let lastCanonical = -1;
@@ -403,13 +403,7 @@ export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQ
     }
     const slot = lastCanonical < 0 ? 0 : lastCanonical + 1;
     if (pageSet.has(id)) {
-      const count = (reread.get(id) || 0) + 1;
-      if (count > 2) {
-        fixes.push(`页 ${id} 重看超过 2 次，已去掉`);
-        continue;
-      }
-      reread.set(id, count);
-      slots[slot].push(id);
+      fixes.push(`页 ${id} 已读，不再排回`);
       continue;
     }
     if (usedQuestion.has(id)) {
@@ -464,8 +458,7 @@ export function replaceUnseen(queue, cursor, nextQueue, pages = [], questions = 
   const questionSet = new Set(questions.map(question => question.id));
   const done = answeredSet(answered);
   const tail = (nextQueue || []).filter(id => id !== list[index] &&
-    !(questionSet.has(id) && head.includes(id)) &&
-    (!head.includes(id) || pageSet.has(id)));
+    !head.includes(id));
   // applyPlan has already ordered all unread pages; keep each pending question even if the model moved it ahead.
   const defaults = buildDefaultQueue(pages, questions, []);
   defaults.push(...Object.keys(origins).filter(id => origins[id]?.addedBy === "default" && !defaults.includes(id)));
