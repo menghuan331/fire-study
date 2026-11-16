@@ -2732,7 +2732,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-13.1";
+const APP_VERSION = "2026-11-17.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -2827,6 +2827,21 @@ function newSkeletonCardState(today) {
 
 function shouldActivateSkeletons(tokenConfigured, initialPullSettled) {
   return !tokenConfigured || !!initialPullSettled;
+}
+
+// Z1N-211: option order per question while it stays on screen (kept in memory, never saved).
+// Returns the original option keys in the order they are shown.
+function optionOrderFor(id, keys, texts, fresh = true) {
+  const table = app.ui.optionOrder ||= {};
+  const saved = table[id];
+  if (saved && saved.length === keys.length && saved.every(key => keys.includes(key))) return saved;
+  const pages = flowModules?.pages;
+  if (!fresh || !pages || !pages.optionsShuffleable(texts)) return keys;
+  return table[id] = pages.shuffleKeys(keys);
+}
+
+function optionLabels(order) {
+  return Object.fromEntries(order.map((key, index) => [key, String.fromCharCode(65 + index)]));
 }
 
 function isMultiSelect(type) {
@@ -7168,16 +7183,17 @@ function renderPracticeQuestion(root, current, normal, doubts) {
   noteEl.addEventListener("blur", () => savePracticeNote(current.id, noteEl.value.trim()));
 }
 
-function reviewCardContent(card) {
+function reviewCardContent(card, labels = {}) {
   if (card.src === "wrong") {
     const q = app.derived.questionById.get(card.qid);
     if (!q) return { front: "原题已不存在", back: "请删除这张卡", anchor: "-" };
     const options = q.options ? Object.entries(q.options).map(([k, v]) => `${k}. ${v}`).join("\n") : "";
     const verify = q.verify || {};
-    const answerLine = String(q.answer || "").trim() ? `正确答案：${q.answer}` : "答案存疑，见说明";
+    const pages = flowModules.pages;
+    const answerLine = String(q.answer || "").trim() ? `正确答案：${Object.keys(labels).length ? pages.remapAnswer(q.answer, labels) : q.answer}` : "答案存疑，见说明";
     const backParts = [answerLine];
-    if (q.explanation) backParts.push(q.explanation);
-    if (verify.note) backParts.push(verify.note);
+    if (q.explanation) backParts.push(pages.remapLetters(q.explanation, labels));
+    if (verify.note) backParts.push(pages.remapLetters(verify.note, labels));
     if (verify.excerpt) backParts.push(verify.excerpt);
     return {
       front: `${q.stem || "（无题干）"}\n${options}`,
@@ -7369,11 +7385,13 @@ function skeletonAnswerExtra(cardId, base) {
 
 function poolIntroFrontHtml(item, tryItem) {
   const options = item.recog?.options || [];
-  return `<p id="review-pool-stem">${escapeHtml(item.recog?.stem || "")}</p><div class="flow-options">${options.map((text, index) => {
+  const order = optionOrderFor(item.id, options.map((_, index) => String(index)), options, !tryItem);
+  return `<p id="review-pool-stem">${escapeHtml(item.recog?.stem || "")}</p><div class="flow-options">${order.map((key, position) => {
+    const index = Number(key);
     const good = tryItem && index === Number(item.recog.answer);
     const chosen = tryItem && index === Number(tryItem.choice);
     const bad = chosen && !good;
-    return `<button type="button" class="flow-option${good ? " is-ok" : bad ? " is-bad" : tryItem ? " is-dim" : ""}" data-pool-choice="${index}" aria-pressed="${!!chosen}" ${tryItem ? "disabled" : ""}><span>${String.fromCharCode(65 + index)}.</span><span class="flow-option-text">${escapeHtml(text)}</span>${chosen ? '<span class="flow-selected">已选</span>' : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
+    return `<button type="button" class="flow-option${good ? " is-ok" : bad ? " is-bad" : tryItem ? " is-dim" : ""}" data-pool-choice="${index}" aria-pressed="${!!chosen}" ${tryItem ? "disabled" : ""}><span>${String.fromCharCode(65 + position)}.</span><span class="flow-option-text">${escapeHtml(options[index])}</span>${chosen ? '<span class="flow-selected">已选</span>' : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
   }).join("")}</div>`;
 }
 
@@ -7549,6 +7567,7 @@ function renderFlowReview(root, today) {
   if (!app.ui.flowReviewBatch || app.ui.review?.sessionDate !== today) {
     app.ui.flowReviewBatch = reviewQueueToday(today).slice(0, 10).map(card => card.id);
     app.ui.review = createReviewSession(today, app.ui.flowReviewBatch, 10);
+    app.ui.reviewActiveId = null;
   }
   const dueIds = app.ui.flowReviewBatch.filter(id => {
     const card = app.state.cards[id];
@@ -7572,15 +7591,21 @@ function renderFlowReview(root, today) {
   if (app.ui.reviewActiveId !== session.currentId) {
     app.ui.reviewActiveId = session.currentId;
     app.ui.reviewQaOpen = false;
-    if (app.ui.reviewChoices) delete app.ui.reviewChoices[session.currentId];
+    app.ui.optionOrder = {};
+    // A card coming back must not show what was typed or judged last time (Z1N-211).
+    for (const kept of [app.ui.reviewChoices, app.ui.reviewDrafts, app.ui.reviewGrades]) if (kept) delete kept[session.currentId];
   }
   const stored = app.state.cards[session.currentId];
   const card = stored ? { id: session.currentId, ...stored } : { id: session.currentId, src: "skeleton" };
   if (card.src === "lesson") return renderLessonReview(root, card, session, today);
   const kkItem = card.src === "kaokao" ? kaokaoItemById(card.kid) : null;
-  const content = card.src === "kaokao" ? null : reviewCardContent(card);
   const exam = card.src === "wrong" ? app.derived.questionById.get(card.qid) : null;
   const choiceCard = exam && Object.keys(exam.options || {}).length > 0;
+  // Z1N-211: shown letters follow the shuffled position; attempts keep the original letters.
+  const examKeys = choiceCard ? Object.keys(exam.options) : [];
+  const examOrder = choiceCard ? optionOrderFor(exam.id || card.qid, examKeys, examKeys.map(key => exam.options[key])) : [];
+  const examLabels = optionLabels(examOrder);
+  const content = card.src === "kaokao" ? null : reviewCardContent(card, examLabels);
   const clozeCard = !!(kkItem?.cloze?.text && Array.isArray(kkItem.cloze.answers));
   const clozeGrade = app.ui.reviewGrades?.[card.id];
   const recallCard = card.src !== "wrong" && card.src !== "kaokao";
@@ -7624,11 +7649,11 @@ function renderFlowReview(root, today) {
     if (recallCard) frontHtml += recallFrontHtml(card.id, session.phase, grading);
     if (exam?.options) {
       const selected = app.ui.reviewChoices?.[card.id] || "";
-      frontHtml = `<p>${escapeHtml(exam.stem)}</p><div class="flow-options">${Object.entries(exam.options).map(([key, text]) => {
+      frontHtml = `<p>${escapeHtml(exam.stem)}</p><div class="flow-options">${examOrder.map(key => [key, exam.options[key]]).map(([key, text]) => {
         const good = showAnswer && String(exam.answer || "").includes(key);
         const bad = showAnswer && selected.includes(key) && !good;
         const style = good ? " is-ok" : bad ? " is-bad" : showAnswer ? " is-dim" : selected.includes(key) ? " is-on" : "";
-        return `<button class="flow-option${style}" data-review-choice="${key}" aria-pressed="${selected.includes(key)}" type="button"${showAnswer ? " disabled" : ""}><span>${key}.</span><span class="flow-option-text">${escapeHtml(text)}</span>${selected.includes(key) ? `<span class="flow-selected">已选</span>` : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
+        return `<button class="flow-option${style}" data-review-choice="${key}" aria-pressed="${selected.includes(key)}" type="button"${showAnswer ? " disabled" : ""}><span>${examLabels[key]}.</span><span class="flow-option-text">${escapeHtml(text)}</span>${selected.includes(key) ? `<span class="flow-selected">已选</span>` : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
       }).join("")}</div>`;
     }
   }
@@ -7683,6 +7708,21 @@ function renderFlowReview(root, today) {
     </article>
     <div class="flow-bar"><button id="review-undo" class="flow-ask" type="button" ${session.lastUndo ? "" : "disabled"}>撤销</button>${actions}<button id="flow-ask" class="flow-ask" aria-expanded="${!!app.ui.reviewQaOpen}" type="button">问一下</button></div>`;
   const [head, progress, article, bar] = parts.content.children;
+  // Z1N-211: the question on the card and what Billy answered ride along with "问一下".
+  const reviewExercise = () => {
+    const draft = app.ui.reviewDrafts?.[card.id];
+    if (exam) {
+      const choice = app.ui.reviewChoices?.[card.id] || "";
+      const pages = flowModules.pages;
+      return { stem: exam.stem || "", options: examOrder.map(key => ({ label: examLabels[key], text: String(exam.options[key]) })),
+        answered: showAnswer, choice: pages.remapAnswer(choice, examLabels), ok: compareAnswer(choice, exam.answer, exam.type),
+        answer: pages.remapAnswer(exam.answer, examLabels), explanation: pages.remapLetters(exam.explanation || "", examLabels) };
+    }
+    if (kkItem) return { stem: kkItem.cloze?.text || kkItem.src || "", options: [], answered: showAnswer,
+      choice: (Array.isArray(draft) ? draft : []).join("、"), ok: !!clozeGrade?.correct, answer: (kkItem.cloze?.answers || []).join("、") };
+    return { stem: content?.front || "", options: [], answered: showAnswer, choice: String(draft || ""),
+      ok: app.ui.reviewGrades?.[card.id]?.verdict === "对", answer: content?.back || "" };
+  };
   const slot = flowModules.view.paintFlow(root, { top: [head, progress], article, bar,
     qa: app.ui.reviewQaOpen ? { key: `review:${session.currentId}`, onClose: () => { app.ui.reviewQaOpen = false; render(); } } : null });
   document.getElementById("flow-ask").addEventListener("click", () => { app.ui.reviewQaOpen = !app.ui.reviewQaOpen; render(); });
@@ -7696,7 +7736,7 @@ function renderFlowReview(root, today) {
     const meta = exam ? findChunkMeta(exam.chunk) || Object.values(app.study.indexes).flatMap(index => index.chunks || []).find(chunk => (chunk.questions || []).includes(card.qid)) : kkItem ? findChunkMeta(kkItem.chunk) : chunkForCardId(card.id);
     if (meta) {
       kickChunkBody(meta);
-      mountFlowQa(slot, meta, app.study.bodies[meta.id]?.blocks || [], exam ? {id: exam.id || card.qid, kind: "exam"} : null, "", `r:${card.id}`);
+      mountFlowQa(slot, meta, app.study.bodies[meta.id]?.blocks || [], exam ? {id: exam.id || card.qid, kind: "exam"} : null, "", `r:${card.id}`, reviewExercise());
     }
   }
   const gradeChoice = () => {
@@ -8623,18 +8663,21 @@ function examFlagHtml(id) {
   return `<button class="flow-ask flow-lesson-reject" id="flow-flag-question" type="button"${billyFlaggedQuestion(id) ? " disabled" : ""}>${billyFlaggedQuestion(id) ? "已记下" : "这题有问题"}</button>`;
 }
 
-function flowQuestionView(meta, question) {
+function flowQuestionView(meta, question, plain = false) {
   if (!question) return null;
+  const reviewing = !!(flowVisit?.readOnly || flowVisit?.browse >= 0);
   if (question.kind === "kaokao") {
     const item = kaokaoItemById(question.id);
     const options = item && item.recog && item.recog.options || [];
     const tryItem = latestKaokaoTry(question.id, "recog");
+    const order = plain ? options.map((_, index) => String(index))
+      : optionOrderFor(question.id, options.map((_, index) => String(index)), options, !tryItem && !reviewing);
     return {
       stem: item && item.recog && item.recog.stem || "",
-      options: options.map((text, index) => ({
-        key: String(index),
+      options: order.map((key, index) => ({
+        key,
         label: String.fromCharCode(65 + index),
-        text: String(text)
+        text: String(options[Number(key)])
       })),
       multi: false,
       result: tryItem ? {
@@ -8649,10 +8692,11 @@ function flowQuestionView(meta, question) {
   const exam = app.derived.questionById.get(question.id);
   const last = latestTry(question.id);
   const answer = String(exam && exam.answer || "");
-  const why = [exam && exam.explanation, exam && exam.verify && exam.verify.note].filter(Boolean).join("\n");
-  const options = exam && exam.options
-    ? Object.entries(exam.options).map(([key, text]) => ({ key, label: key, text: String(text) }))
-    : [];
+  const keys = Object.keys(exam && exam.options || {});
+  const order = plain ? keys : optionOrderFor(question.id, keys, keys.map(key => exam.options[key]), !last && !reviewing);
+  const labels = optionLabels(order);
+  const why = flowModules.pages.remapLetters([exam && exam.explanation, exam && exam.verify && exam.verify.note].filter(Boolean).join("\n"), labels);
+  const options = order.map(key => ({ key, label: labels[key], text: String(exam.options[key]) }));
   return {
     kind: "exam",
     provenance: exam?.provenance,
@@ -8731,7 +8775,7 @@ function flowAgentContext(chunkId) {
     return { id: page.id, kind: page.kind, blockIds: page.blockIds, preview: clipChars(text, 40), text };
   });
   const questions = (catalog ? catalog.availableQuestions : []).map((question) => {
-    const view = flowQuestionView(meta, question);
+    const view = flowQuestionView(meta, question, true);
     return {
       id: question.id,
       kind: question.kind,
@@ -8921,7 +8965,7 @@ function answerFlowQuestion(meta, question, choice) {
   if (!ok) triggerFlow(meta.id, "wrong", { id: exam.id, chunkId: meta.id });
 }
 
-function flowQaContext(meta, blocks, question, focus = "", thread = "") {
+function flowQaContext(meta, blocks, question, focus = "", thread = "", exercise = null) {
   const usable = (blocks || []).filter((block) => Number.isFinite(Number(block.page)));
   if (!usable.length) return null;
   const primary = usable.find((block) => block.kind === "figure") || usable[0];
@@ -8938,7 +8982,7 @@ function flowQaContext(meta, blocks, question, focus = "", thread = "") {
     unit: meta.unit,
     chunkId: meta.id,
     blockId: question ? `q:${question.id}` : thread || String(primary.id),
-    ...(question ? { exercise: (() => {
+    ...(exercise ? { exercise } : question ? { exercise: (() => {
       const q = flowQuestionView(meta, question);
       return { stem: q.stem, options: q.options, answered: !!q.result,
         ...(q.result ? { choice: q.options.filter(o => q.result.choiceKeys.includes(o.key)).map(o => `${o.label}. ${o.text}`).join("；"), ok: q.result.ok,
@@ -8967,9 +9011,9 @@ function flowQaNearby(meta, request) {
   return picked.sort((a, b) => a.index - b.index).map(item => item.text).join("\n");
 }
 
-function mountFlowQa(slot, meta, blocks, question, focus = "", thread = "") {
+function mountFlowQa(slot, meta, blocks, question, focus = "", thread = "", exercise = null) {
   if (!qaApi || !slot) return null;
-  const context = flowQaContext(meta, blocks, question, focus, thread);
+  const context = flowQaContext(meta, blocks, question, focus, thread, exercise);
   if (!context) return null;
   // Answering the question or picking a sentence updates the prompt, never the mounted panel.
   const signature = `${qaApi.contextKey(context)}\n${qaDirectSignature()}`;
@@ -9212,7 +9256,7 @@ function renderFlowPage() {
   const mode = landing ? "segment" : finished && !browsing ? "done" : (lesson && !lesson.disabled ? "lesson" : question ? "question" : "read");
   const itemId = landing ? `segment-${segment.end}` : mode === "done" ? "done" : currentId;
   const shownKey = `${meta.id}:${itemId}`;
-  if (flowShown.key !== shownKey) flowShown = { key: shownKey, at: Date.now() };
+  if (flowShown.key !== shownKey) { flowShown = { key: shownKey, at: Date.now() }; app.ui.optionOrder = {}; }
   const sourcePage = question && question.pageId ? pageById.get(question.pageId) : null;
   const readBlocks = page ? blocksForPage(catalog, page) : [];
   const qaBlocks = mode === "question" ? blocksForPage(catalog, sourcePage || catalog.pages.at(-1)) : readBlocks;

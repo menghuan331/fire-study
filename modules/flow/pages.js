@@ -544,3 +544,31 @@ export function migrateQuestionQueue(record, pages, questions, answered = []) {
   return { ...limited, cursor, changed: limited.fixes.length > 0 ||
     JSON.stringify(limited.origins) !== JSON.stringify(record.questionOrigins || {}) };
 }
+
+// Z1N-211: choice options change place each time a question shows up, so "this one is C" cannot be memorised.
+// A standalone letter, or a run like "ABD" (a multi-select answer), that is not "A类" / "B1级" / "B₁级".
+const LETTER = /(?<![A-Za-z0-9])([A-E]+)(?![A-Za-z0-9₀-₉])(?!\s*[类级型区相座栋线])/g;
+
+// Options that point at each other ("以上", "A和B") only make sense in their printed order.
+export function optionsShuffleable(texts) {
+  const list = (texts || []).map(String);
+  return list.length > 1 && !list.some(text => /以上|上述/.test(text) || new RegExp(LETTER.source).test(text));
+}
+
+export function shuffleKeys(keys, random = Math.random) {
+  const out = keys.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// `labels` maps an original letter to the letter shown on screen, e.g. { A: "C", C: "A" }.
+export function remapLetters(text, labels) {
+  return String(text ?? "").replace(LETTER, (run) => run.length === 1 ? labels[run] || run : remapAnswer(run, labels));
+}
+
+export function remapAnswer(answer, labels) {
+  return String(answer ?? "").split("").map(letter => labels[letter] || letter).sort().join("");
+}
