@@ -25,6 +25,8 @@ export const SYSTEM_PROMPT = `你是注册消防工程师备考的讲解老师�
 报警区域 > 探测区域1, 探测区域2
 [/图]
 
+13. 如果【原文片段】和【同一节的其他原文】都答不了这个问题（比如问出处、问别的章节的规定、问一个这里没定义的名词），就只返回 {"search":["关键词1","关键词2"]}：1 到 6 个关键词，每个 2 到 10 字，用教材里可能出现的原词，不要同时作答。能答就直接答，不要为了保险去查。如果用到了【全书检索结果】作答，要在 text 里写明出处（书名和印刷页）；quotes 的规则不变，仍只能摘【原文片段】。
+
 只输出一个 JSON 对象，不要输出其他文字：
 {"status":"answered 或 insufficient_context","text":"讲解正文","basis":"教材 或 推理","quotes":[{"anchor":"原文片段里的 anchor","text":"逐字摘抄"}],"followUp":"可选，一句建议他接着想的问题"}
 text 里不要用英文双引号，要引用就用「」。
@@ -35,6 +37,49 @@ export const WRAP_UP = `\n【收束】这一处已经连续追问两轮。这一
 你问的：他最开始想弄懂的那件事
 已弄懂：到现在已经弄懂的
 还差：还没弄懂的那一点，只点名，不展开；没有就写「没有」`;
+const SEARCHED = '\n【已经检索过】这一轮不能再返回 search。检索结果里没有的，就直说教材里没查到，不要编造。';
+
+function searchKeywords(parsed) {
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !Array.isArray(parsed.search)) return null;
+  if (parsed.text !== undefined) return null;
+  const seen = new Set();
+  for (const item of parsed.search) {
+    const word = typeof item === 'string' ? item.trim() : '';
+    if (word && word.length <= 20) seen.add(word);
+  }
+  return Array.from(seen).slice(0, 6);
+}
+
+/** 全书检索（纯函数）。entries 是 search.json 的条目 {b,c,k,p,t}；exclude 里的块 id（`书代号:块id`）或 chunk id 不返回。
+ *  按命中的不同关键词个数降序，再按命中关键词总长度降序；原文超过 300 字时截取第一处命中前后。 */
+export function searchText(entries, keywords, { limit = 8, exclude } = {}) {
+  const words = Array.from(new Set((keywords || []).map(w => trimmed(w)).filter(Boolean))).slice(0, 6);
+  if (!Array.isArray(entries) || !words.length) return [];
+  const skip = exclude instanceof Set ? exclude : new Set(exclude || []);
+  const hits = [];
+  entries.forEach((entry, order) => {
+    if (!entry || typeof entry.t !== 'string' || skip.has(entry.c) || skip.has(`${entry.k}:${entry.b}`)) return;
+    let count = 0, length = 0, first = -1;
+    for (const word of words) {
+      const at = entry.t.indexOf(word);
+      if (at < 0) continue;
+      count += 1;
+      length += word.length;
+      if (first < 0 || at < first) first = at;
+    }
+    if (count) hits.push({ entry, order, count, length, first });
+  });
+  hits.sort((a, b) => b.count - a.count || b.length - a.length || a.order - b.order);
+  return hits.slice(0, Math.max(0, limit)).map(({ entry, first }) => {
+    let text = entry.t;
+    if (text.length > 300) {
+      const start = Math.max(0, Math.min(first - 100, text.length - 300));
+      text = `${start > 0 ? '…' : ''}${text.slice(start, start + 300)}${start + 300 < text.length ? '…' : ''}`;
+    }
+    return { text, book: entry.k, page: entry.p, chunk: entry.c, block: entry.b };
+  });
+}
+
 export function followStreak(history) {
   const replies = (history || []).filter(m => m.role === 'assistant').reverse();
   const stop = replies.findIndex(m => !String(m.content).includes('\n再想一步：'));
@@ -128,6 +173,39 @@ function openaiBody(model, messages, jsonMode, system, maxTokens, provider) {
   }
   if (jsonMode) body.response_format = { type: 'json_object' };
   return body;
+}
+
+const WEB_MODEL = 'deepseek-flash';
+const WEB_TOOL = { type: 'deepseek_web_search', name: 'deepseek_web_search' };
+const WEB_NOTE = '\n【可以上网】先用【全书检索结果】回答；教材里确实没有，才可以上网查。用了网上的内容，要在 answer 里写明“以下来自网上，不是教材原文”，并且不能把网上内容放进 quotes。仍然按原来的 JSON 格式返回。';
+
+function webSources(data) {
+  const message = data?.choices?.[0]?.message;
+  const found = [];
+  const add = (url, title) => {
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url.trim())) return;
+    const clean = url.trim();
+    if (found.some(item => item.url === clean)) return;
+    const label = typeof title === 'string' ? title.replace(/\s+/g, ' ').trim().slice(0, 40) : '';
+    found.push({ url: clean, title: label });
+  };
+  if (Array.isArray(message?.annotations)) {
+    for (const note of message.annotations) if (note && note.type === 'url_citation') add(note.url_citation?.url, note.url_citation?.title);
+  }
+  if (Array.isArray(message?.server_tool_calls)) {
+    for (const step of message.server_tool_calls) {
+      for (const call of Array.isArray(step?.calls) ? step.calls : []) {
+        if (call?.type !== 'deepseek_web_search') continue;
+        for (const source of Array.isArray(call.sources) ? call.sources : []) add(source?.url, source?.title);
+      }
+    }
+  }
+  return found.slice(0, 5);
+}
+
+function sourcesNote(sources) {
+  if (!sources.length) return '';
+  return `\n\n网上来源：\n${sources.map(item => `- ${item.title ? `${item.title} ` : ''}${item.url}`).join('\n')}`;
 }
 
 function anthropicBody(model, messages, system, maxTokens) {
@@ -496,7 +574,7 @@ async function send(fetchImpl, url, headers, body, signal, stopOf) {
 
 /** Browser-direct model client. Same answer() contract as createClient. The key stays in memory for the request only. */
 export function createDirectClient({ provider, model, baseUrl, getApiKey = () => '', fetchImpl = globalThis.fetch,
-  timeoutMs = 120000, now = () => Date.now(), getImages, getNotes = () => [], getProfile = () => ({}), getMemoryState = () => ({}), getNearby = () => '', onError = () => {} } = {}) {
+  timeoutMs = 120000, now = () => Date.now(), getImages, getNotes = () => [], getProfile = () => ({}), getMemoryState = () => ({}), getNearby = () => '', search = null, onError = () => {} } = {}) {
   const timeout = Math.max(1, Number(timeoutMs) || 120000);
   const inFlight = new Map();
   const name = providerName(provider);
@@ -567,7 +645,7 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
         const guard = payload.exercise && !payload.exercise.answered
           ? "\n这道题还没作答：不能给答案，不能说出答案或排除选项，只能帮助理解题意和相关原文。"
           : "";
-        const system = (SYSTEM_PROMPT + guard + (memory ? `\n【关于这位学习者】\n${memory}` : "")).split(key).join("[REDACTED]");
+        let system = (SYSTEM_PROMPT + guard + (memory ? `\n【关于这位学习者】\n${memory}` : "")).split(key).join("[REDACTED]");
         let promptText = userContent(payload, trimmed(getNearby(payload)));
         if (payload.exercise) {
           const q = payload.exercise;
@@ -605,12 +683,17 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
         let maxTokens = 8192;
         let finish = null;
         let emptyRetried = false;
-        try {
+        let webSearch = false;
+        let webJsonMode = false;
+        let activeModel = modelName;
+        let lastData = null;
+        const ask = async () => {
           for (let attempt = 0; attempt < 5; attempt += 1) {
             if (stop || signal?.aborted) failStop();
             const content = !dropImages && images.length ? imageContent(style, promptText, images) : promptText;
             const messages = [...historyMessages(payload.history), { role: 'user', content }];
-            const body = style === 'anthropic' ? anthropicBody(modelName, messages, system, maxTokens) : openaiBody(modelName, messages, jsonMode, system, maxTokens, name);
+            const body = style === 'anthropic' ? anthropicBody(modelName, messages, system, maxTokens) : openaiBody(activeModel, messages, jsonMode, system, maxTokens, name);
+            if (webSearch && style === 'openai') body.tools = [WEB_TOOL];
             const result = await send(fetchImpl, url, headers, body, controller.signal, stopOf);
             raw = result.raw;
             status = result.status;
@@ -630,6 +713,13 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
             onError({ code: 'HTTP', ...details });
             const lower = String(raw).toLowerCase();
             let retry = false;
+            if (webSearch && status === 400) {
+              // 服务端不接受联网工具：去掉工具，换回原模型和原来的 JSON 模式，等于没有联网。
+              webSearch = false;
+              activeModel = modelName;
+              jsonMode = webJsonMode;
+              continue;
+            }
             if (jsonMode && status === 400 && lower.includes('response_format')) {
               jsonMode = false;
               retry = true;
@@ -652,13 +742,43 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
           let data = null;
           try { data = JSON.parse(raw); }
           catch { throw new QaError('INVALID_RESPONSE'); }
+          lastData = data;
           finish = style === 'anthropic' ? data?.stop_reason ?? null : data?.choices?.[0]?.finish_reason ?? null;
           const text = modelOutput(style, data);
           if (finish === 'length' || finish === 'max_tokens') {
             throw new QaError('TRUNCATED');
           }
-          const extracted = extractJsonObject(text);
+          return extractJsonObject(text);
+        };
+        try {
+          let extracted = await ask();
+          const wanted = searchKeywords(extracted.parsed);
+          if (wanted) {
+            // 最多检索一轮：检索结果只随这次请求发送，不进记录。
+            let found = [];
+            if (typeof search === 'function' && wanted.length) {
+              try {
+                const got = await search(wanted, payload);
+                if (Array.isArray(got)) found = got.filter(item => typeof item === 'string' && item.trim());
+              } catch { found = []; }
+            }
+            if (stop || signal?.aborted) failStop();
+            promptText += found.length
+              ? `\n【全书检索结果（来自教材其他位置，每条前面是出处）】\n${found.join('\n')}`
+              : '\n【全书检索结果】全书没有检索到相关内容。';
+            system += SEARCHED;
+            if (name === 'deepseek') {
+              system += WEB_NOTE;
+              webSearch = true;
+              webJsonMode = jsonMode;
+              jsonMode = false;
+              activeModel = WEB_MODEL;
+            }
+            extracted = await ask();
+            if (searchKeywords(extracted.parsed)) throw new QaError('INVALID_RESPONSE', '模型反复要求检索，没有给出回答，可以再试一次。');
+          }
           const assembled = assemble(payload, extracted.parsed, name, modelName, now, key, extracted.recovered);
+          if (webSearch) assembled.answer.text += sourcesNote(webSources(lastData));
           if (dropImages || imagesMissing) assembled.answer.imageNote = '这次模型没看到图';
           else if (imagesPartial) assembled.answer.imageNote = '这次模型没看到全部的图';
           return assembled;
