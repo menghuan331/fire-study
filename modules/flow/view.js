@@ -433,7 +433,8 @@ function drawBar(host, model) {
       return;
     }
     if (model.mode === "lesson" && model.reviewRetell && !await model.reviewRetell()) return;
-    const sec = Math.max(0, Math.round((Date.now() - ui.shownAt) / 1000));
+    // Longer than 15 minutes on one item is the iPad left open, not study time (Z1N-259).
+    const sec = Math.min(900, Math.max(0, Math.round((Date.now() - ui.shownAt) / 1000)));
     ui.qaOpen = false;
     ui.source = {};
     host.onNext({ sec });

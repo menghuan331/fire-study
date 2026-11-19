@@ -2732,7 +2732,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-17.2";
+const APP_VERSION = "2026-11-19.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -4595,10 +4595,19 @@ function ensureSkeletonActivation(today) {
   }
 }
 
+// Z1N-259: a kaokao card stays in review only if Billy has not met it yet or has got it wrong at least once.
+function kaokaoNeedsReview(card) {
+  const tries = app.state.kaokao?.[card.kid]?.tries || [];
+  if (!tries.length) return true;
+  if (tries.some((item) => item.ok === false)) return true;
+  if ((app.state.reviewAnswers?.[card.id || `KK-${card.kid}`]?.tries || []).some((item) => item.verdict === "错")) return true;
+  return !!card.reviewedOn && (Number(card.box) || 0) === 0;
+}
+
 function reviewCardVisible(card, map) {
   if (!card) return false;
   if (card.src === "lesson") return !!app.state.lessons?.[card.lessonId]?.validated && !app.state.lessons[card.lessonId].disabled;
-  if (card.src === "kaokao" && kaokaoRetired(card.kid)) return false;
+  if (card.src === "kaokao" && (kaokaoRetired(card.kid) || !kaokaoNeedsReview(card))) return false;
   if (card.src === "wrong") return !billyFlaggedQuestion(card.qid);
   if (card.src === "kaokao") {
     if (!card.kid) return true;
