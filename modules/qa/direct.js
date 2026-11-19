@@ -203,6 +203,51 @@ function webSources(data) {
   return found.slice(0, 5);
 }
 
+const RESPONSES_URL = 'https://api.openai.com/v1/responses';
+
+// Chat Completions 的消息转成 Responses 的 input：文字块、图片块换名，字符串原样保留。
+function responsesInput(messages) {
+  return messages.map(message => {
+    if (!Array.isArray(message.content)) return { role: message.role, content: message.content };
+    return {
+      role: message.role,
+      content: message.content.map(part => part.type === 'image_url'
+        ? { type: 'input_image', image_url: part.image_url.url }
+        : { type: message.role === 'assistant' ? 'output_text' : 'input_text', text: part.text })
+    };
+  });
+}
+
+function responsesBody(model, messages, system, maxTokens) {
+  return { model, instructions: system, input: responsesInput(messages), max_output_tokens: maxTokens, tools: [{ type: 'web_search' }] };
+}
+
+function responsesBlocks(data) {
+  const blocks = [];
+  for (const item of Array.isArray(data?.output) ? data.output : []) {
+    if (item?.type !== 'message' || !Array.isArray(item.content)) continue;
+    for (const block of item.content) if (block?.type === 'output_text' && typeof block.text === 'string') blocks.push(block);
+  }
+  return blocks;
+}
+
+function responsesText(data) {
+  return responsesBlocks(data).map(block => block.text).join('');
+}
+
+function responsesSources(data) {
+  const found = [];
+  for (const block of responsesBlocks(data)) {
+    for (const note of Array.isArray(block.annotations) ? block.annotations : []) {
+      if (note?.type !== 'url_citation' || typeof note.url !== 'string' || !/^https?:\/\//i.test(note.url.trim())) continue;
+      const clean = note.url.trim();
+      if (found.some(item => item.url === clean)) continue;
+      found.push({ url: clean, title: typeof note.title === 'string' ? note.title.replace(/\s+/g, ' ').trim().slice(0, 40) : '' });
+    }
+  }
+  return found.slice(0, 5);
+}
+
 function sourcesNote(sources) {
   if (!sources.length) return '';
   return `\n\n网上来源：\n${sources.map(item => `- ${item.title ? `${item.title} ` : ''}${item.url}`).join('\n')}`;
@@ -685,6 +730,7 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
         let emptyRetried = false;
         let webSearch = false;
         let webJsonMode = false;
+        let responses = false;
         let activeModel = modelName;
         let lastData = null;
         const ask = async () => {
@@ -692,12 +738,27 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
             if (stop || signal?.aborted) failStop();
             const content = !dropImages && images.length ? imageContent(style, promptText, images) : promptText;
             const messages = [...historyMessages(payload.history), { role: 'user', content }];
-            const body = style === 'anthropic' ? anthropicBody(modelName, messages, system, maxTokens) : openaiBody(activeModel, messages, jsonMode, system, maxTokens, name);
+            const body = responses ? responsesBody(activeModel, messages, system, maxTokens)
+              : style === 'anthropic' ? anthropicBody(modelName, messages, system, maxTokens) : openaiBody(activeModel, messages, jsonMode, system, maxTokens, name);
             if (webSearch && style === 'openai') body.tools = [WEB_TOOL];
-            const result = await send(fetchImpl, url, headers, body, controller.signal, stopOf);
+            const result = await send(fetchImpl, responses ? RESPONSES_URL : url, headers, body, controller.signal, stopOf);
             raw = result.raw;
             status = result.status;
             ok = result.ok;
+            if (responses) {
+              // OpenAI 联网走 Responses；任何失败都按没有联网，回到原来的 Chat Completions 请求重试。
+              let data = null;
+              if (ok) { try { data = JSON.parse(raw); } catch { data = null; } }
+              // A truncated web round also falls back: an answer without the web beats no answer.
+              if (!ok || data?.status === 'incomplete' || !responsesText(data).trim()) {
+                if (!ok) onError({ code: 'HTTP', ...failureDetails(status, null, raw, key) });
+                responses = false;
+                system = system.split(WEB_NOTE).join('');
+                jsonMode = webJsonMode;
+                continue;
+              }
+              break;
+            }
             if (ok) {
               let data;
               try { data = JSON.parse(raw); } catch { throw new QaError('INVALID_RESPONSE'); }
@@ -716,6 +777,7 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
             if (webSearch && status === 400) {
               // 服务端不接受联网工具：去掉工具，换回原模型和原来的 JSON 模式，等于没有联网。
               webSearch = false;
+              system = system.split(WEB_NOTE).join('');
               activeModel = modelName;
               jsonMode = webJsonMode;
               continue;
@@ -744,7 +806,7 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
           catch { throw new QaError('INVALID_RESPONSE'); }
           lastData = data;
           finish = style === 'anthropic' ? data?.stop_reason ?? null : data?.choices?.[0]?.finish_reason ?? null;
-          const text = modelOutput(style, data);
+          const text = responses ? responsesText(data) : modelOutput(style, data);
           if (finish === 'length' || finish === 'max_tokens') {
             throw new QaError('TRUNCATED');
           }
@@ -773,12 +835,17 @@ export function createDirectClient({ provider, model, baseUrl, getApiKey = () =>
               webJsonMode = jsonMode;
               jsonMode = false;
               activeModel = WEB_MODEL;
+            } else if (name === 'openai') {
+              system += WEB_NOTE;
+              responses = true;
+              webJsonMode = jsonMode;
             }
             extracted = await ask();
             if (searchKeywords(extracted.parsed)) throw new QaError('INVALID_RESPONSE', '模型反复要求检索，没有给出回答，可以再试一次。');
           }
           const assembled = assemble(payload, extracted.parsed, name, modelName, now, key, extracted.recovered);
           if (webSearch) assembled.answer.text += sourcesNote(webSources(lastData));
+          else if (responses) assembled.answer.text += sourcesNote(responsesSources(lastData));
           if (dropImages || imagesMissing) assembled.answer.imageNote = '这次模型没看到图';
           else if (imagesPartial) assembled.answer.imageNote = '这次模型没看到全部的图';
           return assembled;
