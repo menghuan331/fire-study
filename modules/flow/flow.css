@@ -531,3 +531,9 @@ body.is-flow .page .flow-rhythm .rhythm-emphasis { font-size: 1.12em; font-weigh
 .review-verdict { display: flex; align-items: center; gap: 12px; }
 .review-verdict .flow-lesson-reject { margin: 0; }
 .flow-lesson-line > :last-child, .flow-lesson-example > :last-child, .review-gap > :last-child { margin-bottom: 0; }
+
+.flow-question-page {
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid var(--flow-line);
+}

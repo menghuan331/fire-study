@@ -216,7 +216,7 @@ function pickKaokao(readIds, byPage, done, used) {
   return "";
 }
 
-/** Original pages in order. After every 3 pages, at most one unanswered 可考句 from the newest page that still has one. Unanswered exam questions are included. */
+/** Unanswered exam questions that sit on a page come first (their page is shown under them); then the other pages in order. After every 3 pages, at most one unanswered 可考句 from the newest page that still has one. Unanswered exam questions are included. */
 export function buildDefaultQueue(pages, questions, answered) {
   const done = answeredSet(answered);
   const pageIds = new Set((pages || []).map((page) => page.id));
@@ -242,22 +242,29 @@ export function buildDefaultQueue(pages, questions, answered) {
   const queue = [];
   const used = new Set();
   const readIds = [];
-  (pages || []).forEach((page, index) => {
+  // Exam questions located on a page go first and carry that page's text with them (Z1N-260).
+  const covered = new Set();
+  for (const page of pages || []) {
+    const ids = (exams.get(page.id) || []).filter((id) => !done.has(id) && !used.has(id));
+    if (!ids.length) continue;
+    covered.add(page.id);
+    readIds.push(page.id);
+    for (const id of ids) { used.add(id); queue.push(id); }
+  }
+  let count = 0;
+  for (const page of pages || []) {
+    if (covered.has(page.id)) continue;
     queue.push(page.id);
     readIds.push(page.id);
-    for (const id of exams.get(page.id) || []) {
-      if (used.has(id) || done.has(id)) continue;
-      used.add(id);
-      queue.push(id);
-    }
-    if ((index + 1) % 3 === 0) {
+    count += 1;
+    if (count % 3 === 0) {
       const id = pickKaokao(readIds, kaokao, done, used);
       if (id) {
         used.add(id);
         queue.push(id);
       }
     }
-  });
+  }
   for (const id of tail) if (!used.has(id) && !done.has(id)) queue.push(id);
   return queue;
 }
@@ -265,9 +272,12 @@ export function buildDefaultQueue(pages, questions, answered) {
 /** Completed browsing includes all original pages and every question already answered, without touching state. */
 export function buildBrowseQueue(pages, questions, answered) {
   const done = answeredSet(answered);
-  const prior = pages.flatMap(page => [page.id, ...questions.filter(q => q.pageId === page.id && done.has(q.id)).map(q => q.id)]);
+  // Browsing keeps the page first; the question-first order (Z1N-260) is only for the first read.
+  const pageSet = new Set(pages.map(page => page.id));
+  const located = new Set(questions.filter(q => q.kind === "exam" && pageSet.has(q.pageId)).map(q => q.id));
+  const prior = pages.flatMap(page => [page.id, ...questions.filter(q => q.pageId === page.id && (done.has(q.id) || located.has(q.id))).map(q => q.id)]);
   prior.push(...questions.filter(q => !q.pageId && done.has(q.id)).map(q => q.id));
-  const queue = buildDefaultQueue(pages, questions, []);
+  const queue = buildDefaultQueue(pages, questions.filter(q => !located.has(q.id)), []);
   restoreQuestions(queue, prior, new Set(pages.map(p => p.id)), new Set(questions.map(q => q.id)), new Set());
   return applyPlan(queue, pages, questions, [], prior, answered).queue;
 }
@@ -312,8 +322,9 @@ export function reconcileFlowRecord(record, pages, questions, answered) {
     queue = limited.queue;
     const have = new Set(seen);
     const future = queue.filter(id => !have.has(id));
-    // Continue at the first unread original page, keeping any still-unanswered questions next to it.
-    const firstUnread = future.findIndex(id => pages.some(page => page.id === id));
+    // With reading history, continue at the first unread original page, keeping any still-unanswered questions next to it.
+    // A fresh chunk keeps the question-first order (Z1N-260).
+    const firstUnread = seen.length ? future.findIndex(id => pages.some(page => page.id === id)) : 0;
     if (firstUnread > 0) future.unshift(...future.splice(firstUnread, 1));
     queue = seen.concat(future);
     return { queue, cursor: seen.length, seen, rule: "", pagesKey: key, rebuilt: true, fixes: limited.fixes, origins: limited.origins };
@@ -381,7 +392,11 @@ export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQ
     return { ok: false, error: `未知 id：${unknown.join("、")}`, queue: null, fixes: [] };
   }
   const seenSet = new Set(seen || []);
-  const unread = pageIds.filter((id) => !seenSet.has(id));
+  // A page that rides under a queued question is not a separate page to read (Z1N-260).
+  const carried = new Set();
+  const queued = new Set(oldQueue);
+  for (const q of questions || []) if (q && q.kind === "exam" && q.pageId && queued.has(q.id) && !answeredSet(answered).has(q.id)) carried.add(q.pageId);
+  const unread = pageIds.filter((id) => !seenSet.has(id) && !(carried.has(id) && !queued.has(id)));
   const unreadIndex = new Map(unread.map((id, index) => [id, index]));
   const fixes = [];
   const placedUnread = new Set();

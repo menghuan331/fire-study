@@ -226,6 +226,9 @@ button.sync-status {
   background: var(--panel);
 }
 
+#week-progress { margin: 0; padding: 0 14px; height: 22px; line-height: 22px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.content-wrap:has(#week-progress:not([hidden])) #page-flow:not([hidden]) { height: calc(var(--flow-vh, 100dvh) - 12px - 22px); }
+
 .page {
   padding: 14px;
   min-width: 0;
@@ -1650,6 +1653,7 @@ body.is-learn .app-shell {
       </dialog>
       <main class="content-wrap">
         <button id="flow-return" class="flow-ask" type="button" hidden>返回</button>
+        <p id="week-progress" class="small" hidden></p>
         <section id="page-practice" class="page" hidden></section>
         <section id="page-map" class="page" hidden></section>
         <section id="page-week" class="page" hidden></section>
@@ -2732,7 +2736,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-19.2";
+const APP_VERSION = "2026-11-19.3";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -4810,6 +4814,33 @@ function renderStatusBar(today, weekCtx) {
   const countdown = document.getElementById("exam-countdown");
   if (countdown) countdown.innerHTML = `距考试 <span class="mono">${days}</span> 天`;
   renderSyncStatus();
+  renderWeekProgress(today);
+}
+
+const FIRST_PASS_END = "2027-08-31";
+function renderWeekProgress(today) {
+  const el = document.getElementById("week-progress");
+  if (!el) return;
+  const pagesOf = (meta) => Math.max(0, (Number(meta.printedTo) - Number(meta.printedFrom) + 1) || 0);
+  const [y, m, d] = today.split("-").map(Number);
+  const weekday = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
+  const monday = new Date(Date.UTC(y, m - 1, d - weekday)).toISOString().slice(0, 10);
+  let week = 0, done = 0;
+  for (const [id, rec] of Object.entries(app.state.chunks || {})) {
+    if (!rec || !rec.doneAt) continue;
+    const meta = findChunkMeta(id);
+    if (!meta) continue;
+    const n = pagesOf(meta);
+    done += n;
+    if (rec.doneAt >= monday) week += n;
+  }
+  if (app.ui.tab !== "flow" || !Object.keys(app.study.indexes || {}).length) { el.hidden = true; return; }
+  let text = `本周读了 ${week} 页`;
+  const left = diffDaysYmd(today, FIRST_PASS_END);
+  const total = ((app.data.schedule || {}).units || []).reduce((sum, u) => sum + (Number(u.pages) || 0), 0);
+  if (left > 0 && total > 0) text += ` · 目标 ${Math.ceil(Math.max(0, total - done) / Math.ceil(left / 7))} 页`;
+  el.textContent = text;
+  el.hidden = false;
 }
 
 const STUDY_CACHE = "study-chunks-v1";
@@ -8930,6 +8961,9 @@ function flowAdvance(meta, sec) {
   const pageIds = new Set(catalog.pages.map((page) => page.id));
   const seen = rec.seen.slice();
   if (id && pageIds.has(id) && !seen.includes(id)) seen.push(id);
+  // A question shown with its page underneath counts that page as read (Z1N-260).
+  const shown = catalog.questions.find((question) => question.id === id);
+  if (shown?.pageId && pageIds.has(shown.pageId) && !seen.includes(shown.pageId)) seen.push(shown.pageId);
   let queue = rec.queue.slice();
   const cursor = rec.cursor + 1;
   if (cursor >= queue.length) {
@@ -9289,6 +9323,10 @@ function renderFlowPage() {
   const readBlocks = page ? blocksForPage(catalog, page) : [];
   const qaBlocks = mode === "question" ? blocksForPage(catalog, sourcePage || catalog.pages.at(-1)) : readBlocks;
   const questionView = lesson ? flowModules.lessons.lessonQuestion(lesson.content, app.state.lessonAttempts?.[currentId]?.tries?.at(-1)) : question ? flowQuestionView(meta, question) : null;
+  // Question on top, its page text underneath, until that page has been read (Z1N-260).
+  const withPage = !!(question && sourcePage && !browsing && !flowVisit.readOnly && (question.kind === "exam" || !rec.seen.includes(sourcePage.id)));
+  if (withPage && questionView) questionView.source = null;
+  const pageBlocks = withPage ? blocksForPage(catalog, sourcePage) : [];
   const nextChunk = flowNextChunk(meta);
   const activeNotes = flowModules.memory?.profileEntries(app.state.learnerProfile || {}) || [];
   const segmentScore = flowSegmentScore(segment, catalog);
@@ -9314,6 +9352,8 @@ function renderFlowPage() {
     reason: rec.reason,
     rule: rec.rule,
     html: mode === "read" ? flowPageHtml(readBlocks) : "",
+    pageHtml: withPage ? flowPageHtml(pageBlocks) : "",
+    pageSources: withPage ? flowPageSources(meta, sourcePage.id, catalog.questions) : [],
     sources: page ? flowPageSources(meta, page.id, catalog.questions) : [],
     figure: !!(page && page.kind === "figure"),
     question: questionView,

@@ -683,6 +683,11 @@ export function renderFlow(root, model) {
     article.append(drawLesson(model, model));
   } else if (model.mode === "question" && model.question) {
     article.append(drawQuestion(model, model.question));
+    if (model.pageHtml) {
+      const page = readingContent({ html: model.pageHtml, sources: model.pageSources });
+      page.classList.add("flow-question-page");
+      article.append(page);
+    }
     if (model.question.kind === "exam" && model.question.result) {
       const flag = button("flow-ask flow-lesson-reject", model.question.flagged ? "已记下" : "这题有问题");
       flag.id = "flow-flag-question"; flag.disabled = !!model.question.flagged;
