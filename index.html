@@ -2736,7 +2736,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-19.3";
+const APP_VERSION = "2026-11-20.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -8569,6 +8569,11 @@ function prepareFlowQueue(meta, catalog) {
     if (migration.fixes.length) logAgentTool({ name: "queue_migration", result: { fixes: migration.fixes } }, meta.id);
     rec = flowRecord(meta.id);
   }
+  const carried = flowModules.pages.dropCarriedPages(rec.queue, rec.cursor, catalog.pages, catalog.availableQuestions, catalog.answered, rec.seen);
+  if (carried.length !== rec.queue.length) {
+    saveFlow(meta.id, { queue: carried }, { silent: true });
+    rec = flowRecord(meta.id);
+  }
   const valid = new Set([
     ...Object.entries(app.state.lessons || {}).filter(([, l]) => l.validated && !l.disabled).map(([id]) => id),
     ...(catalog.pages || []).map((page) => page.id),
@@ -8911,7 +8916,8 @@ function ensureFlowRunner() {
         nextQueue.splice(successor ? nextQueue.indexOf(successor) : nextQueue.length, 0, id);
       }
       const limited = flowModules.pages.limitAgentQuestions(nextQueue, catalog.pages, catalog.availableQuestions, catalog.answered, rec.questionOrigins);
-      saveFlow(chunkId, { queue: limited.queue, questionOrigins: limited.origins, reason: text, events });
+      const queueNow = flowModules.pages.dropCarriedPages(limited.queue, rec.cursor, catalog.pages, catalog.availableQuestions, catalog.answered, rec.seen);
+      saveFlow(chunkId, { queue: queueNow, questionOrigins: limited.origins, reason: text, events });
     },
     saveReason(reason, job) {
       const chunkId = jobChunk(job);
@@ -9021,7 +9027,7 @@ function flowQaContext(meta, blocks, question, focus = "", thread = "", exercise
   }).filter((part) => part.text);
   if (!context.length) return null;
   return {
-    ...(focus && !question ? { focus } : {}),
+    ...(focus ? { focus } : {}),
     unit: meta.unit,
     chunkId: meta.id,
     blockId: question ? `q:${question.id}` : thread || String(primary.id),

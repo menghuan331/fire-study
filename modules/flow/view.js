@@ -686,6 +686,7 @@ export function renderFlow(root, model) {
     if (model.pageHtml) {
       const page = readingContent({ html: model.pageHtml, sources: model.pageSources });
       page.classList.add("flow-question-page");
+      selectSentences(page, ui.focus, value => { ui.focus = value; if (ui.qaOpen) model.refresh(); });
       article.append(page);
     }
     if (model.question.kind === "exam" && model.question.result) {

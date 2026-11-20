@@ -552,6 +552,20 @@ export function limitAgentQuestions(queue, pages, questions, answered = [], orig
   return { queue: next, origins: nextOrigins, fixes };
 }
 
+/** Z1N-260: an unread page that an unanswered exam question ahead will show anyway is dropped from the queue; the item at the cursor stays. */
+export function dropCarriedPages(queue, cursor, pages, questions, answered = [], seen = []) {
+  const list = Array.isArray(queue) ? queue : [];
+  const done = answeredSet(answered);
+  const read = new Set(seen || []);
+  const pageIds = new Set((pages || []).map((page) => page.id));
+  const ahead = new Set(list.slice(cursor + 1));
+  const carried = new Set();
+  for (const q of questions || []) {
+    if (q && q.kind === "exam" && q.pageId && pageIds.has(q.pageId) && !done.has(q.id) && ahead.has(q.id) && !read.has(q.pageId)) carried.add(q.pageId);
+  }
+  return list.filter((id, i) => i <= cursor || !carried.has(id));
+}
+
 export function migrateQuestionQueue(record, pages, questions, answered = []) {
   const limited = limitAgentQuestions(record.queue || [], pages, questions, answered, record.questionOrigins);
   const kept = new Set(limited.queue);
