@@ -2758,7 +2758,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-23.4";
+const APP_VERSION = "2026-11-23.5";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -3074,27 +3074,81 @@ function cloneObj(obj) {
   return JSON.parse(JSON.stringify(obj));
 }
 
-function loadStateFromLocal() {
+// Z1N-260: progress lives in IndexedDB; localStorage stops at 5 MB on Safari and is only read once to move it over.
+let stateDb = null;
+function openStateDb() {
+  stateDb ||= new Promise((resolve, reject) => {
+    const req = indexedDB.open("study", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("kv");
+    req.onsuccess = () => { req.result.onclose = () => { stateDb = null; }; resolve(req.result); };
+    req.onerror = () => reject(req.error);
+  }).catch(err => { stateDb = null; throw err; });
+  return stateDb;
+}
+
+async function stateTx(mode, run, retry = true) {
+  const db = await openStateDb();
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      app.state = createDefaultState();
-      return;
-    }
-    const parsed = safeParse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return;
-    app.state = coerceState(parsed, { fillStarted: true });
-    saveStateToLocal();
-  } catch (_) {
-    app.state = createDefaultState();
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction("kv", mode);
+      const req = run(tx.objectStore("kv"));
+      tx.oncomplete = () => resolve(req.result);
+      tx.onerror = tx.onabort = () => reject(tx.error);
+    });
+  } catch (err) {
+    // iPadOS can drop the connection while the app is in the background.
+    stateDb = null;
+    if (retry) return stateTx(mode, run, false);
+    throw err;
   }
 }
 
-function saveStateToLocal() {
+async function loadStateFromLocal() {
+  let raw = null;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(app.state));
-    app.sync.localFull = false;
-  } catch (_) { app.sync.localFull = true; }
+    raw = await Promise.race([stateTx("readonly", kv => kv.get("state")),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 3000))]);
+    stateRead = true;
+  } catch (_) {}
+  try { raw ||= localStorage.getItem(STORAGE_KEY); } catch (_) {}
+  const parsed = raw ? safeParse(raw) : null;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    app.state = createDefaultState();
+    return;
+  }
+  app.state = coerceState(parsed, { fillStarted: true });
+  saveStateToLocal();
+}
+
+let stateRead = false;
+let stateDirty = false;
+let stateSaving = null;
+function saveStateToLocal() {
+  if (typeof indexedDB === "undefined") {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(app.state)); app.sync.localFull = false; } catch (_) { app.sync.localFull = true; }
+    return;
+  }
+  stateDirty = true;
+  stateSaving ||= (async () => {
+    try {
+      if (!stateRead) {
+        // The store would not open at launch: fold in what it holds before the first write replaces it.
+        const held = safeParse(await stateTx("readonly", kv => kv.get("state")) || "");
+        if (held) app.state = coerceState(mergeStates(app.state, held), { fillStarted: true });
+        stateRead = true;
+      }
+      while (stateDirty) {
+        stateDirty = false;
+        const raw = JSON.stringify(app.state);
+        await stateTx("readwrite", kv => kv.put(raw, "state"));
+      }
+      app.sync.localFull = false;
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (_) {
+      app.sync.localFull = true;
+      renderSyncStatus();
+    } finally { stateSaving = null; }
+  })();
 }
 
 function onChange(fn) {
@@ -3744,7 +3798,7 @@ function lastSyncLabel() {
 function renderSyncStatus() {
   const el = document.getElementById("sync-status");
   if (el) {
-    if (app.sync.localFull) el.textContent = "本机存储已满";
+    if (app.sync.localFull) el.textContent = "本机没存上";
     else if (!hasToken()) el.textContent = "未连接 GitHub";
     else if (app.sync.phase === "syncing") el.textContent = "同步中…";
     else if (app.sync.phase === "error") el.textContent = `同步失败：${app.sync.errorText || "同步失败"}`;
@@ -9543,7 +9597,7 @@ function wireRouting() {
 async function boot() {
   app.githubConfig = loadGithubConfig();
   loadSyncMeta();
-  loadStateFromLocal();
+  await loadStateFromLocal();
   loadQaModule();
   loadFlowModules();
   app.sync.initialPullSettled = !hasToken();
