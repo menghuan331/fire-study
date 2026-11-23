@@ -532,11 +532,8 @@ body.is-flow .page .flow-rhythm .rhythm-emphasis { font-size: 1.12em; font-weigh
 .review-verdict .flow-lesson-reject { margin: 0; }
 .flow-lesson-line > :last-child, .flow-lesson-example > :last-child, .review-gap > :last-child { margin-bottom: 0; }
 
-.flow-question-page {
-  margin-top: 28px;
-  padding-top: 20px;
-  border-top: 1px solid var(--flow-line);
-}
-
 /* Room to bring the asked-about sentence to the top, also with the keyboard up. */
 #page-flow.has-qa .flow-copy:has(.flow-sentence.is-selected)::after { content: ""; display: block; height: 45vh; }
+
+/* 看原文 as a full button where the question and its page take turns. */
+#page-flow .flow-swap { font-size: 16px; text-align: center; text-decoration: none; color: var(--flow-ink); border: 1px solid var(--flow-line); }

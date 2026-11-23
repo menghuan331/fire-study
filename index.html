@@ -2736,7 +2736,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-23.1";
+const APP_VERSION = "2026-11-23.2";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -8960,7 +8960,14 @@ function triggerFlow(chunkId, kind, extra) {
   void runner.trigger(kind, { ...(extra || {}), chunkId });
 }
 
-function flowAdvance(meta, sec) {
+function firstTryRight(question) {
+  const tries = question.kind === "kaokao"
+    ? (app.state.kaokao[question.id]?.tries || []).filter((item) => item.level === "recog")
+    : getAttempt(question.id).tries;
+  return tries?.[0]?.ok === true;
+}
+
+function flowAdvance(meta, sec, opened) {
   if (flowVisit?.browse >= 0) { flowVisit.browse = -1; render(); return; }
   if (flowVisit?.readOnly) { flowVisit.cursor++; render(); return; }
 
@@ -8972,15 +8979,17 @@ function flowAdvance(meta, sec) {
   const pageIds = new Set(catalog.pages.map((page) => page.id));
   const seen = rec.seen.slice();
   if (id && pageIds.has(id) && !seen.includes(id)) seen.push(id);
-  // A question shown with its page underneath counts that page as read (Z1N-260).
-  const shown = catalog.questions.find((question) => question.id === id);
-  if (shown?.pageId && pageIds.has(shown.pageId) && !seen.includes(shown.pageId)) seen.push(shown.pageId);
   let queue = rec.queue.slice();
   const cursor = rec.cursor + 1;
+  // A question counts its page as read once the page was opened, or the first answer was right (Z1N-260).
+  const shown = catalog.questions.find((question) => question.id === id);
+  if (shown && pageIds.has(shown.pageId) && !seen.includes(shown.pageId) && (opened || firstTryRight(shown))) {
+    seen.push(shown.pageId);
+    // The agent may have queued that page again after a wrong answer.
+    if (shown.kind === "exam") queue = queue.filter((next, i) => i < cursor || next !== shown.pageId);
+  }
   if (cursor >= queue.length) {
-    const have = new Set(seen);
-    const missing = catalog.pages.map((page) => page.id).filter((pageId) => !have.has(pageId));
-    if (missing.length) queue = queue.concat(missing);
+    queue = queue.concat(flowModules.pages.missingPages(catalog.pages, seen));
   }
   saveFlow(meta.id, {
     seen,
@@ -9311,7 +9320,10 @@ function renderFlowPage() {
     ...flowRecord(meta.id), queue: flowModules.pages.buildBrowseQueue(catalog.pages, catalog.availableQuestions, catalog.answered),
     cursor: flowVisit.cursor, seen: catalog.pages.map(p => p.id)
   } : prepareFlowQueue(meta, catalog);
-  if (!flowVisit.history.length && !flowVisit.readOnly) flowVisit.history = rec.queue.slice(0, rec.cursor);
+  const pageById = new Map((catalog ? catalog.pages : []).map((page) => [page.id, page]));
+  const questionById = new Map((catalog ? catalog.questions : []).map((question) => [question.id, question]));
+  if (!flowVisit.history.length && !flowVisit.readOnly) flowVisit.history = rec.queue.slice(0, rec.cursor)
+    .filter((id) => pageById.has(id) || questionById.has(id) || (app.state.lessons?.[id] && !app.state.lessons[id].disabled));
   const total = rec.queue.length;
   const finished = !!(catalog && flowModules.pages.flowFinished(catalog.pages, rec.seen, rec.queue, rec.cursor));
   const browsing = flowVisit.browse >= 0;
@@ -9321,8 +9333,6 @@ function renderFlowPage() {
   const landing = !flowVisit.readOnly && !browsing && segment?.landing;
   const currentId = browsing ? flowVisit.history[flowVisit.browse] : finished ? "" : (rec.queue[rec.cursor] || "");
   if (!browsing && currentId && flowVisit.history.at(-1) !== currentId) flowVisit.history.push(currentId);
-  const pageById = new Map((catalog ? catalog.pages : []).map((page) => [page.id, page]));
-  const questionById = new Map((catalog ? catalog.questions : []).map((question) => [question.id, question]));
   const page = pageById.get(currentId) || null;
   const question = questionById.get(currentId) || null;
   const lesson = app.state.lessons?.[currentId];
@@ -9334,30 +9344,21 @@ function renderFlowPage() {
   const readBlocks = page ? blocksForPage(catalog, page) : [];
   const qaBlocks = mode === "question" ? blocksForPage(catalog, sourcePage || catalog.pages.at(-1)) : readBlocks;
   const questionView = lesson ? flowModules.lessons.lessonQuestion(lesson.content, app.state.lessonAttempts?.[currentId]?.tries?.at(-1)) : question ? flowQuestionView(meta, question) : null;
-  // Question on top, its page text underneath, until that page has been read (Z1N-260).
+  // The question brings the page it tests, one tap away, until that page has been read (Z1N-260).
   const withPage = !!(question && sourcePage && !browsing && !flowVisit.readOnly && (question.kind === "exam" || !rec.seen.includes(sourcePage.id)));
-  if (withPage && questionView) questionView.source = null;
   const pageBlocks = withPage ? blocksForPage(catalog, sourcePage) : [];
   const nextChunk = flowNextChunk(meta);
   if (nextChunk) kickChunkBody(nextChunk);
   const activeNotes = flowModules.memory?.profileEntries(app.state.learnerProfile || {}) || [];
   const segmentScore = flowSegmentScore(segment, catalog);
-  // While browsing back, count within the segment that holds the page on screen.
-  const shownPage = browsing ? (page || sourcePage) : null;
-  const shownSegment = shownPage
-    ? flowModules.pages.segmentPages(catalog.pages).find(part => part.some(p => p.id === shownPage.id)) || null : null;
   flowModules.view.renderFlow(root, {
     chunkId: meta.id,
     status: "ready",
     mode,
     itemId,
-    cursor: browsing ? flowVisit.browse + 1 : finished ? total : Math.min(total, rec.cursor + 1),
-    progressCursor: flowVisit.readOnly || finished ? total : Math.min(total, rec.cursor + 1),
+    cursor: browsing ? rec.queue.indexOf(currentId) + 1 || flowVisit.browse + 1
+      : landing ? rec.cursor : Math.min(total, rec.cursor + 1),
     total,
-    displayCursor: landing ? rec.seen.length : shownSegment
-      ? shownSegment.findIndex(p => p.id === shownPage.id) + 1 : segment.count,
-    displayProgressCursor: landing ? rec.seen.length : segment.count,
-    displayTotal: landing ? catalog.pages.length : shownSegment ? shownSegment.length : segment.pages.length,
     segmentPages: segment.pages.length,
     segmentCorrect: segmentScore.correct,
     segmentWrong: segmentScore.wrong,
@@ -9365,6 +9366,7 @@ function renderFlowPage() {
     rule: rec.rule,
     html: mode === "read" ? flowPageHtml(readBlocks) : "",
     pageHtml: withPage ? flowPageHtml(pageBlocks) : "",
+    pageId: sourcePage?.id,
     pageSources: withPage ? flowPageSources(meta, sourcePage.id, catalog.questions) : [],
     sources: page ? flowPageSources(meta, page.id, catalog.questions) : [],
     figure: !!(page && page.kind === "figure"),
@@ -9394,11 +9396,11 @@ function renderFlowPage() {
       flowVisit.browse = browsing ? flowVisit.browse - 1 : flowVisit.history.length - (finished ? 1 : 2);
       render();
     },
-    onNext: ({ sec, streak }) => {
+    onNext: ({ sec, opened }) => {
       if (landing) {
         saveFlow(meta.id, { segmentsDone: rec.segmentsDone.concat(segment.end) });
         render();
-      } else flowAdvance(meta, sec, streak);
+      } else flowAdvance(meta, sec, opened);
     },
     onAnswer: (choice) => lesson ? answerLesson(currentId, choice, meta) : answerFlowQuestion(meta, question, choice),
     onDeleteNote(id) {

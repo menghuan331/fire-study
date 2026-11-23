@@ -15,6 +15,7 @@ const ui = {
   notesOpen: false,
   choice: "",
   source: {},
+  page: {},
   quiet: 0,
   shownAt: 0,
   focus: "",
@@ -350,13 +351,24 @@ function drawQuestion(host, question) {
     if (question.result.why) wrap.append(el("p", "flow-why", question.result.why));
     const provenance = question.kind === "exam" ? answerProvenanceText(question.provenance) : "";
     if (provenance) wrap.append(el("p", "flow-provenance", provenance));
-    if (question.source && question.source.text) {
-      const link = button("flow-source", question.source.text);
-      link.id = "flow-source";
-      wrap.append(link);
-    }
+  }
+  if (host.pageHtml || (question.result && question.source)) {
+    const link = button(host.pageHtml ? "flow-source flow-swap" : "flow-source", "看原文");
+    link.id = "flow-source";
+    if (host.pageHtml) link.addEventListener("click", () => swapPage(host));
+    wrap.append(link);
   }
   return wrap;
+}
+
+// A question and the page it tests take turns on the same screen (Z1N-260).
+function swapPage(model) {
+  const page = ui.page;
+  if (!page.open) page.returnTop = document.querySelector("#flow-copy").scrollTop;
+  page.open = !page.open;
+  page.opened = true;
+  page.jump = page.open ? 0 : page.returnTop;
+  model.refresh();
 }
 
 // The run log is for checking afterwards; give tool names a plain Chinese label.
@@ -420,14 +432,21 @@ function drawBar(host, model) {
   }
   const previous = button("flow-ask", "上一页");
   previous.id = "flow-previous";
-  previous.disabled = !model.canPrevious;
-  previous.addEventListener("click", () => { ui.qaOpen = false; ui.source = {}; host.onPrevious(); });
+  const onPage = ui.page.open && !!model.pageHtml;
+  previous.disabled = !onPage && !model.canPrevious;
+  previous.addEventListener("click", () => {
+    if (onPage) { swapPage(model); return; }
+    ui.qaOpen = false;
+    ui.source = {};
+    host.onPrevious();
+  });
   bar.append(previous);
-  const next = button("flow-next", model.mode === "done" ? "下一块" : "下一页");
-  next.id = model.mode === "done" ? "flow-next-chunk" : "flow-next";
+  const next = button("flow-next", model.mode === "done" ? "下一块" : onPage ? "回到题目" : "下一页");
+  next.id = model.mode === "done" ? "flow-next-chunk" : onPage ? "flow-back" : "flow-next";
   if (model.mode === "done" && !model.nextId) next.disabled = true;
-  if (["question", "lesson"].includes(model.mode) && !model.question?.result && !model.browsing) next.disabled = true;
+  if (["question", "lesson"].includes(model.mode) && !model.question?.result && !model.browsing && !onPage) next.disabled = true;
   next.addEventListener("click", async () => {
+    if (onPage) { swapPage(model); return; }
     if (model.mode === "done") {
       if (model.nextId) host.onOpen(model.nextId);
       return;
@@ -437,7 +456,7 @@ function drawBar(host, model) {
     const sec = Math.min(900, Math.max(0, Math.round((Date.now() - ui.shownAt) / 1000)));
     ui.qaOpen = false;
     ui.source = {};
-    host.onNext({ sec });
+    host.onNext({ sec, opened: !!ui.page.opened });
   });
   const ask = button("flow-ask", "问一下");
   ask.id = "flow-ask";
@@ -617,12 +636,14 @@ export function renderFlow(root, model) {
     ui.qaOpen = false;
     ui.choice = "";
     ui.source = {};
+    ui.page = {};
     ui.pendingAsk = "";
     ui.focus = "";
     ui.shownAt = Date.now();
   }
   const oldArticle = root.querySelector("#flow-copy");
-  const scrollTop = changed ? 0 : (oldArticle?.scrollTop || 0);
+  const scrollTop = changed ? 0 : (ui.page.jump ?? oldArticle?.scrollTop ?? 0);
+  ui.page.jump = null;
   root.classList.add("flow");
   root.dataset.chunk = model.chunkId || "";
   root.dataset.item = model.itemId || "";
@@ -631,9 +652,7 @@ export function renderFlow(root, model) {
   root.dataset.total = String(model.total || 0);
 
   const head = el("header", "flow-top");
-  const displayTotal = model.displayTotal ?? model.total;
-  const displayCursor = model.displayCursor ?? model.cursor;
-  const count = el("p", "flow-count", displayTotal ? `${displayCursor} / ${displayTotal}` : "");
+  const count = el("p", "flow-count", model.total ? `${model.cursor} / ${model.total}` : "");
   count.id = "flow-count";
   const exit = button("flow-ask", "菜单");
   exit.id = "flow-menu-open";
@@ -649,7 +668,7 @@ export function renderFlow(root, model) {
   head.append(exit);
   const progress = el("div", "flow-progress");
   const fill = el("span");
-  const ratio = displayTotal ? Math.min(1, (model.displayProgressCursor ?? model.progressCursor ?? model.cursor ?? 0) / displayTotal) : 0;
+  const ratio = model.total ? model.cursor / model.total : 0;
   fill.style.width = `${Math.round(ratio * 100)}%`;
   progress.append(fill);
   progress.setAttribute("aria-hidden", "true");
@@ -681,14 +700,8 @@ export function renderFlow(root, model) {
     article.id = "flow-done";
   } else if (model.mode === "lesson" && model.lesson) {
     article.append(drawLesson(model, model));
-  } else if (model.mode === "question" && model.question) {
+  } else if (model.mode === "question" && model.question && !(ui.page.open && model.pageHtml)) {
     article.append(drawQuestion(model, model.question));
-    if (model.pageHtml) {
-      const page = readingContent({ html: model.pageHtml, sources: model.pageSources });
-      page.classList.add("flow-question-page");
-      selectSentences(page, ui.focus, value => { ui.focus = value; if (ui.qaOpen) model.refresh(); });
-      article.append(page);
-    }
     if (model.question.kind === "exam" && model.question.result) {
       const flag = button("flow-ask flow-lesson-reject", model.question.flagged ? "已记下" : "这题有问题");
       flag.id = "flow-flag-question"; flag.disabled = !!model.question.flagged;
@@ -698,8 +711,9 @@ export function renderFlow(root, model) {
       article.append(flag);
     }
   } else {
-    const blocks = readingContent(model);
-    applyRhythmReading(blocks, `${model.chunkId}:${model.itemId}`, model.rhythm);
+    const carried = model.mode === "question";
+    const blocks = readingContent(carried ? { html: model.pageHtml, sources: model.pageSources } : model);
+    applyRhythmReading(blocks, `${model.chunkId}:${carried ? model.pageId : model.itemId}`, model.rhythm);
     selectSentences(blocks, ui.focus, value => { ui.focus = value; if (ui.qaOpen) model.refresh(); });
     article.append(blocks);
   }
@@ -718,7 +732,7 @@ export function renderFlow(root, model) {
     const picked = article.querySelector(".flow-sentence.is-selected");
     if (picked) article.scrollTop += picked.getBoundingClientRect().top - article.getBoundingClientRect().top - 12;
   }
-  if (model.mode === "question" && model.question?.result) {
+  if (model.mode === "question" && model.question?.result && !model.pageHtml) {
     mountSourceDisclosure(article, article.querySelector("#flow-source"), model.source || {}, ui.source, model.refresh, readingContent, scrollTop);
   }
   if (slot && model.mountQa) {

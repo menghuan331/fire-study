@@ -216,7 +216,7 @@ function pickKaokao(readIds, byPage, done, used) {
   return "";
 }
 
-/** Unanswered exam questions that sit on a page come first (their page is shown under them); then the other pages in order. After every 3 pages, at most one unanswered 可考句 from the newest page that still has one. Unanswered exam questions are included. */
+/** Unanswered exam questions that sit on a page come first (they carry their page); then the other pages in order. After every 3 pages, at most one unanswered 可考句 from the newest page that still has one. Unanswered exam questions are included. */
 export function buildDefaultQueue(pages, questions, answered) {
   const done = answeredSet(answered);
   const pageIds = new Set((pages || []).map((page) => page.id));
@@ -339,18 +339,13 @@ export function reconcileFlowRecord(record, pages, questions, answered) {
   };
 }
 
+/** Items already passed stay: the step number never goes back (Z1N-260). */
 export function dropUnresolved(queue, cursor, validIds) {
   const valid = validIds instanceof Set ? validIds : new Set(validIds || []);
   const list = Array.isArray(queue) ? queue : [];
-  const next = [];
   const origin = Math.max(0, Number(cursor) || 0);
-  let nextCursor = origin;
-  for (let i = 0; i < list.length; i += 1) {
-    if (valid.has(list[i])) next.push(list[i]);
-    else if (i < origin) nextCursor -= 1;
-  }
-  if (nextCursor < 0) nextCursor = 0;
-  if (nextCursor > next.length) nextCursor = next.length;
+  const next = list.filter((id, i) => i < origin || valid.has(id));
+  const nextCursor = Math.min(origin, next.length);
   return { queue: next, cursor: nextCursor, dropped: next.length !== list.length || nextCursor !== Math.max(0, Number(cursor) || 0) };
 }
 
@@ -392,7 +387,7 @@ export function applyPlan(plan, pages, questions, seen, oldQueue = buildDefaultQ
     return { ok: false, error: `未知 id：${unknown.join("、")}`, queue: null, fixes: [] };
   }
   const seenSet = new Set(seen || []);
-  // A page that rides under a queued question is not a separate page to read (Z1N-260).
+  // A page carried by a queued question is not a separate page to read (Z1N-260).
   const carried = new Set();
   const queued = new Set(oldQueue);
   for (const q of questions || []) if (q && q.kind === "exam" && q.pageId && queued.has(q.id) && !answeredSet(answered).has(q.id)) carried.add(q.pageId);
@@ -503,20 +498,16 @@ export function flowSegment(pages, queue, cursor, seen, completed = []) {
   const segments = segmentPages(pages);
   const consumed = new Set(seen);
   const acknowledged = new Set(completed);
-  const before = new Set(queue.slice(0, cursor));
   for (let index = 0; index < segments.length; index++) {
     const part = segments[index];
     const next = segments[index + 1]?.[0]?.id;
     const boundary = next ? queue.indexOf(next) : queue.length;
     const complete = part.every(page => consumed.has(page.id)) && cursor >= boundary;
     if (segments.length > 1 && complete && !acknowledged.has(part.at(-1).id)) {
-      return { pages: part, index, landing: true, count: part.length, end: part.at(-1).id };
+      return { pages: part, index, landing: true, end: part.at(-1).id };
     }
     if (!complete || index === segments.length - 1) {
-      const count = part.filter(page => before.has(page.id)).length;
-      const current = part.some(page => page.id === queue[cursor]);
-      return { pages: part, index, landing: false,
-        count: Math.min(part.length, count + (current ? 1 : 0)), end: part.at(-1)?.id };
+      return { pages: part, index, landing: false, end: part.at(-1)?.id };
     }
   }
 }
@@ -552,7 +543,7 @@ export function limitAgentQuestions(queue, pages, questions, answered = [], orig
   return { queue: next, origins: nextOrigins, fixes };
 }
 
-/** Z1N-260: an unread page that an unanswered exam question ahead will show anyway is dropped from the queue; the item at the cursor stays. */
+/** Z1N-260: an unread page that an unanswered exam question ahead carries is dropped from the queue; the item at the cursor stays. */
 export function dropCarriedPages(queue, cursor, pages, questions, answered = [], seen = []) {
   const list = Array.isArray(queue) ? queue : [];
   const done = answeredSet(answered);
