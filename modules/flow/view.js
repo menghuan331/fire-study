@@ -423,8 +423,8 @@ function drawLesson(host, model) {
 
 function drawBar(host, model) {
   const bar = el("div", "flow-bar");
-  if (model.mode === "segment") {
-    const next = button("flow-next", "继续");
+  if (model.mode === "segment" || model.mode === "start") {
+    const next = button("flow-next", model.mode === "start" ? "开始" : "继续");
     next.id = "flow-next";
     next.addEventListener("click", () => host.onNext({ sec: 0 }));
     bar.append(next);
@@ -675,7 +675,7 @@ export function renderFlow(root, model) {
 
   const why = button("flow-ask", "笔记");
   why.id = "flow-why";
-  why.hidden = model.mode === "segment";
+  why.hidden = model.mode === "segment" || model.mode === "start";
   why.addEventListener("click", () => {
     ui.notesOpen = !ui.notesOpen;
     model.refresh();
@@ -694,6 +694,9 @@ export function renderFlow(root, model) {
   } else if (model.mode === "segment") {
     article.append(el("h1", "flow-title", "这一段完了"));
     article.append(el("p", "flow-stem", `${model.segmentPages} 页 · 答对 ${model.segmentCorrect} 道 · 答错 ${model.segmentWrong} 道`));
+  } else if (model.mode === "start") {
+    article.append(el("h1", "flow-title", "复习做完了"));
+    article.append(el("p", "flow-stem", `接下来学：${model.startTitle}`));
   } else if (model.mode === "done") {
     article.append(el("h1", "flow-title", "这块学完了"));
     article.append(el("p", "flow-stem", `答对 ${model.correct || 0} 道`));
@@ -717,7 +720,7 @@ export function renderFlow(root, model) {
     selectSentences(blocks, ui.focus, value => { ui.focus = value; if (ui.qaOpen) model.refresh(); });
     article.append(blocks);
   }
-  if (ui.notesOpen && model.mode !== "segment") article.prepend(drawNotes(model, model));
+  if (ui.notesOpen && model.mode !== "segment" && model.mode !== "start") article.prepend(drawNotes(model, model));
   const qaShown = ui.qaOpen && model.mode !== "done";
   const qaWasOpen = ui.qaShown;
   ui.qaShown = qaShown;

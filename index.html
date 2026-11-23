@@ -2736,7 +2736,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-23.2";
+const APP_VERSION = "2026-11-23.3";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -4810,32 +4810,22 @@ function renderStatusBar(today, weekCtx) {
   const countdown = document.getElementById("exam-countdown");
   if (countdown) countdown.innerHTML = `距考试 <span class="mono">${days}</span> 天`;
   renderSyncStatus();
-  renderWeekProgress(today);
+  renderWeekProgress(null);
 }
 
-const FIRST_PASS_END = "2027-08-31";
-function renderWeekProgress(today) {
+function renderWeekProgress(meta) {
   const el = document.getElementById("week-progress");
   if (!el) return;
-  const pagesOf = (meta) => Math.max(0, (Number(meta.printedTo) - Number(meta.printedFrom) + 1) || 0);
-  const [y, m, d] = today.split("-").map(Number);
+  if (!meta || app.ui.tab !== "flow") { el.hidden = true; return; }
+  const [y, m, d] = shanghaiToday().split("-").map(Number);
   const weekday = (new Date(Date.UTC(y, m - 1, d)).getUTCDay() + 6) % 7;
   const monday = new Date(Date.UTC(y, m - 1, d - weekday)).toISOString().slice(0, 10);
-  let week = 0, done = 0;
-  for (const [id, rec] of Object.entries(app.state.chunks || {})) {
-    if (!rec || !rec.doneAt) continue;
-    const meta = findChunkMeta(id);
-    if (!meta) continue;
-    const n = pagesOf(meta);
-    done += n;
-    if (rec.doneAt >= monday) week += n;
-  }
-  if (app.ui.tab !== "flow" || !Object.keys(app.study.indexes || {}).length) { el.hidden = true; return; }
-  let text = `本周读了 ${week} 页`;
-  const left = diffDaysYmd(today, FIRST_PASS_END);
-  const total = ((app.data.schedule || {}).units || []).reduce((sum, u) => sum + (Number(u.pages) || 0), 0);
-  if (left > 0 && total > 0) text += ` · 目标 ${Math.ceil(Math.max(0, total - done) / Math.ceil(left / 7))} 页`;
-  el.textContent = text;
+  const week = Object.values(app.state.chunks || {}).filter((rec) => rec && rec.doneAt && rec.doneAt >= monday).length;
+  const unit = ((app.data.schedule || {}).units || []).find((u) => u.id === meta.unit);
+  const left = ((app.study.indexes[meta.unit] || {}).chunks || [])
+    .filter((chunk) => chunk && chunk.id && !(chunk.examOnly && !(chunk.questions || []).length) && !chunkDone(chunk.id)).length;
+  const name = (unit && unit.name) || meta.unit;
+  el.textContent = `${name} · ${left ? `还剩 ${left} 块` : "学完了"} · 本周学完 ${week} 块`;
   el.hidden = false;
 }
 
@@ -5094,6 +5084,7 @@ function releasePoolCards(today) {
         if (kaokaoRetired(item.id)) continue;
         if (!item.recog || !Array.isArray(item.recog.options)) continue;
         if (!chunkDone(item.chunk)) continue;
+        if (findChunkMeta(item.chunk)?.examOnly) continue;
         if (latestKaokaoTry(item.id, "recog")) continue;
         if (app.state.cards[`KK-${item.id}`]) continue;
         if (!byChunk.has(item.chunk)) byChunk.set(item.chunk, []);
@@ -5248,6 +5239,11 @@ function chunkDone(chunkId) {
   return !!(rec && rec.doneAt);
 }
 
+// Z1N-199: a chunk marked examOnly is learned through its real questions alone; with none, there is nothing to learn.
+function chunkToLearn(chunk) {
+  return !(chunk && chunk.examOnly && !(chunk.questions || []).length);
+}
+
 function chunksTouchingRow(rowId) {
   const list = [];
   for (const index of Object.values(app.study.indexes)) {
@@ -5315,16 +5311,16 @@ function rowChunkStats(rowId) {
   const chunks = chunksTouchingRow(rowId);
   if (!chunks.length) return null;
   const done = chunks.filter((chunk) => chunkDone(chunk.id)).length;
-  const next = chunks.find((chunk) => !chunkDone(chunk.id)) || chunks[0];
+  const next = chunks.find((chunk) => !chunkDone(chunk.id) && chunkToLearn(chunk)) || chunks[0];
   return { done, total: chunks.length, nextId: next ? next.id : "" };
 }
 
 function nextChunkAfter(chunks, current) {
   const index = chunks.findIndex((chunk) => chunk.id === current.id);
   for (let i = Math.max(index, 0) + 1; i < chunks.length; i += 1) {
-    if (!chunkDone(chunks[i].id)) return chunks[i];
+    if (!chunkDone(chunks[i].id) && chunkToLearn(chunks[i])) return chunks[i];
   }
-  return chunks.find((chunk) => chunk.id !== current.id && !chunkDone(chunk.id)) || null;
+  return chunks.find((chunk) => chunk.id !== current.id && !chunkDone(chunk.id) && chunkToLearn(chunk)) || null;
 }
 
 function questionsForChunk(meta) {
@@ -7628,6 +7624,8 @@ function renderFlowReview(root, today) {
     flowReviewPending = false;
     app.ui.flowReviewBatch = null;
     store.save("flow/reviewDoneOn", today);
+    const stats = session.stats || {};
+    if ((stats.remember || 0) + (stats.wrong || 0) + (stats.blank || 0) > 0) app.ui.reviewTransition = true;
     return false;
   }
   const total = session.order.length;
@@ -8420,7 +8418,7 @@ function nextFlowChunk() {
       return null;
     }
     for (const chunk of index.chunks || []) {
-      if (chunk && chunk.id && !chunkDone(chunk.id)) return chunk;
+      if (chunk && chunk.id && !chunkDone(chunk.id) && chunkToLearn(chunk)) return chunk;
     }
   }
   return null;
@@ -8511,17 +8509,22 @@ function flowCatalog(meta) {
   if (!flowModules || !meta) return null;
   const body = app.study.bodies[meta.id];
   if (!body || !Array.isArray(body.blocks)) return null;
-  const pages = flowModules.pages.paginateBlocks(body.blocks);
+  const allPages = flowModules.pages.paginateBlocks(body.blocks);
+  // Z1N-199: an unfinished examOnly chunk queues real questions only; the pages stay for "看原文" (allPages).
+  // The visit that just finished it keeps that view, so its done screen does not turn into the whole text.
+  const examOnly = !!meta.examOnly && chunkToLearn(meta)
+    && (!chunkDone(meta.id) || (flowVisit?.id === meta.id && !flowVisit.readOnly));
+  const pages = examOnly ? [] : allPages;
   const questions = flowModules.pages.questionsForChunk({
     id: meta.id,
     blocks: body.blocks,
     questions: meta.questions || []
-  }, allKaokaoItemsForChunk(meta), app.derived.questionById);
+  }, examOnly ? [] : allKaokaoItemsForChunk(meta), app.derived.questionById);
   const answered = questions
     .filter((question) => question.kind === "kaokao" ? latestKaokaoTry(question.id, "recog") : latestTry(question.id))
     .map((question) => question.id);
   const availableQuestions = questions.filter(q => q.kind !== "exam" || !billyFlaggedQuestion(q.id));
-  return { pages, questions, availableQuestions, blocks: body.blocks, answered };
+  return { pages, allPages, examOnly, questions, availableQuestions, blocks: body.blocks, answered };
 }
 
 function ensureFlowQueue(meta, catalog) {
@@ -8664,7 +8667,7 @@ function flowSource(meta, anchor) {
   kickChunkBody(meta);
   const catalog = flowCatalog(meta);
   if (!catalog) return { html: `<p>${["missing", "error"].includes(app.study.bodyState[meta.id]) ? "原文暂时没读到。" : "正在读取原文…"}</p>`, anchor };
-  const page = catalog.pages.find(page => page.blockIds.some(id => String(id) === String(anchorBlockId(anchor))));
+  const page = catalog.allPages.find(page => page.blockIds.some(id => String(id) === String(anchorBlockId(anchor))));
   const blocks = page ? blocksForPage(catalog, page) : catalog.blocks;
   return { html: flowPageHtml(blocks), anchor, sources: page ? flowPageSources(meta, page.id, catalog.questions) : [] };
 }
@@ -8954,6 +8957,7 @@ function ensureFlowRunner() {
 
 function triggerFlow(chunkId, kind, extra) {
   if (!chunkId || !flowModules || chunkDone(chunkId) || (flowVisit?.id === chunkId && flowVisit.readOnly)) return;
+  if (findChunkMeta(chunkId)?.examOnly) return;
   const runner = ensureFlowRunner();
   if (!runner) return;
   if (flowVisit?.id === chunkId && kind !== "wrong") flowVisit.quiet = 0;
@@ -9254,6 +9258,7 @@ function flowBodyStatus(meta) {
 function renderFlowPage() {
   const root = document.getElementById("page-flow");
   if (!root || app.ui.tab !== "flow") return;
+  renderWeekProgress(null);
   let chunkId = app.ui.routeChunkId || "";
   if (!chunkId && app.data) {
     const next = resumeFlowChunk();
@@ -9288,7 +9293,21 @@ function renderFlowPage() {
   }
   if (flowReviewPending && (app.ui.forceReview || app.state.flow?.reviewDoneOn !== shanghaiToday()) && renderFlowReview(root, shanghaiToday())) return;
   app.ui.forceReview = false;
+  if (app.ui.reviewTransition) {
+    const target = chunkId ? ensureChunkMeta(chunkId) : null;
+    if (target && chunkDone(target.id)) app.ui.reviewTransition = false;
+    else if (target) {
+      renderWeekProgress(null);
+      flowModules.view.renderFlow(root, {
+        chunkId: target.id, status: "ready", mode: "start", itemId: "start",
+        startTitle: target.title || target.id, onMenu: leave, refresh: render,
+        onNext: () => { app.ui.reviewTransition = false; render(); }
+      });
+      return;
+    } else if (chunkLookupSettled()) app.ui.reviewTransition = false;
+  }
   if (!chunkId && chunkLookupSettled()) {
+    renderWeekProgress(null);
     flowModules.view.renderFlow(root, {status:"ready", mode:"done", onMenu:leave, refresh:render});
     return;
   }
@@ -9313,19 +9332,20 @@ function renderFlowPage() {
     return;
   }
   if (!flowVisit || flowVisit.id !== meta.id) {
-    flowVisit = { id: meta.id, readOnly: chunkDone(meta.id), cursor: 0, history: [], browse: -1, quiet: 0, opened: false };
+    flowVisit = { id: meta.id, readOnly: chunkDone(meta.id) || !chunkToLearn(meta), cursor: 0, history: [], browse: -1, quiet: 0, opened: false };
   }
   const catalog = flowCatalog(meta);
   const rec = flowVisit.readOnly ? {
     ...flowRecord(meta.id), queue: flowModules.pages.buildBrowseQueue(catalog.pages, catalog.availableQuestions, catalog.answered),
     cursor: flowVisit.cursor, seen: catalog.pages.map(p => p.id)
   } : prepareFlowQueue(meta, catalog);
-  const pageById = new Map((catalog ? catalog.pages : []).map((page) => [page.id, page]));
+  const pageById = new Map((catalog ? catalog.allPages : []).map((page) => [page.id, page]));
   const questionById = new Map((catalog ? catalog.questions : []).map((question) => [question.id, question]));
   if (!flowVisit.history.length && !flowVisit.readOnly) flowVisit.history = rec.queue.slice(0, rec.cursor)
     .filter((id) => pageById.has(id) || questionById.has(id) || (app.state.lessons?.[id] && !app.state.lessons[id].disabled));
   const total = rec.queue.length;
-  const finished = !!(catalog && flowModules.pages.flowFinished(catalog.pages, rec.seen, rec.queue, rec.cursor));
+  const finished = !!(catalog && (catalog.examOnly ? rec.cursor >= rec.queue.length
+    : flowModules.pages.flowFinished(catalog.pages, rec.seen, rec.queue, rec.cursor)));
   const browsing = flowVisit.browse >= 0;
   const completedSegments = flowVisit.readOnly
     ? flowModules.pages.segmentPages(catalog.pages).map(part => part.at(-1)?.id) : rec.segmentsDone;
@@ -9342,7 +9362,7 @@ function renderFlowPage() {
   if (flowShown.key !== shownKey) { flowShown = { key: shownKey, at: Date.now() }; app.ui.optionOrder = {}; }
   const sourcePage = question && question.pageId ? pageById.get(question.pageId) : null;
   const readBlocks = page ? blocksForPage(catalog, page) : [];
-  const qaBlocks = mode === "question" ? blocksForPage(catalog, sourcePage || catalog.pages.at(-1)) : readBlocks;
+  const qaBlocks = mode === "question" ? blocksForPage(catalog, sourcePage || catalog.allPages.at(-1)) : readBlocks;
   const questionView = lesson ? flowModules.lessons.lessonQuestion(lesson.content, app.state.lessonAttempts?.[currentId]?.tries?.at(-1)) : question ? flowQuestionView(meta, question) : null;
   // The question brings the page it tests, one tap away, until that page has been read (Z1N-260).
   const withPage = !!(question && sourcePage && !browsing && !flowVisit.readOnly && (question.kind === "exam" || !rec.seen.includes(sourcePage.id)));
@@ -9351,6 +9371,7 @@ function renderFlowPage() {
   if (nextChunk) kickChunkBody(nextChunk);
   const activeNotes = flowModules.memory?.profileEntries(app.state.learnerProfile || {}) || [];
   const segmentScore = flowSegmentScore(segment, catalog);
+  renderWeekProgress(meta);
   flowModules.view.renderFlow(root, {
     chunkId: meta.id,
     status: "ready",
@@ -9416,6 +9437,7 @@ function renderFlowPage() {
   }
   if (mode === "done" && !flowVisit.readOnly && !chunkDone(meta.id)) {
     completeLearnChunk(meta);
+    renderWeekProgress(meta);
   }
 }
 
