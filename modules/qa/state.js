@@ -40,8 +40,8 @@ export function snapshotContext(value) {
 
 export function contextKey(value) {
   const { label, focus, ...context } = snapshotContext(value);
-  // Answering a question updates its prompt, not its conversation identity.
-  if (context.exercise) context.exercise = { stem: context.exercise.stem, options: context.exercise.options };
+  // Answering a question or shuffling its options updates its prompt, not its conversation identity.
+  if (context.exercise) context.exercise = { stem: context.exercise.stem, options: context.exercise.options.map(o => o.text).sort() };
   return stableStringify(context);
 }
 

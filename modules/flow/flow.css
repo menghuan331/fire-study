@@ -537,3 +537,6 @@ body.is-flow .page .flow-rhythm .rhythm-emphasis { font-size: 1.12em; font-weigh
   padding-top: 20px;
   border-top: 1px solid var(--flow-line);
 }
+
+/* Room to bring the asked-about sentence to the top, also with the keyboard up. */
+#page-flow.has-qa .flow-copy:has(.flow-sentence.is-selected)::after { content: ""; display: block; height: 45vh; }

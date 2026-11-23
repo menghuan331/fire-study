@@ -2736,7 +2736,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-20.2";
+const APP_VERSION = "2026-11-23.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -4391,12 +4391,8 @@ function wireSettings() {
 function registerServiceWorker() {
   if (!navigator.serviceWorker) return;
   const hadController = !!navigator.serviceWorker.controller;
-  let pageReady = document.readyState === "complete";
-  if (!pageReady) {
-    window.addEventListener("load", () => { pageReady = true; }, { once: true });
-  }
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!hadController || !pageReady || swControllerReload) return;
+    if (!hadController || swControllerReload) return;
     swControllerReload = true;
     location.reload();
   });
@@ -5173,6 +5169,19 @@ function kickUnitIndex(unitId) {
   });
 }
 
+// Z1N-260: a chunk that failed to load once is tried again, instead of staying "没读到" until restart.
+const bodyRetries = {};
+function retryChunkBody(meta, failed) {
+  const tries = bodyRetries[meta.id] = (bodyRetries[meta.id] || 0) + 1;
+  app.study.bodyState[meta.id] = failed;
+  if (tries <= 15) setTimeout(() => {
+    if (app.study.bodies[meta.id]) return;
+    delete app.study.bodyState[meta.id];
+    kickChunkBody(meta);
+  }, 8000);
+  if (tries === 1) render();
+}
+
 function kickChunkBody(meta) {
   if (!meta || !canReadRepo()) return;
   if (app.study.bodies[meta.id]) return;
@@ -5182,18 +5191,14 @@ function kickChunkBody(meta) {
   const repoPath = `教材/${meta.unit}/chunks/${meta.id}.json`;
   loadStudyText(repoPath).then(async (text) => {
     if (!app.study.bodies[meta.id]) {
-      app.study.bodyState[meta.id] = text ? "error" : "missing";
-      render();
+      retryChunkBody(meta, text ? "error" : "missing");
       return;
     }
     const files = Array.isArray(app.study.bodies[meta.id].images) ? app.study.bodies[meta.id].images : [];
     await Promise.all(files.map((file) => loadStudyBlobUrl(`教材/图片/${file}`, file).catch(() => null)));
     app.study.bodyState[meta.id] = "ready";
     render();
-  }).catch(() => {
-    app.study.bodyState[meta.id] = "error";
-    render();
-  });
+  }).catch(() => retryChunkBody(meta, "error"));
 }
 
 function kickKatex() {
@@ -9334,6 +9339,7 @@ function renderFlowPage() {
   if (withPage && questionView) questionView.source = null;
   const pageBlocks = withPage ? blocksForPage(catalog, sourcePage) : [];
   const nextChunk = flowNextChunk(meta);
+  if (nextChunk) kickChunkBody(nextChunk);
   const activeNotes = flowModules.memory?.profileEntries(app.state.learnerProfile || {}) || [];
   const segmentScore = flowSegmentScore(segment, catalog);
   // While browsing back, count within the segment that holds the page on screen.

@@ -1,4 +1,4 @@
-const CACHE_VERSION = "study-v41";
+const CACHE_VERSION = "study-v42";
 const NETWORK_TIMEOUT_MS = 3000;
 
 const PRECACHE = [
@@ -59,6 +59,31 @@ function isNetworkFirstPath(rel) {
     || (rel.startsWith("modules/agent/") && /\.(js|css)$/.test(rel))
     || rel === "精讲/index.json"
     || isLectureFile(rel);
+}
+
+// Z1N-260: the app itself comes from one cache version as a whole. Per-file network-first with a timeout
+// could pair a new page with an old module. Local development stays network-first.
+function isShell(request, rel) {
+  if (["localhost", "127.0.0.1"].includes(self.location.hostname)) return false;
+  if (request.mode === "navigate") return rel === "" || rel === "index.html";
+  return isNetworkFirstPath(rel) && !rel.startsWith("精讲/");
+}
+
+async function shellFirst(request, rel) {
+  const cache = await caches.open(CACHE_VERSION);
+  const cached = await cache.match(new URL(rel || "index.html", self.registration.scope).href);
+  return cached || networkFirst(request);
+}
+
+// The version query and cache:"reload" keep stale browser or CDN copies out of a new version; any miss fails the install.
+async function precache() {
+  const cache = await caches.open(CACHE_VERSION);
+  await Promise.all(PRECACHE.map(async (path) => {
+    const url = new URL(path, self.registration.scope).href;
+    const response = await fetch(`${url}?v=${CACHE_VERSION}`, { cache: "reload" });
+    if (response.status !== 200) throw new Error(`precache ${path} ${response.status}`);
+    await cache.put(url, response);
+  }));
 }
 
 function shouldHandle(request, url) {
@@ -125,9 +150,7 @@ function cacheFirst(event, request) {
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_VERSION)
-      .then((cache) => cache.addAll(PRECACHE))
-      .then(() => self.skipWaiting())
+    precache().then(() => self.skipWaiting())
   );
 });
 
@@ -165,6 +188,11 @@ self.addEventListener("fetch", (event) => {
   const rel = relativePath(url);
   if (request.headers.get("range") && isLectureFile(rel)) {
     event.respondWith(fetch(request));
+    return;
+  }
+
+  if (isShell(request, rel)) {
+    event.respondWith(shellFirst(request, rel));
     return;
   }
 

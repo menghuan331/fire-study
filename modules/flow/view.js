@@ -705,12 +705,19 @@ export function renderFlow(root, model) {
   }
   if (ui.notesOpen && model.mode !== "segment") article.prepend(drawNotes(model, model));
   const qaShown = ui.qaOpen && model.mode !== "done";
+  const qaWasOpen = ui.qaShown;
+  ui.qaShown = qaShown;
   const slot = paintFlow(root, {
     top: [head, progress], article,
     bar: model.status === "ready" || model.mode === "done" ? drawBar(model, model) : null,
     qa: qaShown ? { key: `flow:${model.chunkId}:${model.itemId}`, onClose: () => { ui.qaOpen = false; model.refresh(); } } : null
   });
   article.scrollTop = scrollTop;
+  // Opening 问一下 shrinks the copy: keep the sentence being asked about at its top.
+  if (qaShown && !qaWasOpen) {
+    const picked = article.querySelector(".flow-sentence.is-selected");
+    if (picked) article.scrollTop += picked.getBoundingClientRect().top - article.getBoundingClientRect().top - 12;
+  }
   if (model.mode === "question" && model.question?.result) {
     mountSourceDisclosure(article, article.querySelector("#flow-source"), model.source || {}, ui.source, model.refresh, readingContent, scrollTop);
   }
