@@ -1739,6 +1739,28 @@ function mergeLearnerProfile(left = {}, right = {}) {
   return out;
 }
 
+// Z1N-260: the agent's tool transcripts filled the 5 MB local quota. Keep the newest 40, results clipped;
+// flow events never carry them. Both merge and load go through here, so old data shrinks everywhere.
+function slimAgentLog(log) {
+  const clip = value => {
+    const text = JSON.stringify(value ?? "");
+    return text.length <= 600 ? value : { clipped: text.slice(0, 600) };
+  };
+  return Object.fromEntries(Object.entries(log || {}).filter(([, run]) => run && typeof run === "object")
+    .sort((a, b) => (Number(b[1].at) || 0) - (Number(a[1].at) || 0) || a[0].localeCompare(b[0])).slice(0, 40)
+    .sort((a, b) => (Number(a[1].at) || 0) - (Number(b[1].at) || 0) || a[0].localeCompare(b[0]))
+    .map(([id, run]) => [id, { ...run,
+      ...(typeof run.arguments === "string" ? { arguments: run.arguments.slice(0, 600) } : {}),
+      ...("result" in run ? { result: clip(run.result) } : {}) }]));
+}
+
+function slimFlow(flow) {
+  for (const rec of Object.values(flow || {})) {
+    if (Array.isArray(rec?.events)) rec.events = rec.events.filter(event => event?.type !== "tool");
+  }
+  return flow;
+}
+
 function mergeStates(local, remote) {
   function asRecord(value) {
     if (!value || typeof value !== "object" || Array.isArray(value)) return {};
@@ -1899,14 +1921,14 @@ function mergeStates(local, remote) {
     kaokao: mergeMaps(left.kaokao, right.kaokao),
     kaokaoRetell: mergeMaps(left.kaokaoRetell, right.kaokaoRetell),
     doubts: mergeDoubts(left.doubts, right.doubts),
-    flow: mergeFlow(left.flow, right.flow),
+    flow: slimFlow(mergeFlow(left.flow, right.flow)),
     learnerProfile: mergeLearnerProfile(left.learnerProfile, right.learnerProfile),
     memoryState: mergeMaps(left.memoryState, right.memoryState),
     lessons: mergeMaps(left.lessons, right.lessons),
     lessonAttempts: mergeMaps(left.lessonAttempts, right.lessonAttempts),
     reviewAnswers: mergeMaps(left.reviewAnswers, right.reviewAnswers),
     questionOverrides: mergeMaps(left.questionOverrides, right.questionOverrides),
-    agentLog: mergeMaps(left.agentLog, right.agentLog),
+    agentLog: slimAgentLog(mergeMaps(left.agentLog, right.agentLog)),
     agentNotes: mergeMaps(left.agentNotes, right.agentNotes),
     agentRuns: mergeAgentRuns(left.agentRuns, right.agentRuns)
   };
@@ -2736,7 +2758,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-23.3";
+const APP_VERSION = "2026-11-23.4";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -3071,7 +3093,8 @@ function loadStateFromLocal() {
 function saveStateToLocal() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(app.state));
-  } catch (_) {}
+    app.sync.localFull = false;
+  } catch (_) { app.sync.localFull = true; }
 }
 
 function onChange(fn) {
@@ -3165,6 +3188,7 @@ function coerceState(input, options) {
   copyRecords(src.kaokaoRetell, state.kaokaoRetell);
   copyRecords(src.doubts, state.doubts);
   copyRecords(src.flow, state.flow);
+  slimFlow(state.flow);
   if (typeof src.flow?.reviewDoneOn === "string" && /^\d{4}-\d{2}-\d{2}$/.test(src.flow.reviewDoneOn)) {
     state.flow.reviewDoneOn = src.flow.reviewDoneOn;
   }
@@ -3175,6 +3199,7 @@ function coerceState(input, options) {
   copyRecords(src.reviewAnswers, state.reviewAnswers);
   copyRecords(src.questionOverrides, state.questionOverrides);
   copyRecords(src.agentLog, state.agentLog);
+  state.agentLog = slimAgentLog(state.agentLog);
   copyRecords(src.agentNotes, state.agentNotes);
   return state;
 }
@@ -3275,18 +3300,8 @@ function setNestedState(path, value, options) {
 function save(path, value, options) {
   if (isUnchanged(path, value)) return;
   countAttemptDelta(path, value);
-  if (options?.requirePersistence && path.startsWith("doubts/") && path.length > 7) {
-    const id = path.slice(7);
-    const nextState = { ...app.state, doubts: { ...app.state.doubts,
-      [id]: stampSavedRecord(value, options, Date.now()) } };
-    // The QA module must know that the question is durable before it sends it.
-    // A failed write leaves the previous in-memory state and input intact.
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
-    app.state = nextState;
-  } else {
-    setNestedState(path, value, options);
-    saveStateToLocal();
-  }
+  setNestedState(path, value, options);
+  saveStateToLocal();
   if (!hasToken()) {
     app.sync.phase = "disconnected";
     app.sync.errorText = "";
@@ -3646,7 +3661,7 @@ function mountStudyQa(meta) {
         const next = typeof update === "function" ? update(latest) : update;
         if (!next || next === latest) return latest;
         const value = { ...next, chunk: meta.id, block: blockId, unit: meta.unit };
-        store.save(`doubts/${id}`, value, { silent: true, keepUpdatedAt: true, requirePersistence: true });
+        store.save(`doubts/${id}`, value, { silent: true, keepUpdatedAt: true });
         return app.state.doubts[id];
       },
       client
@@ -3729,7 +3744,8 @@ function lastSyncLabel() {
 function renderSyncStatus() {
   const el = document.getElementById("sync-status");
   if (el) {
-    if (!hasToken()) el.textContent = "未连接 GitHub";
+    if (app.sync.localFull) el.textContent = "本机存储已满";
+    else if (!hasToken()) el.textContent = "未连接 GitHub";
     else if (app.sync.phase === "syncing") el.textContent = "同步中…";
     else if (app.sync.phase === "error") el.textContent = `同步失败：${app.sync.errorText || "同步失败"}`;
     else if (app.sync.dirty || app.sync.phase === "dirty") el.textContent = "有改动未同步";
@@ -3847,8 +3863,11 @@ function buildCommitMessage() {
 
 function applyMerge(remoteState) {
   const merged = mergeStates(app.state, remoteState);
+  const auto = app.ui.autoChunk && app.ui.routeChunkId === app.ui.autoChunk && !chunkDone(app.ui.autoChunk) ? app.ui.autoChunk : "";
   app.state = coerceState(merged, { fillStarted: true });
   saveStateToLocal();
+  // Opened from an old local copy: the pull says that chunk is finished, so pick the place again.
+  if (auto && chunkDone(auto)) { flowVisit = null; history.replaceState(null, "", "#today"); }
   emitChange();
 }
 
@@ -8210,9 +8229,9 @@ let memoryConsolidator = null;
 function logAgentTool(entry, chunkId = "") {
   const at = Date.now();
   const safe = JSON.parse(redactFlowText(JSON.stringify(entry)));
-  const id = `run-${at}-${Object.keys(app.state.agentLog || {}).length}`;
+  const id = `run-${at}-${Math.random().toString(36).slice(2, 8)}`;
+  app.state.agentLog = slimAgentLog(app.state.agentLog);
   store.save(`agentLog/${id}`, { ...safe, chunkId, at }, { silent: true });
-  if (chunkId) appendFlowEvent(chunkId, { type: "tool", ...safe, at });
 }
 function startMemoryConsolidation() {
   if (!flowModules?.memory || !app.sync.initialPullSettled) return;
@@ -8700,7 +8719,7 @@ function flagExamQuestion(meta, id, by, note) {
   // A later model disagreement must never undo Billy's exclusion.
   const value = prev.by === "billy" && by === "qa" ? { ...prev, qaNote: note } : { ...prev, by, note };
   store.save(`doubts/${key}`, { ...value, chunk: meta.id, block: `q:${id}`, unit: meta.unit,
-    questionId: id, flag: true, removed: false, at: prev.at || shanghaiIso() }, { silent: true, requirePersistence: true });
+    questionId: id, flag: true, removed: false, at: prev.at || shanghaiIso() }, { silent: true });
 }
 function recordQaDisagreement(meta, question, response) {
   if (question?.kind !== "exam") return;
@@ -9156,7 +9175,7 @@ function mountFlowQa(slot, meta, blocks, question, focus = "", thread = "", exer
       if (!next || next === latest) return latest || null;
       const value = { ...next, chunk: meta.id, block: blockId, unit: meta.unit };
       if (!value.at) value.at = shanghaiIso();
-      store.save(`doubts/${id}`, value, { silent: true, keepUpdatedAt: true, requirePersistence: true });
+      store.save(`doubts/${id}`, value, { silent: true, keepUpdatedAt: true });
       return app.state.doubts[id];
     },
     client,
@@ -9264,6 +9283,7 @@ function renderFlowPage() {
     const next = resumeFlowChunk();
     if (next) {
       chunkId = next.id;
+      app.ui.autoChunk = chunkId;
       history.replaceState(null, "", `#flow-${encodeURIComponent(chunkId)}`);
       app.ui.routeChunkId = chunkId;
     }
