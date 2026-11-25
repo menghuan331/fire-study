@@ -38,11 +38,58 @@ export function snapshotContext(value) {
   };
 }
 
+// cyrb53 with two seeds: a short, synchronous, deterministic fingerprint. Not for security, only identity.
+function cyrb53(text, seed) {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+}
+const KEY_PREFIX = 'ck1:';
+
+/**
+ * Turns and drafts used to store the full stringified textbook context as their key (Z1N bloat fix):
+ * dozens of KB per turn in 进度/doubts. A key is now a fingerprint of that same string, so an old stored
+ * key converts to the new one without the context, and compactKey(old) === contextKey(sameContext).
+ */
+export function compactKey(stored) {
+  if (typeof stored !== 'string' || stored.startsWith(KEY_PREFIX)) return stored;
+  return `${KEY_PREFIX}${cyrb53(stored, 1)}${cyrb53(stored, 2)}`;
+}
+
 export function contextKey(value) {
   const { label, focus, ...context } = snapshotContext(value);
   // Answering a question or shuffling its options updates its prompt, not its conversation identity.
   if (context.exercise) context.exercise = { stem: context.exercise.stem, options: context.exercise.options.map(o => o.text).sort() };
-  return stableStringify(context);
+  return compactKey(stableStringify(context));
+}
+
+const FINISHED = ['answered', 'insufficient_context'];
+
+/**
+ * A finished turn never sends its request again, so the copied textbook context and history are dropped;
+ * pending and error turns keep the full request for retry. Deterministic, so merge order does not matter.
+ */
+export function compactTurn(turn) {
+  if (!isObject(turn)) return turn;
+  let out = turn;
+  if (own(turn, 'contextKey') && compactKey(turn.contextKey) !== turn.contextKey) out = { ...out, contextKey: compactKey(turn.contextKey) };
+  if (FINISHED.includes(turn.status) && isObject(turn.request) && (own(turn.request, 'context') || own(turn.request, 'history'))) {
+    const { context, history, ...request } = turn.request;
+    out = { ...out, request };
+  }
+  return out;
+}
+
+export function compactQa(qa) {
+  if (!isObject(qa)) return qa;
+  const turns = isObject(qa.turns) ? Object.fromEntries(Object.entries(qa.turns).map(([id, turn]) => [id, compactTurn(turn)])) : qa.turns;
+  return { ...qa, ...(turns !== undefined ? { turns } : {}), ...(isObject(qa.draft) ? { draft: compactTurn(qa.draft) } : {}) };
 }
 
 export function validateRequest(request) {
@@ -119,7 +166,7 @@ function newer(left, right) {
 
 /** Does not choose record-level removed/note/resolved flags: the host retains its existing rule. */
 export function mergeQa(leftQa, rightQa) {
-  const left = object(leftQa), right = object(rightQa);
+  const left = object(compactQa(leftQa)), right = object(compactQa(rightQa));
   const lTurns = object(left.turns), rTurns = object(right.turns);
   const ids = [...new Set([...Object.keys(lTurns), ...Object.keys(rTurns)])].sort();
   const turns = Object.fromEntries(ids.flatMap(id => {
@@ -160,7 +207,7 @@ function matchesPending(record, request, attemptId) {
   if (!sameRecord(record, request)) return false;
   const turn = record.qa?.turns?.[request.requestId];
   return !!turn && turn.status === 'pending' && turn.threadId === request.threadId
-    && turn.contextKey === contextKey(request) && stableStringify(turn.request) === stableStringify(request)
+    && compactKey(turn.contextKey) === contextKey(request) && stableStringify(turn.request) === stableStringify(request)
     && (attemptId === undefined || turn.attemptId === attemptId);
 }
 
@@ -189,7 +236,7 @@ export function setDraft(record, context, text, now) {
   const base = recordForContext(record, context, now);
   if (base?.removed || (record && !sameRecord(record, context))) return record;
   const key = contextKey(context);
-  if (base.qa?.draft?.text === text && base.qa.draft.contextKey === key) return record || base;
+  if (base.qa?.draft?.text === text && compactKey(base.qa.draft.contextKey) === key) return record || base;
   const updatedAt = stamp(now, base.updatedAt, base.qa?.draft?.updatedAt);
   return { ...base, updatedAt, qa: { ...object(base.qa), version: 1, turns: { ...object(base.qa?.turns) },
     draft: { text: String(text), contextKey: key, updatedAt } } };
@@ -197,7 +244,7 @@ export function setDraft(record, context, text, now) {
 
 export function historyFor(record, context) {
   const key = contextKey(context);
-  return visibleTurns(record).filter(turn => turn.contextKey === key
+  return visibleTurns(record).filter(turn => compactKey(turn.contextKey) === key
     && ['answered', 'insufficient_context'].includes(turn.status) && turn.answer?.text)
     .slice(-LIMITS.history / 2).flatMap(turn => [
       // A reply keeps its framing so the model knows which 再想一步 it answers.
@@ -235,7 +282,7 @@ export function addTurn(record, turn, now) {
 export function retryTurn(record, requestId, context, now, attemptId) {
   const turn = record?.qa?.turns?.[requestId];
   if (!turn || !sameRecord(record, turn.request) || !['pending', 'error'].includes(turn.status)) return record;
-  if (turn.contextKey !== contextKey(context)) throw new QaError('CONTEXT_CHANGED', undefined, { retryable: false });
+  if (compactKey(turn.contextKey) !== contextKey(context)) throw new QaError('CONTEXT_CHANGED', undefined, { retryable: false });
   return updateTurn(record, requestId, { status: 'pending', error: undefined, attemptId }, now);
 }
 
@@ -247,8 +294,10 @@ export function failTurn(record, request, error, now, attemptId) {
 export function applyResponse(record, request, response, now, attemptId) {
   if (!matchesPending(record, request, attemptId)) return record;
   const valid = validateResponse(request, response);
-  const next = updateTurn(record, request.requestId, { status: valid.status,
+  const updated = updateTurn(record, request.requestId, { status: valid.status,
     answer: valid.answer, followUp: valid.followUp || '', error: undefined, resolved: undefined }, now);
+  const next = { ...updated, qa: { ...updated.qa, turns: { ...updated.qa.turns,
+    [request.requestId]: compactTurn(updated.qa.turns[request.requestId]) } } };
   // A late earlier answer belongs to its own turn. It must not replace a newer question's summary or resolution.
   if (visibleTurns(next).at(-1)?.requestId !== request.requestId) return next;
   const summary = { text: valid.answer.text, quote: valid.answer.quotes.map(quote => quote.text).join('\n'),
@@ -299,7 +348,7 @@ function idsToDelete(record, requestId) {
 
 function tombstone(turn, updatedAt) {
   return {
-    requestId: turn.requestId, threadId: turn.threadId, contextKey: turn.contextKey,
+    requestId: turn.requestId, threadId: turn.threadId, contextKey: compactKey(turn.contextKey),
     createdAt: turn.createdAt, deleted: true, updatedAt
   };
 }

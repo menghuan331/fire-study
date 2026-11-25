@@ -1686,7 +1686,38 @@ function mergeQaState(leftValue, rightValue) {
     return delta ? (delta > 0 ? left : right) : (stable(left) >= stable(right) ? left : right);
   };
   const copy = (value) => JSON.parse(JSON.stringify(value));
-  const left = object(leftValue), right = object(rightValue);
+  // Same compaction as compactQa in modules/qa/state.js: fingerprint stored context keys, and drop the copied
+  // textbook context and history from finished turns. Keeps 进度/doubts from growing by the full context per turn.
+  const cyrb53 = (text, seed) => {
+    let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text.charCodeAt(i);
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  };
+  const compactKey = (stored) => typeof stored !== "string" || stored.startsWith("ck1:") ? stored
+    : `ck1:${cyrb53(stored, 1)}${cyrb53(stored, 2)}`;
+  const compactTurn = (turn) => {
+    if (!isObject(turn)) return turn;
+    let out = turn;
+    if (own(turn, "contextKey") && compactKey(turn.contextKey) !== turn.contextKey) out = { ...out, contextKey: compactKey(turn.contextKey) };
+    if (["answered", "insufficient_context"].includes(turn.status) && isObject(turn.request)
+      && (own(turn.request, "context") || own(turn.request, "history"))) {
+      const { context, history, ...request } = turn.request;
+      out = { ...out, request };
+    }
+    return out;
+  };
+  const compactQa = (qa) => {
+    if (!isObject(qa)) return qa;
+    const turns = isObject(qa.turns) ? Object.fromEntries(Object.entries(qa.turns).map(([id, turn]) => [id, compactTurn(turn)])) : qa.turns;
+    return { ...qa, ...(turns !== undefined ? { turns } : {}), ...(isObject(qa.draft) ? { draft: compactTurn(qa.draft) } : {}) };
+  };
+  const left = object(compactQa(leftValue)), right = object(compactQa(rightValue));
   const a = object(left.turns), b = object(right.turns);
   const turns = Object.fromEntries([...new Set([...Object.keys(a), ...Object.keys(b)])].sort().flatMap((id) => {
     const winner = newer(own(a, id) && isObject(a[id]) ? a[id] : undefined, own(b, id) && isObject(b[id]) ? b[id] : undefined);
@@ -1741,8 +1772,15 @@ function mergeLearnerProfile(left = {}, right = {}) {
 
 // Z1N-260: the agent's tool transcripts filled the 5 MB local quota. Keep the newest 40, results clipped;
 // flow events never carry them. Both merge and load go through here, so old data shrinks everywhere.
+// The clip must be idempotent: slimAgentLog runs on every load and merge, and re-clipping an already clipped
+// result used to wrap it again each time ({"clipped":"{\"clipped\":…"}), until only escaped backslashes were left.
 function slimAgentLog(log) {
   const clip = value => {
+    if (value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length === 1
+      && typeof value.clipped === "string") {
+      // Results already nested by the old bug carry no readable content; drop them instead of keeping the noise.
+      return { clipped: value.clipped.startsWith('{"clipped":') ? "" : value.clipped.slice(0, 600) };
+    }
     const text = JSON.stringify(value ?? "");
     return text.length <= 600 ? value : { clipped: text.slice(0, 600) };
   };

@@ -1,6 +1,6 @@
 import { createClient } from './client.js';
 import { QaError, errorRecord } from './errors.js';
-import { LIMITS, characterCount, snapshotContext, contextKey, sortedTurns, visibleTurns, createTurn, addTurn,
+import { LIMITS, characterCount, snapshotContext, contextKey, compactKey, sortedTurns, visibleTurns, createTurn, addTurn,
   setDraft, retryTurn, failTurn, applyResponse, setResolution, deleteTurn } from './state.js';
 
 const mounts = new WeakMap();
@@ -132,7 +132,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
   }
   function populateDraft() {
     const draft = read()?.qa?.draft;
-    input.value = draft?.contextKey === contextKey(current) ? String(draft.text || '') : '';
+    input.value = compactKey(draft?.contextKey) === contextKey(current) ? String(draft.text || '') : '';
     updateCounter();
   }
   function saveInput() {
@@ -160,7 +160,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     const block = element('blockquote', 'qa-quote');
     block.append(rich('div', 'qa-quote-text', quote.text, 'textbook'), element('cite', 'qa-anchor', quote.anchor));
     const ask = button('围绕这句追问', 'quote', turn.requestId, { quoteIndex: String(index) });
-    ask.disabled = turn.contextKey !== contextKey(current);
+    ask.disabled = compactKey(turn.contextKey) !== contextKey(current);
     if (ask.disabled) ask.title = '引用来自此前教材上下文，请按当前片段重新提问。';
     block.append(ask);
     host.append(block);
@@ -231,7 +231,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
     remove.dataset.requestId = turn.requestId;
     head.append(remove);
     item.append(head, element('p', 'qa-question', turn.question ?? ''));
-    const sameContext = turn.contextKey === contextKey(current);
+    const sameContext = compactKey(turn.contextKey) === contextKey(current);
     if (!sameContext) item.append(element('p', 'qa-old-context', '来自此前教材上下文'));
     if (['answered', 'insufficient_context'].includes(turn.status) && turn.answer) renderAnswer(item, turn.answer, turn, repliedIds);
     else if (turn.status === 'pending') {
@@ -433,7 +433,7 @@ export function mountPanel({ root, context, getRecord, saveRecord, client = crea
         if (action === 'copy') input.value = turn.question || '';
         else {
           const quote = turn.answer?.quotes?.[Number(target.dataset.quoteIndex)];
-          if (!quote || turn.contextKey !== contextKey(current)) return;
+          if (!quote || compactKey(turn.contextKey) !== contextKey(current)) return;
           const prefix = `关于 ${quote.anchor} 这句原文，我想问：`;
           input.value = input.value.trim() ? `${input.value}\n${prefix}` : prefix;
         }
