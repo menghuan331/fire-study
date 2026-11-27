@@ -2755,7 +2755,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-27.1";
+const APP_VERSION = "2026-11-27.2";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -6591,6 +6591,8 @@ function learnQuestionHtml(question) {
   const multi = isMultiSelect(question.type);
   const hasAnswer = String(question.answer || "").trim().length > 0;
   const explanation = String(question.explanation || "").trim();
+  if (verify.disputed === true) return `<article class="panel"><p>${escapeHtml(question.stem || "（题干缺失）")}</p><ul>${options.map(([key, value]) => `<li>${escapeHtml(key)}. ${escapeHtml(value)}</li>`).join("")}</ul>
+    <p>答案有争议，见说明</p><p><strong>说明：</strong>${escapeHtml(verify.note || "")}</p><p><strong>解析：</strong>${escapeHtml(explanation)}</p></article>`;
   const fixedHint = verify.status === "fixed"
     ? ` <span class="small">来源答案 ${escapeHtml(String(question.source_answer ?? ""))} 有误，已按教材改正</span>`
     : "";
@@ -6939,7 +6941,8 @@ function wireLearnQuiz(meta) {
 
 
 function practiceQuestionLists(unitId) {
-  const unitQuestions = app.data.questions.questions.filter((q) => q.unit === unitId && latestTry(q.id));
+  const unitQuestions = app.data.questions.questions.filter((q) => q.unit === unitId
+    && (latestTry(q.id) || (q.verify?.status === "doubt" && (q.verify.agreed === true || q.verify.disputed === true))));
   const normal = unitQuestions.filter((q) => q.verify?.status !== "doubt");
   const doubts = unitQuestions.filter((q) => q.verify?.status === "doubt");
   return { normal, doubts };
@@ -7089,10 +7092,10 @@ function renderPracticeQuestion(root, current, normal, doubts) {
       </ul>
 
       ` : `<p class="small">该题暂无结构化选项，可直接看解析。</p>`}
-      ${lastTry ? `
+      ${lastTry || verify.agreed === true || verify.disputed === true ? `
       <section class="panel">
-        <p><span class="status-pill ${lastTry.ok ? "status-ok" : "status-bad"}">${lastTry.ok ? "答对了" : "答错了"}</span></p>
-        ${hasAnswer ? `<p><strong>正确答案：</strong>${current.answer}${fixedHint}</p>` : `<p>答案存疑，见说明</p>`}
+        ${lastTry ? `<p><span class="status-pill ${lastTry.ok ? "status-ok" : "status-bad"}">${lastTry.ok ? "答对了" : "答错了"}</span></p>` : ""}
+        ${verify.disputed === true ? `<p>答案有争议，见说明</p>` : hasAnswer ? `<p><strong>${verify.agreed === true ? "参考答案" : "正确答案"}：</strong>${current.answer}${fixedHint}</p>` : `<p>答案存疑，见说明</p>`}
         ${explanation ? `<p><strong>解析：</strong>${explanation}</p>` : ""}
         ${examProvenanceHtml(current)}
         ${verify.note ? `<p><strong>说明：</strong>${verify.note}</p>` : ""}
@@ -8281,7 +8284,7 @@ function flowCatalog(meta) {
   const questions = flowModules.pages.questionsForChunk({
     id: meta.id,
     blocks: body.blocks,
-    questions: meta.questions || []
+    questions: (meta.questions || []).filter(id => app.derived.questionById.get(id)?.verify?.disputed !== true)
   }, examOnly ? [] : allKaokaoItemsForChunk(meta), app.derived.questionById);
   const answered = questions
     .filter((question) => question.kind === "kaokao" ? latestKaokaoTry(question.id, "recog") : latestTry(question.id))
