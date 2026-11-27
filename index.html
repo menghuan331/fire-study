@@ -557,10 +557,6 @@ button.sync-status {
   line-height: 1.5;
 }
 
-.review-hint {
-  margin: 8px 0 0;
-}
-
 .review-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -1559,14 +1555,6 @@ body.has-learn-return .learn-bar {
   color: var(--bad);
 }
 
-.cloze-blank {
-  display: inline-block;
-  min-width: 3em;
-  border-bottom: 1px solid var(--ink);
-  margin: 0 0.15em;
-  vertical-align: baseline;
-}
-
 mark.src-hit,
 .read-block.src-hit {
   background: color-mix(in srgb, var(--warn) 42%, transparent);
@@ -2083,7 +2071,7 @@ function reconcileReviewSession(session, today, dueIds, cards, quota) {
   const currentId = next.currentId || null;
   const undoneHere = !!(next.lastUndo && next.lastUndo.cardId === currentId);
   const pin = currentId && !doneSet.has(currentId) && (
-    phase === "checking" || phase === "pool" || phase === "revealed" || undoneHere
+    phase === "checking" || phase === "revealed" || undoneHere
   );
   if (pin) {
     const rest = pending.filter((id) => id !== currentId);
@@ -2170,26 +2158,8 @@ function undoReview(session) {
   return { session: next, card: copyReviewCard(undo.prevState) };
 }
 
-function countReviewRemaining(session, today, cards) {
-  if (!session || session.sessionDate !== today || !Array.isArray(session.order) || session.order.length === 0) {
-    return null;
-  }
-  const done = new Set(session.doneIds || []);
-  let count = 0;
-  for (const id of session.order) {
-    if (done.has(id)) continue;
-    const card = cards && cards[id];
-    if (!card || card.cleared) continue;
-    if (card.due && card.due > today) continue;
-    count += 1;
-  }
-  return count;
-}
-
 const INLINE_KAOKAO_LIMIT = 15;
-const POOL_DAILY_LIMIT = 20;
-const POOL_PAUSE_BACKLOG = 30;
-const REVIEW_DAILY_CAP = 30;
+const REVIEW_DAILY_CAP = 15;
 
 function anchorBlockId(anchor) {
   const matched = String(anchor || "").match(/b(\d+)\s*$/);
@@ -2241,13 +2211,6 @@ function selectInlineKaokao(items, blocks, triedIds, limit) {
   return sorted.filter((entry) => selected.has(entry.item.id)).map((entry) => entry.item);
 }
 
-function pickPoolRelease(poolItems, releasedToday, limit) {
-  const items = Array.isArray(poolItems) ? poolItems : [];
-  const already = Math.max(0, Number(releasedToday) || 0);
-  const room = Math.max(0, Number(limit) - already);
-  return items.slice(0, room);
-}
-
 function skeletonChunkMap(indexes) {
   const map = new Map();
   const list = Array.isArray(indexes)
@@ -2296,10 +2259,6 @@ function planSkeletonIntroductions(cards, states, today, activeUnits, cap, isLea
     }
   }
   return newcomers;
-}
-
-function poolReleaseAllowed(backlog, limit) {
-  return (Number(backlog) || 0) < (Number(limit) || 0);
 }
 
 function capReviewQueue(queue, reviewedToday, cap, extra) {
@@ -2796,7 +2755,7 @@ function createGithubSync({ fetch: fetchImpl, config, now = () => Date.now() } =
 </script>
 
 <script>
-const APP_VERSION = "2026-11-26.1";
+const APP_VERSION = "2026-11-27.1";
 const QA_DIRECT_KEY = "study-qa-direct-v1";
 const QA_DIRECT_PROVIDERS = [
   ["deepseek", "DeepSeek"],
@@ -3040,7 +2999,6 @@ const app = {
     kaokaoShown: {},
     kaokaoFocus: null,
     retellTimer: null,
-    reviewHint: null,
     reviewSource: null,
     reviewExtra: null,
     returnTo: null,
@@ -4656,7 +4614,6 @@ function getQuestionStateClass(questionId) {
 }
 
 let skeletonActivationLock = false;
-let poolReleaseLock = false;
 
 function ensureSkeletonActivation(today) {
   if (skeletonActivationLock) return;
@@ -4706,31 +4663,10 @@ function ensureSkeletonActivation(today) {
   }
 }
 
-// Z1N-259: a kaokao card stays in review only if Billy has not met it yet or has got it wrong at least once.
-function kaokaoNeedsReview(card) {
-  const tries = app.state.kaokao?.[card.kid]?.tries || [];
-  if (!tries.length) return true;
-  if (tries.some((item) => item.ok === false)) return true;
-  if ((app.state.reviewAnswers?.[card.id || `KK-${card.kid}`]?.tries || []).some((item) => item.verdict === "错")) return true;
-  return !!card.reviewedOn && (Number(card.box) || 0) === 0;
-}
-
 function reviewCardVisible(card, map) {
   if (!card) return false;
   if (card.src === "lesson") return !!app.state.lessons?.[card.lessonId]?.validated && !app.state.lessons[card.lessonId].disabled;
-  if (card.src === "kaokao" && (kaokaoRetired(card.kid) || !kaokaoNeedsReview(card))) return false;
   if (card.src === "wrong") return !billyFlaggedQuestion(card.qid);
-  if (card.src === "kaokao") {
-    if (!card.kid) return true;
-    const item = kaokaoItemById(card.kid);
-    if (!item || !item.chunk) {
-      // Kaokao cards only come from learned chunks; keep them while the doc is loading or unreadable.
-      const unit = (String(card.kid).match(/U\d+/) || [])[0] || "";
-      if (unit) kickKaokao(unit);
-      return true;
-    }
-    return chunkDone(item.chunk);
-  }
   const unit = card.unit || skeletonUnit(card.id);
   if (!unit || !app.study.indexes[unit]) return false;
   const chunkId = map.get(card.id);
@@ -4741,10 +4677,10 @@ function reviewCardVisible(card, map) {
 function getReviewQueue(today) {
   const all = Object.entries(app.state.cards || {})
     .map(([id, card]) => ({ id, ...card }))
-    .filter((card) => card && !card.cleared && card.due && card.due <= today);
+    .filter((card) => card.src !== "kaokao" && !card.cleared && card.due && card.due <= today);
   const units = new Set();
   for (const card of all) {
-    if (["wrong", "kaokao", "lesson"].includes(card.src)) continue;
+    if (["wrong", "lesson"].includes(card.src)) continue;
     const unit = card.unit || skeletonUnit(card.id);
     if (unit) units.add(unit);
   }
@@ -4770,30 +4706,17 @@ function reviewExtraCount(today) {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-function reviewSessionQuota(today) {
-  return Math.max(0, REVIEW_DAILY_CAP + reviewExtraCount(today) - reviewedTodayCount(today));
+function reviewSessionQuota(today, extra = 0) {
+  return Math.max(0, REVIEW_DAILY_CAP + extra - reviewedTodayCount(today));
 }
 
-function reviewQueueToday(today) {
-  return capReviewQueue(getReviewQueue(today), reviewedTodayCount(today), REVIEW_DAILY_CAP, reviewExtraCount(today));
+function reviewQueueToday(today, extra = 0) {
+  return capReviewQueue(getReviewQueue(today), reviewedTodayCount(today), REVIEW_DAILY_CAP, extra);
 }
 
 function bumpReviewExtra(today) {
-  app.ui.reviewExtra = { date: today, n: reviewExtraCount(today) + 10 };
-}
-
-function reviewCapMessage(left) {
-  return `今天 ${REVIEW_DAILY_CAP} 张复习完了。还有 ${left} 张到期，明天接着来。`;
-}
-
-function reviewPoolPauseText(today) {
-  if (poolReleaseAllowed(getReviewQueue(today).length, POOL_PAUSE_BACKLOG)) return "";
-  return `复习积压 ≥ ${POOL_PAUSE_BACKLOG} 张，新的可考句先不放，复习清下来再继续`;
-}
-
-function getTomorrowDueCount(today) {
-  const tomorrow = addDaysYmd(today, 1);
-  return Object.values(app.state.cards).filter((card) => !card.cleared && card.due === tomorrow).length;
+  const used = reviewedTodayCount(today) - REVIEW_DAILY_CAP;
+  app.ui.reviewExtra = { date: today, n: Math.max(reviewExtraCount(today), used) + 10 };
 }
 
 function upsertWrongCard(question, today) {
@@ -5152,20 +5075,7 @@ function kickKaokao(unitId) {
   });
 }
 
-function ensureKaokaoLoaded(today) {
-  const units = new Set();
-  if (app.data && today) {
-    for (const unitId of getWeekContext(today).units || []) units.add(unitId);
-  }
-  for (const card of Object.values((app.state && app.state.cards) || {})) {
-    if (!card || card.src !== "kaokao") continue;
-    const matched = String(card.kid || "").match(/U\d+/);
-    if (matched) units.add(matched[0]);
-  }
-  units.forEach((unitId) => kickKaokao(unitId));
-}
-
-function blocksForPoolOrder(chunkId, items) {
+function blocksForInlineOrder(chunkId, items) {
   const body = app.study.bodies && app.study.bodies[chunkId];
   if (body && Array.isArray(body.blocks) && body.blocks.length) return body.blocks;
   const ids = [];
@@ -5178,61 +5088,6 @@ function blocksForPoolOrder(chunkId, items) {
   }
   ids.sort((a, b) => a - b);
   return ids.map((id) => ({ id }));
-}
-
-function releasePoolCards(today) {
-  if (!today || poolReleaseLock || !app.state || !app.state.cards) return;
-  const docs = Object.values(kaokaoDocs());
-  if (!docs.length) return;
-  if (!poolReleaseAllowed(getReviewQueue(today).length, POOL_PAUSE_BACKLOG)) return;
-  poolReleaseLock = true;
-  try {
-    const byChunk = new Map();
-    for (const doc of docs) {
-      const items = doc && Array.isArray(doc.items) ? doc.items : [];
-      for (const item of items) {
-        if (!item || !item.id || !item.chunk) continue;
-        if (kaokaoRetired(item.id)) continue;
-        if (!item.recog || !Array.isArray(item.recog.options)) continue;
-        if (!chunkDone(item.chunk)) continue;
-        if (findChunkMeta(item.chunk)?.examOnly) continue;
-        if (latestKaokaoTry(item.id, "recog")) continue;
-        if (app.state.cards[`KK-${item.id}`]) continue;
-        if (!byChunk.has(item.chunk)) byChunk.set(item.chunk, []);
-        byChunk.get(item.chunk).push(item);
-      }
-    }
-    const chunkIds = [...byChunk.keys()].sort((a, b) => {
-      const da = (app.state.chunks && app.state.chunks[a] && app.state.chunks[a].doneAt) || "";
-      const db = (app.state.chunks && app.state.chunks[b] && app.state.chunks[b].doneAt) || "";
-      if (da !== db) return da < db ? -1 : 1;
-      return String(a).localeCompare(String(b));
-    });
-    const poolItems = [];
-    for (const chunkId of chunkIds) {
-      const group = byChunk.get(chunkId);
-      poolItems.push(...selectInlineKaokao(group, blocksForPoolOrder(chunkId, group), new Set(), group.length));
-    }
-    const releasedToday = Object.values(app.state.cards).filter((card) => card && card.pool === true && card.created === today).length;
-    const releasing = pickPoolRelease(poolItems, releasedToday, POOL_DAILY_LIMIT);
-    for (const item of releasing) {
-      const unit = (String(item.id).match(/U\d+/) || [])[0] || "";
-      store.save(`cards/KK-${item.id}`, {
-        box: 0,
-        due: today,
-        streak: 0,
-        streakStart: null,
-        cleared: false,
-        src: "kaokao",
-        kid: item.id,
-        created: today,
-        unit,
-        pool: true
-      }, { silent: true });
-    }
-  } finally {
-    poolReleaseLock = false;
-  }
 }
 
 const EXAM_BACKFILL_DAILY = 3;
@@ -5487,18 +5342,6 @@ function questionsAnsweredOn(today) {
 function daysLeftInWeek(today, week) {
   if (!week || !week.end || today > week.end) return 0;
   return diffDaysYmd(today, week.end) + 1;
-}
-
-function todayReviewView(today) {
-  ensureKaokaoLoaded(today);
-  releasePoolCards(today);
-  releaseExamCards(today);
-  const backlog = getReviewQueue(today).length;
-  const session = app.ui.review && app.ui.review.sessionDate === today ? app.ui.review : null;
-  const stats = session && session.stats ? session.stats : emptyReviewStats();
-  const reviewed = (stats.remember || 0) + (stats.wrong || 0) + (stats.blank || 0);
-  const remaining = reviewDueCount(today);
-  return { due: backlog, backlog, stats, reviewed, remaining, done: backlog === 0 };
 }
 
 function chunkScore(meta) {
@@ -5997,7 +5840,7 @@ function allKaokaoItemsForChunk(meta) {
 
 function kaokaoItemsForChunk(meta) {
   const all = allKaokaoItemsForChunk(meta);
-  return selectInlineKaokao(all, blocksForPoolOrder(meta && meta.id, all), triedKaokaoIds(all), INLINE_KAOKAO_LIMIT);
+  return selectInlineKaokao(all, blocksForInlineOrder(meta && meta.id, all), triedKaokaoIds(all), INLINE_KAOKAO_LIMIT);
 }
 
 function whyItemsForChunk(meta) {
@@ -6433,28 +6276,6 @@ function kaokaoSummary(meta) {
   return `小测 ${correct}/${items.length} 对（跳过 ${skipped}）${whyPart} · ${said}`;
 }
 
-function kaokaoPoolNote(meta) {
-  const left = allKaokaoItemsForChunk(meta).length - kaokaoItemsForChunk(meta).length;
-  if (left <= 0) return "";
-  const paused = reviewPoolPauseText(shanghaiToday());
-  if (paused) return paused;
-  return `另有 ${left} 条学完后进复习，每天最多 ${POOL_DAILY_LIMIT} 条`;
-}
-
-function clozeHtml(text) {
-  return escapeHtml(text).replace(/_{3,}/g, '<span class="cloze-blank" aria-label="填空">　　</span>');
-}
-
-function fillCloze(text, answers) {
-  let index = 0;
-  const list = Array.isArray(answers) ? answers : [];
-  return String(text || "").replace(/_{3,}/g, () => {
-    const value = list[index] != null ? String(list[index]) : "";
-    index += 1;
-    return value;
-  });
-}
-
 function openItemSource(meta, item) {
   if (!item) return;
   app.ui.kaokaoFocus = {
@@ -6876,7 +6697,7 @@ function doneStepHtml(meta) {
   const rec = app.state.chunks && app.state.chunks[meta.id];
   const reviewed = rec && rec.doneAt;
   const marked = chunkDoubtItems(meta.id);
-  const kaokaoParts = [kaokaoSummary(meta), kaokaoPoolNote(meta)].filter(Boolean);
+  const kaokao = kaokaoSummary(meta);
   const doubtLine = marked.length ? `
     <div id="learn-doubt-line">
       <p>没看懂 ${marked.length} 处，已记下</p>
@@ -6888,7 +6709,7 @@ function doneStepHtml(meta) {
     ${reviewed ? `<p class="learn-review-note" id="learn-review-note">已于 ${escapeHtml(rec.doneAt)} 学完，这次是复习。</p>` : ""}
     <p id="learn-minutes">用时 ${learnMinutes(meta.id)} 分钟</p>
     <p id="learn-score">做题 ${score.done} 道对 ${score.correct} 道</p>
-    ${kaokaoParts.length ? `<p id="learn-kaokao-line">${kaokaoParts.map((part) => escapeHtml(part)).join("<br>")}</p>` : ""}
+    ${kaokao ? `<p id="learn-kaokao-line">${escapeHtml(kaokao)}</p>` : ""}
     ${doubtLine}
     <div class="button-row">
       <button id="learn-finish" class="btn btn-primary tap-target" type="button">${reviewed ? "再学一遍完成" : "这一块学完了"}</button>
@@ -7366,18 +7187,6 @@ function reviewRichText(text) {
   return escapeHtml(text).replace(/\n/g, "<br>");
 }
 
-function reviewDueCount(today) {
-  const dueIds = reviewQueueToday(today).map((card) => card.id);
-  const session = app.ui.review;
-  if (app.ui.flowReviewBatch) return dueIds.length;
-  if (session && session.sessionDate === today && Array.isArray(session.order) && session.order.length) {
-    app.ui.review = reconcileReviewSession(session, today, dueIds, app.state.cards, reviewSessionQuota(today));
-    const remaining = countReviewRemaining(app.ui.review, today, app.state.cards);
-    if (remaining != null) return remaining;
-  }
-  return dueIds.length;
-}
-
 function applyReviewGrade(card, action, today) {
   let next;
   if (action === "remember") {
@@ -7424,14 +7233,9 @@ function gradeCurrentReview(action) {
   if (!app.state.cards[id]) return;
   const result = gradeReview(session, app.state.cards, today, action, applyReviewGrade);
   if (!result.card) return;
-  let cardToSave = result.card;
-  if (app.ui.reviewHint && app.ui.reviewHint.cardId === id && app.ui.reviewHint.used) {
-    cardToSave = { ...result.card, hint: true };
-  }
-  if (action !== "blank") app.ui.reviewHint = null;
   app.ui.review = result.session;
   app.sync.sessionReviews += 1;
-  store.save(`cards/${id}`, cardToSave);
+  store.save(`cards/${id}`, result.card);
   render();
 }
 
@@ -7456,14 +7260,10 @@ function undoCurrentReview() {
   const result = undoReview(app.ui.review);
   if (!result.card || !result.session || !result.session.currentId) return;
   const id = result.session.currentId;
-  flowReviewPending = true;
-  app.ui.forceReview = true;
   app.ui.reviewGrading = null;
   if (app.ui.reviewGrades) delete app.ui.reviewGrades[id];
   if (app.ui.reviewDrafts) delete app.ui.reviewDrafts[id];
   app.ui.review = result.session;
-  if (!app.ui.flowReviewBatch) app.ui.flowReviewBatch = result.session.order.slice();
-  app.ui.reviewHint = null;
   if (app.ui.reviewChoices) delete app.ui.reviewChoices[id];
   if (app.sync.sessionReviews > 0) app.sync.sessionReviews -= 1;
   const keepIntroStamp = !!(result.card && result.card.intro);
@@ -7535,72 +7335,6 @@ function skeletonAnswerExtra(cardId, base) {
 
 
 
-function poolIntroFrontHtml(item, tryItem) {
-  const options = item.recog?.options || [];
-  const order = optionOrderFor(item.id, options.map((_, index) => String(index)), options, !tryItem);
-  return `<p id="review-pool-stem">${escapeHtml(item.recog?.stem || "")}</p><div class="flow-options">${order.map((key, position) => {
-    const index = Number(key);
-    const good = tryItem && index === Number(item.recog.answer);
-    const chosen = tryItem && index === Number(tryItem.choice);
-    const bad = chosen && !good;
-    return `<button type="button" class="flow-option${good ? " is-ok" : bad ? " is-bad" : tryItem ? " is-dim" : ""}" data-pool-choice="${index}" aria-pressed="${!!chosen}" ${tryItem ? "disabled" : ""}><span>${String.fromCharCode(65 + position)}.</span><span class="flow-option-text">${escapeHtml(options[index])}</span>${chosen ? '<span class="flow-selected">已选</span>' : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
-  }).join("")}</div>`;
-}
-
-function poolIntroAnswerHtml(item, tryItem) {
-  const options = (item.recog && item.recog.options) || [];
-  const answerText = options[Number(item.recog && item.recog.answer)] || "";
-  return `
-    <p class="quiz-result ${tryItem.ok ? "ok" : "bad"}" id="review-pool-result">${tryItem.ok ? "✓ 对了" : `✗ 正确是：${escapeHtml(answerText)}`}</p>
-    <div id="review-kaokao-src">${renderTextbookText(`原句：${item.src || ""}`)}</div>
-    <p class="small" id="review-pool-why">${escapeHtml((item.recog && item.recog.why) || "")}</p>
-    <button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>`;
-}
-
-function answerPoolIntro(choiceIndex) {
-  const session = app.ui.review;
-  if (!session || !session.currentId) return;
-  if (session.phase !== "front") return;
-  if (!Number.isInteger(choiceIndex)) return;
-  const card = app.state.cards[session.currentId];
-  if (!card || card.pool !== true || card.src !== "kaokao") return;
-  const item = kaokaoItemById(card.kid);
-  const options = item && item.recog && Array.isArray(item.recog.options) ? item.recog.options : [];
-  if (!item || !options.length || choiceIndex < -1 || choiceIndex >= options.length) return;
-  const shown = app.ui.kaokaoShown && app.ui.kaokaoShown[item.id];
-  recordKaokaoTry(item, {
-    at: shanghaiIso(),
-    level: "recog",
-    choice: choiceIndex,
-    ok: choiceIndex === Number(item.recog.answer),
-    ms: Math.max(0, Date.now() - (shown || Date.now()))
-  });
-  const action = choiceIndex === Number(item.recog.answer) ? "remember" : "forget";
-  const result = gradeReview(session, app.state.cards, shanghaiToday(), action === "forget" ? "wrong" : action,
-    (card, _grade, today) => applyReviewGrade(card, action, today));
-  result.session.currentId = session.currentId;
-  result.session.doneIds = session.doneIds.slice();
-  result.session.phase = "pool";
-  result.session.lastUndo = null;
-  app.ui.review = result.session;
-  app.sync.sessionReviews += 1;
-  store.save(`cards/${session.currentId}`, result.card);
-
-}
-
-function advancePoolIntro() {
-  const session = app.ui.review;
-  const today = shanghaiToday();
-  if (!session || session.phase !== "pool" || !session.currentId) return;
-  const id = session.currentId;
-  const card = app.state.cards[id];
-  if (!card || card.pool !== true) return;
-  const item = kaokaoItemById(card.kid);
-  if (!item || !latestKaokaoTry(item.id, "recog")) return;
-  app.ui.review = advanceReview(session, app.state.cards, today);
-  render();
-}
-
 // Skeleton cards: Billy writes the answer, the model judges against this card only.
 function recallFrontHtml(cardId, phase, grading) {
   const text = String(app.ui.reviewDrafts?.[cardId] || "");
@@ -7667,76 +7401,60 @@ function flipRecallGrade(cardId) {
   gradeRevealedReview(grade.verdict === "对" ? "forget" : "remember");
 }
 
-async function submitReviewCloze(cardId, item) {
-  const session = app.ui.review;
-  if (!session || session.currentId !== cardId || session.phase !== "front" || app.ui.reviewGrading) return;
-  const response = (app.ui.reviewDrafts?.[cardId] || []).slice();
-  if (!response.some(value => value.trim())) { render(); return; }
-  const cfg = loadDirectConfig();
-  const pending = { cardId, session };
-  app.ui.reviewGrading = pending;
-  render();
-  let grade = null;
-  try {
-    grade = await qaApi.gradeCloze({ provider: cfg.provider, model: cfg.model, baseUrl: cfg.baseUrl,
-      apiKey: cfg.apiKey, sentence: item.src || item.cloze.text, answers: item.cloze.answers, response });
-  } catch (_) {}
-  if (app.ui.reviewGrading !== pending) return;
-  app.ui.reviewGrading = null;
-  if (shanghaiToday() !== session.sessionDate || app.ui.review?.sessionDate !== session.sessionDate || app.ui.review?.currentId !== cardId || app.ui.review.phase !== "front") return;
-  if (grade) {
-    app.ui.reviewGrades ||= {};
-    app.ui.reviewGrades[cardId] = grade;
-    recordReviewAnswer(cardId, { response: response.join(" / "), verdict: grade.correct ? "对" : "错", gap: grade.why });
-    gradeRevealedReview(grade.correct ? "remember" : "forget");
-  } else {
-    app.ui.review = revealReviewAnswer(app.ui.review);
-    render();
-  }
-}
-
-function renderFlowReview(root, today) {
+function renderFlowReview(root, today, size = 10, nextId = "") {
   if (!app.data) {
     root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
     return true;
   }
-  ensureKaokaoLoaded(today);
-  releasePoolCards(today);
-  releaseExamCards(today);
+  const manual = !!app.ui.forceReview;
+  const batch = app.ui.flowReviewBatch || { date: today, size, nextId, manual, extra: manual ? reviewExtraCount(today) : 0 };
+  const quota = reviewSessionQuota(today, batch.extra);
 
-  // Do not dismiss startup review while due skeleton cards' indexes are still loading.
-  const waitingUnits = new Set(Object.entries(app.state.cards || {}).filter(([id, card]) => {
-    if (["wrong", "kaokao", "lesson"].includes(card.src) || card.cleared || !card.due || card.due > today) return false;
-    const unit = card.unit || skeletonUnit(id);
-    return unit && !app.study.indexes[unit] && !["missing", "error"].includes(app.study.indexState[unit]);
-  }).map(([id, card]) => card.unit || skeletonUnit(id)));
-  if (waitingUnits.size) {
-    for (const unit of waitingUnits) kickUnitIndex(unit);
-    root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
-    return true;
+  if (quota > 0) {
+    releaseExamCards(today);
+    // Wait for the indexes that decide whether due skeleton cards belong to finished chunks.
+    const waitingUnits = new Set(Object.entries(app.state.cards).filter(([id, card]) => {
+      if (["wrong", "kaokao", "lesson"].includes(card.src) || card.cleared || !card.due || card.due > today) return false;
+      const unit = card.unit || skeletonUnit(id);
+      return unit && !app.study.indexes[unit] && !["missing", "error"].includes(app.study.indexState[unit]);
+    }).map(([id, card]) => card.unit || skeletonUnit(id)));
+    if (waitingUnits.size) {
+      if (!app.ui.flowReviewBatch) saveFlowReviewBatch(batch);
+      for (const unit of waitingUnits) kickUnitIndex(unit);
+      root.innerHTML = `<p class="small">正在读取学习数据...</p>`;
+      return true;
+    }
   }
 
-  if (!app.ui.flowReviewBatch || app.ui.review?.sessionDate !== today) {
-    app.ui.flowReviewBatch = reviewQueueToday(today).slice(0, 10).map(card => card.id);
-    app.ui.review = createReviewSession(today, app.ui.flowReviewBatch, 10);
+  app.ui.forceReview = false;
+  if (!batch.ids) {
+    batch.ids = quota ? reviewQueueToday(today, batch.extra).slice(0, batch.size).map(card => card.id) : [];
+    app.ui.review = null;
+    if (batch.ids.length) saveFlowReviewBatch(batch);
+  }
+  if (app.ui.review?.sessionDate !== today) {
+    app.ui.review = createReviewSession(today, batch.ids, batch.size);
+    app.ui.review.doneIds = batch.ids.filter(id => app.state.cards[id]?.reviewedOn === today);
     app.ui.reviewActiveId = null;
   }
-  const dueIds = app.ui.flowReviewBatch.filter(id => {
+  const current = app.ui.review;
+  const revealedId = current.phase === "revealed" ? current.currentId : null;
+  const dueIds = batch.ids.filter(id => {
     const card = app.state.cards[id];
-    return !(card?.src === "wrong" && billyFlaggedQuestion(card.qid)) &&
-      !(card?.src === "kaokao" && kaokaoRetired(card.kid)) &&
-      !(card?.src === "lesson" && app.state.lessons?.[card.lessonId]?.disabled);
+    return card && card.src !== "kaokao" &&
+      (id === revealedId || (!card.cleared && card.due && card.due <= today)) &&
+      !(card.src === "wrong" && billyFlaggedQuestion(card.qid)) &&
+      !(card.src === "lesson" && app.state.lessons?.[card.lessonId]?.disabled);
   });
-  const session = reconcileReviewSession(app.ui.review, today, dueIds, app.state.cards,
-    Math.min(reviewSessionQuota(today), Math.max(0, 10 - app.ui.review.doneIds.length)));
+  const countedAnswer = dueIds.includes(revealedId) && app.state.cards[revealedId].reviewedOn === today;
+  if (!dueIds.includes(current.currentId) || (!quota && !countedAnswer)) current.currentId = null;
+  const room = Math.min(quota + Number(countedAnswer), batch.size - current.doneIds.length);
+  const session = reconcileReviewSession(current, today, dueIds, app.state.cards, room);
   app.ui.review = session;
 
   if (!session.currentId) {
-    flowReviewPending = false;
-    app.ui.flowReviewBatch = null;
-    store.save("flow/reviewDoneOn", today);
-    const stats = session.stats || {};
-    if ((stats.remember || 0) + (stats.wrong || 0) + (stats.blank || 0) > 0) app.ui.reviewTransition = true;
+    if (app.ui.flowReviewBatch) saveFlowReviewBatch(null);
+    if (batch.manual && (!quota || Object.values(session.stats).some(Boolean))) app.ui.reviewTransition = true;
     return false;
   }
   const total = session.order.length;
@@ -7752,79 +7470,30 @@ function renderFlowReview(root, today) {
   const stored = app.state.cards[session.currentId];
   const card = stored ? { id: session.currentId, ...stored } : { id: session.currentId, src: "skeleton" };
   if (card.src === "lesson") return renderLessonReview(root, card, session, today);
-  const kkItem = card.src === "kaokao" ? kaokaoItemById(card.kid) : null;
   const exam = card.src === "wrong" ? app.derived.questionById.get(card.qid) : null;
   const choiceCard = exam && Object.keys(exam.options || {}).length > 0;
   // Z1N-211: shown letters follow the shuffled position; attempts keep the original letters.
   const examKeys = choiceCard ? Object.keys(exam.options) : [];
   const examOrder = choiceCard ? optionOrderFor(exam.id || card.qid, examKeys, examKeys.map(key => exam.options[key])) : [];
   const examLabels = optionLabels(examOrder);
-  const content = card.src === "kaokao" ? null : reviewCardContent(card, examLabels);
-  const clozeCard = !!(kkItem?.cloze?.text && Array.isArray(kkItem.cloze.answers));
-  const clozeGrade = app.ui.reviewGrades?.[card.id];
-  const recallCard = card.src !== "wrong" && card.src !== "kaokao";
+  const content = reviewCardContent(card, examLabels);
+  const recallCard = card.src !== "wrong";
   const grading = app.ui.reviewGrading?.cardId === card.id;
   const showAnswer = session.phase === "checking" || session.phase === "revealed";
-  const hintUsed = !!(app.ui.reviewHint && app.ui.reviewHint.cardId === card.id && app.ui.reviewHint.used);
-  if (card.src !== "kaokao" && card.src !== "wrong") prepareSkeletonSource(card.id);
-  const poolOptions = kkItem && kkItem.recog && Array.isArray(kkItem.recog.options) ? kkItem.recog.options : [];
-  const poolFirst = card.pool === true && card.src === "kaokao" && !latestKaokaoTry(card.kid, "recog");
-  const poolReady = poolFirst && poolOptions.length > 0;
-  const poolTry = session.phase === "pool" ? latestKaokaoTry(card.kid, "recog") : null;
-  const poolAnswered = !!(poolTry && kkItem && card.pool === true && card.src === "kaokao" && poolOptions.length > 0);
-  if (poolReady) {
-    if (!app.ui.kaokaoShown) app.ui.kaokaoShown = {};
-    if (!app.ui.kaokaoShown[kkItem.id]) app.ui.kaokaoShown[kkItem.id] = Date.now();
-  }
-  let poolHold = false;
-  let frontHtml = "";
-  if (poolReady || poolAnswered) {
-    frontHtml = poolIntroFrontHtml(kkItem, poolAnswered ? poolTry : null);
-  } else if (card.src === "kaokao") {
-    if (!kkItem) {
-      const unit = (String(card.kid || "").match(/U\d+/) || [])[0] || "";
-      const state = unit && app.study.kaokaoState[unit];
-      const missing = state === "missing" || state === "error";
-      frontHtml = `<p>${missing ? "这张可考句暂时没读到。" : "正在读取可考句…"}</p>`;
-      if (poolFirst && !missing) poolHold = true;
-    } else {
-      let blank = 0;
-      const draft = app.ui.reviewDrafts?.[card.id] || [];
-      const input = escapeHtml(kkItem.cloze?.text || "").replace(/_{3,}/g, () => {
-        const index = blank++;
-        return `<input class="review-input" data-review-blank="${index}" aria-label="填空 ${index + 1}" value="${escapeHtml(draft[index] || "")}"${showAnswer || grading ? " readonly" : ""}>`;
-      });
-      frontHtml = `<p id="review-cloze">${input}</p>`;
-      if (hintUsed) frontHtml += `<p class="small" id="review-hint-text">${escapeHtml((kkItem.cloze && kkItem.cloze.hint) || "")}</p>`;
-      else if (session.phase === "front") frontHtml += `<div class="button-row"><button id="review-hint" class="btn btn-secondary tap-target" type="button">提示</button></div>`;
-    }
-  } else {
-    frontHtml = `<p>${reviewRichText(content.front)}</p>`;
-    if (recallCard) frontHtml += recallFrontHtml(card.id, session.phase, grading);
-    if (exam?.options) {
-      const selected = app.ui.reviewChoices?.[card.id] || "";
-      frontHtml = `<p>${escapeHtml(exam.stem)}</p><div class="flow-options">${examOrder.map(key => [key, exam.options[key]]).map(([key, text]) => {
-        const good = showAnswer && String(exam.answer || "").includes(key);
-        const bad = showAnswer && selected.includes(key) && !good;
-        const style = good ? " is-ok" : bad ? " is-bad" : showAnswer ? " is-dim" : selected.includes(key) ? " is-on" : "";
-        return `<button class="flow-option${style}" data-review-choice="${key}" aria-pressed="${selected.includes(key)}" type="button"${showAnswer ? " disabled" : ""}><span>${examLabels[key]}.</span><span class="flow-option-text">${escapeHtml(text)}</span>${selected.includes(key) ? `<span class="flow-selected">已选</span>` : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
-      }).join("")}</div>`;
-    }
+  if (recallCard) prepareSkeletonSource(card.id);
+  let frontHtml = `<p>${reviewRichText(content.front)}</p>`;
+  if (recallCard) frontHtml += recallFrontHtml(card.id, session.phase, grading);
+  if (exam?.options) {
+    const selected = app.ui.reviewChoices?.[card.id] || "";
+    frontHtml = `<p>${escapeHtml(exam.stem)}</p><div class="flow-options">${examOrder.map(key => [key, exam.options[key]]).map(([key, text]) => {
+      const good = showAnswer && String(exam.answer || "").includes(key);
+      const bad = showAnswer && selected.includes(key) && !good;
+      const style = good ? " is-ok" : bad ? " is-bad" : showAnswer ? " is-dim" : selected.includes(key) ? " is-on" : "";
+      return `<button class="flow-option${style}" data-review-choice="${key}" aria-pressed="${selected.includes(key)}" type="button"${showAnswer ? " disabled" : ""}><span>${examLabels[key]}.</span><span class="flow-option-text">${escapeHtml(text)}</span>${selected.includes(key) ? `<span class="flow-selected">已选</span>` : ""}${good ? "✓" : bad ? "✕" : ""}</button>`;
+    }).join("")}</div>`;
   }
   let answerHtml = "";
-  if (poolAnswered) {
-    answerHtml = poolIntroAnswerHtml(kkItem, poolTry);
-  } else if (showAnswer && card.src === "kaokao") {
-    if (kkItem) {
-      const filled = fillCloze(kkItem.cloze && kkItem.cloze.text, kkItem.cloze && kkItem.cloze.answers);
-      answerHtml = `<section class="panel" id="review-kaokao-answer">
-        <div id="review-kaokao-src" hidden>${renderTextbookText(`原句：${kkItem.src || ""}`)}</div>
-        ${renderTextbookText(filled)}
-        <p class="small">${escapeHtml((kkItem.recog && kkItem.recog.why) || "")}</p>
-        <button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button>
-      </section>`;
-    }
-  } else if (showAnswer && card.src !== "wrong") {
+  if (showAnswer && recallCard) {
     const base = app.derived.cardById.get(card.id);
     answerHtml = `<section class="panel" id="review-skeleton-answer">
       <p>${reviewRichText(content.back)}</p>
@@ -7834,18 +7503,13 @@ function renderFlowReview(root, today) {
   } else if (showAnswer) {
     answerHtml = `<section class="panel"><p>${reviewRichText(content.back)}</p>${examProvenanceHtml(exam)}${anchorPrintedHtml(content.anchor)}<button id="review-source" class="btn btn-secondary tap-target" type="button">看原文</button></section>`;
   }
-  if (showAnswer && clozeGrade && !recallCard) answerHtml = `<p class="flow-result ${clozeGrade.correct ? "is-ok" : "is-bad"}">${clozeGrade.correct ? "✓ 对了" : "✕ 错了"} · ${renderModelInline(clozeGrade.why)}</p>` + answerHtml;
   let actions;
-  if (poolAnswered) actions = `<button id="review-pool-next" class="flow-next" type="button">下一张</button>`;
-  else if (session.phase === "revealed") actions = `<button id="review-next" class="flow-next" type="button">下一张</button>`;
+  if (session.phase === "revealed") actions = `<button id="review-next" class="flow-next" type="button">下一张</button>`;
   else if (session.phase === "checking") actions = `<div class="flow-grade"><button id="review-remember" class="flow-next" type="button">答对了</button><button id="review-wrong" class="flow-next" type="button">答错了</button></div>`;
   else if (choiceCard && !isMultiSelect(exam.type)) actions = `<button id="review-next" class="flow-next" type="button" disabled>下一张</button>`;
   else if (choiceCard) actions = `<button id="review-submit" class="flow-next" type="button" ${!isMultiSelect(exam.type) || !app.ui.reviewChoices?.[card.id] ? "disabled" : ""}>提交</button>`;
-  else if (clozeCard && !poolReady) actions = loadDirectConfig().apiKey
-    ? `<button id="review-cloze-submit" class="flow-next" type="button" ${grading ? "disabled" : ""}>${grading ? "正在判断…" : "提交"}</button>`
-    : `<button id="review-show" class="flow-next" type="button">想好了，看答案</button>`;
   else if (recallCard) actions = `<button id="review-recall-submit" class="flow-next" type="button" ${grading || !String(app.ui.reviewDrafts?.[card.id] || "").trim() ? "disabled" : ""}>${grading ? "正在判断…" : "提交"}</button>`;
-  else actions = `<button id="review-show" class="flow-next" type="button" ${poolReady || poolHold ? "disabled" : ""}>想好了，看答案</button>`;
+  else actions = `<button id="review-show" class="flow-next" type="button">想好了，看答案</button>`;
 
   const oldCopy = root.querySelector('#flow-copy');
   const scrollTop = root.dataset.item === session.currentId ? oldCopy?.scrollTop || 0 : 0;
@@ -7872,8 +7536,6 @@ function renderFlowReview(root, today) {
         answered: showAnswer, choice: pages.remapAnswer(choice, examLabels), ok: compareAnswer(choice, exam.answer, exam.type),
         answer: pages.remapAnswer(exam.answer, examLabels), explanation: pages.remapLetters(exam.explanation || "", examLabels) };
     }
-    if (kkItem) return { stem: kkItem.cloze?.text || kkItem.src || "", options: [], answered: showAnswer,
-      choice: (Array.isArray(draft) ? draft : []).join("、"), ok: !!clozeGrade?.correct, answer: (kkItem.cloze?.answers || []).join("、") };
     return { stem: content?.front || "", options: [], answered: showAnswer, choice: String(draft || ""),
       ok: app.ui.reviewGrades?.[card.id]?.verdict === "对", answer: content?.back || "" };
   };
@@ -7887,7 +7549,7 @@ function renderFlowReview(root, today) {
     event.currentTarget.textContent = "已记下"; event.currentTarget.disabled = true;
   });
   if (slot) {
-    const meta = exam ? findChunkMeta(exam.chunk) || Object.values(app.study.indexes).flatMap(index => index.chunks || []).find(chunk => (chunk.questions || []).includes(card.qid)) : kkItem ? findChunkMeta(kkItem.chunk) : chunkForCardId(card.id);
+    const meta = exam ? findChunkMeta(exam.chunk) || Object.values(app.study.indexes).flatMap(index => index.chunks || []).find(chunk => (chunk.questions || []).includes(card.qid)) : chunkForCardId(card.id);
     if (meta) {
       kickChunkBody(meta);
       mountFlowQa(slot, meta, app.study.bodies[meta.id]?.blocks || [], exam ? {id: exam.id || card.qid, kind: "exam"} : null, "", `r:${card.id}`, reviewExercise());
@@ -7907,11 +7569,6 @@ function renderFlowReview(root, today) {
   };
 
   document.getElementById("flow-menu-open").addEventListener("click", openFlowMenu);
-  root.querySelectorAll("[data-review-blank]").forEach(input => input.addEventListener("input", () => {
-    app.ui.reviewDrafts ||= {};
-    app.ui.reviewDrafts[card.id] ||= [];
-    app.ui.reviewDrafts[card.id][Number(input.dataset.reviewBlank)] = input.value;
-  }));
   root.querySelectorAll("[data-review-choice]").forEach(button => button.addEventListener("click", () => {
     app.ui.reviewChoices ||= {};
     const exam = app.derived.questionById.get(card.qid);
@@ -7922,29 +7579,15 @@ function renderFlowReview(root, today) {
     app.ui.reviewChoices[card.id] = [...choices].sort().join("");
     if (!isMultiSelect(exam.type)) gradeChoice(); else render();
   }));
-  root.querySelectorAll("[data-pool-choice]").forEach((button) => {
-    button.addEventListener("click", () => {
-      if (button.disabled) return;
-      if (Date.now() < app.ui.reviewArmedAt) return;
-      root.querySelectorAll("[data-pool-choice]").forEach((el) => { el.disabled = true; });
-      answerPoolIntro(Number(button.dataset.poolChoice));
-    });
-  });
-  bindReviewButton("review-pool-next", advancePoolIntro);
-  bindReviewButton("review-hint", () => {
-    app.ui.reviewHint = { cardId: session.currentId, used: true };
-    render();
-  });
   const sourceButton = root.querySelector("#review-source");
-  if (sourceButton && (showAnswer || poolAnswered)) {
+  if (sourceButton && showAnswer) {
     const meta = exam ? findChunkMeta(exam.chunk) || Object.values(app.study.indexes).flatMap(index => index.chunks || []).find(chunk => (chunk.questions || []).includes(card.qid))
-      : kkItem ? findChunkMeta(kkItem.chunk) : chunkForCardId(session.currentId);
-    const anchor = exam?.verify?.anchor || exam?.anchor || kkItem?.anchor || content?.anchor;
+      : chunkForCardId(session.currentId);
+    const anchor = exam?.verify?.anchor || exam?.anchor || content?.anchor;
     const source = app.ui.reviewSource.open ? flowSource(meta, anchor) : {};
     flowModules.view.mountSourceDisclosure(root.querySelector("#flow-copy"), sourceButton, source, app.ui.reviewSource, render, flowModules.view.readingContent, scrollTop);
   }
   bindReviewButton("review-submit", gradeChoice);
-  bindReviewButton("review-cloze-submit", () => submitReviewCloze(card.id, kkItem));
   bindReviewButton("review-recall-submit", () => submitReviewRecall(card.id, content));
   root.querySelector("#review-recall")?.addEventListener("input", event => {
     app.ui.reviewDrafts ||= {};
@@ -7953,7 +7596,7 @@ function renderFlowReview(root, today) {
     if (submit) submit.disabled = !event.target.value.trim();
   });
   root.querySelector("#review-regrade")?.addEventListener("click", () => flipRecallGrade(card.id));
-  bindReviewButton("review-blank", () => clozeCard && !poolReady ? gradeRevealedReview("forget") : choiceCard ? gradeExam("") : poolReady ? answerPoolIntro(-1) : gradeCurrentReview("blank"));
+  bindReviewButton("review-blank", () => choiceCard ? gradeExam("") : gradeCurrentReview("blank"));
   bindReviewButton("review-show", () => {
     const current = app.ui.review;
     if (!current || current.phase !== "front") return;
@@ -8461,23 +8104,32 @@ let flowRunner = null;
 let flowQa = null;
 let flowVisit = null;
 let flowReturnHash = "";
-let flowReviewPending = true;
 let flowReviewDate = "";
+const FLOW_REVIEW_KEY = "study-flow-review";
+
+function saveFlowReviewBatch(batch) {
+  app.ui.flowReviewBatch = batch;
+  try {
+    if (batch) localStorage.setItem(FLOW_REVIEW_KEY, JSON.stringify(batch));
+    else localStorage.removeItem(FLOW_REVIEW_KEY);
+  } catch (_) {}
+}
 
 function openFlowMenu() {
-  document.getElementById("flow-review-more").hidden = getReviewQueue(shanghaiToday()).length === 0;
+  const today = shanghaiToday();
+  releaseExamCards(today);
+  document.getElementById("flow-review-more").hidden = getReviewQueue(today).length === 0;
   document.getElementById("flow-menu").showModal();
 }
 function startFlowReview() {
   const today = shanghaiToday();
   if (!getReviewQueue(today).length) return;
-  if (reviewSessionQuota(today) === 0) bumpReviewExtra(today);
+  if (reviewSessionQuota(today, reviewExtraCount(today)) === 0) bumpReviewExtra(today);
   app.ui.review = null;
   app.ui.reviewGrades = {};
   app.ui.reviewGrading = null;
-  app.ui.flowReviewBatch = null;
+  saveFlowReviewBatch(null);
   app.ui.forceReview = true;
-  flowReviewPending = true;
   document.getElementById("flow-menu").close();
   if (app.ui.tab === "flow") render();
   else returnToFlow();
@@ -9370,11 +9022,28 @@ function renderFlowPage() {
   const root = document.getElementById("page-flow");
   if (!root || app.ui.tab !== "flow") return;
   renderWeekProgress(null);
+  const today = shanghaiToday();
+  if (flowReviewDate !== today) {
+    flowReviewDate = today;
+    let saved;
+    try { saved = safeParse(localStorage.getItem(FLOW_REVIEW_KEY)); } catch (_) {}
+    app.ui.flowReviewBatch = saved?.date <= today ? saved : null;
+    if (app.ui.flowReviewBatch && saved.date < today) {
+      // Keep the unfinished cards, with the new day's allowance.
+      const ids = saved.ids?.filter(id => !(app.state.cards[id]?.reviewedOn >= saved.date));
+      saveFlowReviewBatch({ ...saved, date: today, ids, extra: 0 });
+    } else if (app.ui.flowReviewBatch?.extra) {
+      app.ui.reviewExtra = { date: today, n: saved.extra };
+    }
+    app.ui.reviewTransition = false;
+    app.ui.reviewGrades = {};
+    app.ui.reviewGrading = null;
+  }
   let chunkId = app.ui.routeChunkId || "";
   if (!chunkId && app.data) {
-    const next = resumeFlowChunk();
-    if (next) {
-      chunkId = next.id;
+    const savedNext = app.ui.flowReviewBatch?.nextId;
+    chunkId = savedNext && !chunkDone(savedNext) ? savedNext : resumeFlowChunk()?.id || "";
+    if (chunkId) {
       app.ui.autoChunk = chunkId;
       history.replaceState(null, "", `#flow-${encodeURIComponent(chunkId)}`);
       app.ui.routeChunkId = chunkId;
@@ -9396,15 +9065,8 @@ function renderFlowPage() {
     loadFlowModules();
     return;
   }
-  if (flowReviewDate !== shanghaiToday()) {
-    flowReviewDate = shanghaiToday();
-    flowReviewPending = true;
-    app.ui.flowReviewBatch = null;
-    app.ui.reviewGrades = {};
-    app.ui.reviewGrading = null;
-  }
-  if (flowReviewPending && (app.ui.forceReview || app.state.flow?.reviewDoneOn !== shanghaiToday()) && renderFlowReview(root, shanghaiToday())) return;
-  app.ui.forceReview = false;
+  if ((app.ui.forceReview || app.ui.flowReviewBatch) && renderFlowReview(root, today)) return;
+  const reviewMessage = reviewSessionQuota(today) ? "" : "今天的复习做完了。";
   if (app.ui.reviewTransition) {
     const target = chunkId ? ensureChunkMeta(chunkId) : null;
     if (target && chunkDone(target.id)) app.ui.reviewTransition = false;
@@ -9412,15 +9074,16 @@ function renderFlowPage() {
       renderWeekProgress(null);
       flowModules.view.renderFlow(root, {
         chunkId: target.id, status: "ready", mode: "start", itemId: "start",
-        startTitle: target.title || target.id, onMenu: leave, refresh: render,
+        startTitle: target.title || target.id, reviewMessage, onMenu: leave, refresh: render,
         onNext: () => { app.ui.reviewTransition = false; render(); }
       });
       return;
     } else if (chunkLookupSettled()) app.ui.reviewTransition = false;
   }
   if (!chunkId && chunkLookupSettled()) {
+    if (!reviewMessage && renderFlowReview(root, today, REVIEW_DAILY_CAP)) return;
     renderWeekProgress(null);
-    flowModules.view.renderFlow(root, {status:"ready", mode:"done", onMenu:leave, refresh:render});
+    flowModules.view.renderFlow(root, {status:"ready", mode:"done", reviewMessage, onMenu:leave, refresh:render});
     return;
   }
   const meta = ensureChunkMeta(chunkId);
@@ -9516,6 +9179,7 @@ function renderFlowPage() {
     correct: flowCorrect(rec.queue, catalog ? catalog.questions : []),
     nextId: nextChunk ? nextChunk.id : "",
     nextTitle: nextChunk ? (nextChunk.title || nextChunk.id) : "",
+    reviewMessage: mode === "done" ? reviewMessage : "",
     decisions: rec.events.filter((event) => event && event.type === "decide" && event.text).slice(-8),
     notes: activeNotes,
     errors: rec.events.filter(event => event.type === "error").slice(-5),
@@ -9549,6 +9213,14 @@ function renderFlowPage() {
   }
   if (mode === "done" && !flowVisit.readOnly && !chunkDone(meta.id)) {
     completeLearnChunk(meta);
+    const nextId = nextChunk?.id || "";
+    if (!reviewMessage && renderFlowReview(root, today, 5, nextId)) {
+      history.replaceState(null, "", nextId ? `#flow-${encodeURIComponent(nextId)}` : "#today");
+      app.ui.routeChunkId = nextId;
+      flowVisit = null;
+      renderWeekProgress(null);
+      return;
+    }
     renderWeekProgress(meta);
   }
 }
@@ -9564,7 +9236,7 @@ function renderPages() {
 
 function render() {
   if ((location.hash || "").startsWith("#learn-")) history.replaceState(null, "", location.hash.replace("#learn-", "#flow-"));
-  if (location.hash === "#review") { app.ui.forceReview = true; flowReviewPending = true; history.replaceState(null, "", "#today"); }
+  if (location.hash === "#review") { app.ui.forceReview = true; history.replaceState(null, "", "#today"); }
   const route = hashRoute();
   app.ui.tab = route.tab;
   app.ui.routeChunkId = route.chunkId;
